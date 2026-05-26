@@ -1,9 +1,10 @@
 ---
 project: Target-o-meter
 researched_at: 2026-05-26
-recommended_platform: Railway
+recommended_platform: Railway (EU West Metal — Amsterdam, europe-west4-drams3a)
 runner_up: Render
 context_type: mvp
+region_constraint: europe-west4-drams3a
 tech_stack:
   language: Python
   framework: Django 6.0.5
@@ -13,9 +14,9 @@ tech_stack:
 
 ## Recommendation
 
-**Deploy on Railway.**
+**Deploy on Railway (EU West Metal — Amsterdam, Netherlands).**
 
-Railway scored 4/5 on agent-friendly criteria with the only gap being agent-readable docs (no `llms.txt`). It offers first-class Django support via Railpack (auto-detects `manage.py`, supports `uv`), persistent processes for background workers, and an official GA MCP server. The app uses SQLite3 on a persistent Railway Volume — no managed database service needed, which keeps the cost at $5-8/month on the Hobby plan. The user swapped from Render (the scoring leader at 5/5) after the anti-bias cross-check surfaced a $20/month realistic cost vs. Railway's $5-8/month, making cost the deciding factor.
+Railway scored 4/5 on agent-friendly criteria with the only gap being agent-readable docs (no `llms.txt`). It offers first-class Django support via Railpack (auto-detects `manage.py`, supports `uv`), persistent processes for background workers, and an official GA MCP server. The app uses SQLite3 on a persistent Railway Volume — no managed database service needed, which keeps the cost at $5-8/month on the Hobby plan. The user swapped from Render (the scoring leader at 5/5) after the anti-bias cross-check surfaced a $20/month realistic cost vs. Railway's $5-8/month, making cost the deciding factor. All services must be deployed to the **EU West Metal (Amsterdam, Netherlands, `europe-west4-drams3a`)** region to keep latency low for European users and comply with EU data residency preferences.
 
 ## Platform Comparison
 
@@ -58,7 +59,7 @@ Lowest floor cost ($2/month for a tiny VM) with persistent Docker containers and
 1. **No `llms.txt` docs** — agents must crawl the GitHub docs repo rather than loading a single structured file. This causes occasional CLI hallucination (outdated Nixpacks syntax, wrong command flags).
 2. **$5 Hobby credit may not cover full stack** — Django + Celery worker for image processing likely costs $5-8/month in resource usage. SQLite on a Volume eliminates managed database costs entirely.
 3. **No managed object storage** — same gap as Render. Uploaded target images need external S3, Cloudflare R2, or Railway Volumes (persist across deploys with explicit volume mounts).
-4. **Only 4 regions** — limited to US West, US East, EU West (Frankfurt), SE Asia. No Central/Eastern European region for the developer's location (Poland).
+4. **Only 4 regions** — limited to US West, US East, EU West Metal (Amsterdam, `europe-west4-drams3a`), SE Asia. No Central/Eastern European region for the developer's location (Poland); Amsterdam is the closest available EU option.
 5. **Serverless sleep mode returns 502 on first request** — if enabled to stay within $5 credit, users experience cold-start failures on their first action.
 
 ### Pre-Mortem — How This Could Fail
