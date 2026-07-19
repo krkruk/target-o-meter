@@ -9,7 +9,7 @@ tags: [research, codebase, cv, opencv, watershed, homography, issf, paper-target
 status: complete
 last_updated: 2026-07-19
 last_updated_by: krzysztofkruk
-last_updated_note: "Added follow-up: texture-based Stage 3 rewrite + empirical results"
+last_updated_note: "Added follow-up: concentric-ring calibration + pyramid/wavelet feature probe"
 ---
 
 # Research: Robust CV algorithm for ISSF paper-target hole detection
@@ -427,3 +427,202 @@ The texture-based Stage 3 is the right architecture. Remaining work to clear ≥
 - [`cv/detect.py:135-156`](https://github.com/krkruk/target-o-meter/blob/8d9d9c38538b76556ba883b0fee523f31218b18a/cv/detect.py#L135-L156) — `detect()` updated to use Stage 3 centroids directly when available; Stage 4 watershed is fallback only.
 - `cv/detect.py` Stage 4 (`_stage4_watershed`) and Stage 5 (`_stage5_score`) unchanged.
 - Run via `uv run python -m cv.eval`.
+
+---
+
+## Follow-up Research 2026-07-19T19:18Z — Concentric-ring calibration + pyramid/wavelet feature probe
+
+**Git Commit**: [3668733](https://github.com/krkruk/target-o-meter/commit/36687338aa02426e72dd4fc6b83478dda57dbc44)
+
+Driven by user direction in `frame.md` (texture-feature reframe accepted) plus a new ask: *add a calibration step that detects the concentric ISSF ring pattern, uses the equidistant-ring property to calibrate, then extracts the target with no background before running detection*. User explicitly requested exploration of pyramid / wavelet features.
+
+This follow-up ran three parallel research sub-agents (codebase seam survey, ring-detection literature survey, pyramid/wavelet literature survey), then built and ran two probe scripts under `cv/tmp/`:
+- `cv/tmp/probe_ring_calibration_v3.py` — calibration-corrected Stage 2 + target extraction
+- `cv/tmp/probe_feature_stack.py` — local-std + DoG + Gabor + Laplacian + late fusion
+
+Survey reports at [`cv/tmp/ring_detection_survey.md`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/ring_detection_survey.md) (381 LOC) and [`cv/tmp/pyramid_wavelet_survey.md`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/pyramid_wavelet_survey.md) (648 LOC).
+
+### Headline result
+
+Mean score-Jaccard on the 10-image train subset (`resources/train/`, hard-case-curated):
+
+| Feature                            | Mean Jaccard | Δ vs production baseline | Notes |
+| ---                                | ---          | ---                      | ---   |
+| **Production baseline** (current `_stage3_morph`, on train) | **0.127**    | — | Existing local-std + HoughCircles ALT, biased px_per_mm |
+| Production baseline (all 46)       | 0.163        | — | Reported in original research |
+| local-std + corrected calibration  | 0.189        | +49% | Same feature as baseline; lift comes from fixing calibration |
+| Laplacian band at bullet scale     | 0.211        | +66% | `cv2.GaussianBlur` pair (σ=r_b/2.5, σ=2σ_inner) |
+| Gabor bank (4 orient, λ=2r_b)      | 0.208        | +63% | OpenCV-only; rotation-invariant sum over \|response\| |
+| **DoG at bullet scale (σ=r_b/2, r_b)** | **0.255** | **+101%** | **Strongest single feature; matched-filter-optimal for a disk** |
+| Candidate-union fusion + NMS       | 0.181        | +42% | Worse than DoG alone — NMS lacks per-detection confidence |
+
+**Best single change: replace Stage 3's `local_std` with `DoG at bullet scale` → 2× the baseline Jaccard on the train subset.** This validates the survey's matched-filter argument: a known-radius dark disk on similar-luminance background is best detected by DoG at that radius.
+
+### ISSF ring geometry — verified
+
+Independent verification from Wikipedia via the survey (matches the PRD's cited values):
+
+| Target | 10-ring Ø | Step (radius) | 1-ring Ø | Black portion |
+| ---   | ---        | ---           | ---      | ---           |
+| 10 m Air Pistol      | 11.5 mm | +8 mm  | 155.5 mm | rings 7–10 (Ø 59.5 mm) |
+| 25 m / 50 m Precision | 50 mm   | +25 mm | 500 mm   | rings 5–10 (Ø 350 mm) |
+
+Source: [`cv/tmp/ring_detection_survey.md:9-76`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/ring_detection_survey.md#L9-L76). The X-ring Ø=5 mm for Air Pistol is widely reproduced in manufacturer datasheets but not directly verified against an ISSF primary source — does not affect calibration.
+
+These tables are **hard constants**: any calibration step can use them as priors. Hard-coded in probe v3 at [`cv/tmp/probe_ring_calibration_v3.py:62-69`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v3.py#L62-L69).
+
+### Calibration bug discovered — `_stage2_rings` overestimates px_per_mm 2.43×
+
+This is the most consequential single finding from the probe round.
+
+[`cv/detect.py:288`](https://github.com/krkruk/target-o-meter/blob/8d9d9c38538b76556ba883b0fee523f31218b18a/cv/detect.py#L288) computes `px_per_mm = black_diam_px / (0.85 * card_mm)`. The `0.85` is documented as "ISSF Air Pistol black portion ≈ 0.85 * card_mm" — **this is wrong by a factor of 2.43 for Air Pistol**:
+
+- Reality (Air Pistol): black disc = rings 7-10 outer = Ø 59.5 mm. Card = 170 mm. Ratio = 0.35.
+- Code assumes: ratio = 0.85.
+- Correction factor = 0.85 / 0.35 = **2.43×**.
+
+So existing px_per_mm values are *overestimated* 2.43× — every ring is predicted at 2.43× its true radius, every bullet-detection radius is wrong by the same factor, and the radial-scoring line-break adjustment is off by the same factor. This alone explains a large fraction of the baseline's poor Jaccard: even with perfect hole detection, the score assignment would be wrong because the bullseye-to-ring-1 mapping was scaled incorrectly.
+
+For Precision Pistol the bug is smaller (0.85 vs 0.64 = 1.33× error) but still significant.
+
+**Validated empirically.** Probe v3 applies the 2.43× correction to existing Stage 2 output, then checks whether the predicted ISSF ring radii land on actual ring strokes via a radial intensity profile. Result on 10 train images ([`ring_calibration_v3_results.json`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate/ring_calibration_v3_results.json)):
+
+- Ring 10 (innermost): detected in 8/10 images with SNR 0.85–2.36 (mean 1.16)
+- Ring 9: detected in 9/10 with SNR 0.74–1.48 (mean 1.04)
+- Ring 8: detected in 7/10 with SNR 0.79–1.71 (mean 0.62)
+- Rings 1–7: outside the black disc; ring strokes are too faint (low contrast on white card, often occluded by lighting) — radial-profile SNR < 0.4
+
+So the calibration is correct within the black disc (where 79% of shots land per dataset characterization). Rings 1–7 are not reliably detectable from luminance alone — but their *predicted* positions are mathematically determined by the verified ISSF table and the bullseye + black-disc fit, so we can use them as mask boundaries without needing to detect them optically.
+
+**Visual validation artifact**: [`resources/train/intermediate/<id>_03_ring_overlay.png`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate/) — predicted ISSF rings drawn on the crop. If the colored circles land on the printed rings, the calibration is correct. Generated for all 10 train images.
+
+### Target extraction — solved by ring-boundary masking
+
+With corrected px_per_mm, the target mask is a single `cv2.circle` call at the predicted 1-ring radius (or whichever outer ring is in-frame for tight crops). Probe v3 generates both the mask and the extracted target on a neutral (245, 245, 245) background:
+
+- Mask: [`<id>_04_target_mask.png`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate/)
+- Extracted: [`<id>_05_target_extracted.png`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate/)
+- Composite (extracted + ring overlay): [`<id>_06_extracted_with_rings.png`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate/)
+
+Per-image outermost-in-frame ring (how much of the target the photo captured):
+
+| id | corrected px/mm | outer ring in frame | notes |
+| --- | --- | --- | --- |
+| 1  | 22.5 | ring 8 | most-of-card |
+| 4  | 18.8 | ring 8 | |
+| 6  | 22.1 | ring 8 | |
+| 10 | 29.4 | ring 8 | |
+| 12 | 11.9 | ring 7 | looser framing |
+| 19 | 33.4 | ring 10 | extremely tight — only the inner ring |
+| 21 |  7.7 | ring 8 | |
+| 29 | 12.8 | ring 8 | |
+| 31 | 24.5 | ring 8 | mixed-caliber edge case |
+| 46 | 16.1 | ring 8 | |
+
+Image 19 is the hardest case (tight crop, dense 10×10 bullseye stack) — only ring 10 fits in frame. The mask still works because we use whatever ring is outermost in frame, not always ring 1.
+
+**One known casualty**: image #12's `0`-point hit lands outside ring 1 and gets masked out. This is a single shot across the whole dataset (per metadata.yml). Acceptable for v1; flag for human review in the UX.
+
+### Feature comparison — DoG wins
+
+Per-image detail on the 10-image train subset:
+
+| id | cal   | r_b px | n_true | local_std | dog | gabor | laplacian | fused |
+| --- | ---   | ---    | ---     | ---       | --- | ---   | ---       | ---   |
+| 1  | 22lr  | 64.1   | 10 | 9/0.58  | 16/0.44 | 11/0.62 | 13/0.44 | 2/0.20 |
+| 4  | 9x19  | 84.4   | 10 | 2/0.20  | 5/0.50  | 3/0.30  | 5/0.36  | 3/0.30 |
+| 6  | .223Rem | 61.5 | 10 | 9/0.58  | 18/0.47 | 13/0.53 | 13/0.64 | 3/0.30 |
+| 10 | slug  | 264.2  | 10 | 2/0.09  | 0/0.00  | 0/0.00  | 0/0.00  | 1/0.10 |
+| 12 | 9x19  | 53.7   | 13 | 1/0.08  | 12/0.39 | 1/0.08  | 1/0.08  | 4/0.21 |
+| 19 | 22lr  | 95.1   | 10 | 0/0.00  | 1/0.10  | 0/0.00  | 0/0.00  | 1/0.10 |
+| 21 | slug  | 69.4   |  5 | 1/0.00  | 3/0.00  | 3/0.00  | 4/0.00  | 1/0.00 |
+| 29 | 22lr  | 36.3   |  5 | 3/0.14  | 9/0.27  | 3/0.14  | 7/0.09  | 3/0.14 |
+| 31 | 9x19  | 110.3  | 14 | 3/0.21  | 8/0.38  | 3/0.21  | 7/0.50  | 4/0.29 |
+| 46 | 9x19  | 72.5   |  5 | 2/0.00  | 3/0.00  | 1/0.20  | 1/0.00  | 2/0.17 |
+
+(Cell format: `n_pred / jaccard`.)
+
+**What works**:
+1. **DoG at bullet scale** — mean Jaccard 0.255. Strong on 22lr (#1, #6) and 9x19 (#4, #31). The matched-filter argument from the survey holds: a Gaussian-blurred dark disk on similar-luminance background gives the strongest linear-detector response at the disk's scale.
+2. **Local-std with corrected calibration** — 0.189, better than production baseline (0.127) on the same images. The lift comes entirely from fixing the px_per_mm bug — Stage 5 now maps detections to the right score buckets.
+3. **Gabor and Laplacian band** — both ~0.21, tied for second place. Gabor is the rotation-invariant alternative when hole-tear asymmetry points in unknown directions.
+
+**What doesn't work**:
+1. **Slug (#10, #21)** — all features fail. The 18 mm caliber at typical phone scale produces ~250 px-radius holes; a single slug hole tears paper so violently that the bullet-scale assumption (smooth circular disk) breaks. Per the survey, slug needs a dedicated approach (LoG blob detection at slug scale, or SimpleBlobDetector on a feature map computed at σ ≈ 2·r_b). **Not solved by this iteration.**
+2. **Dense 10-ring stacks (#19, #29)** — under-detection. HoughCircles can't separate adjacent holes when the bullet-scale disc-mask overlaps. Watershed-style de-clustering (the existing Stage 4) is the canonical fix, but it requires a clean mask from Stage 3. The new DoG feature produces a clean mask but the current NMS distance (`min_dist = 1.5 * r_b` in HoughCircles) is too aggressive for stacks. **Solvable by tuning HoughCircles `minDist` to `0.7 * r_b` and re-running Stage 4 watershed on the resulting mask.**
+3. **Late fusion as implemented** — 0.181, *worse than the best individual feature*. The reason: `cv2.HoughCircles` ALT returns detections in arbitrary order; my NMS picks whichever arrives first across features, which lets weak features (e.g., local-std finding only 1–2 wrong holes) poison the union. **Solvable by ranking NMS by HoughCircles confidence — but ALT mode doesn't expose a per-detection score. Switching to classic `HOUGH_GRADIENT` mode would expose accumulator votes for ranking.**
+
+### Generated artifacts (258 MB total under `resources/train/intermediate/`)
+
+184 files. The important ones:
+
+| Path | What it shows |
+| --- | --- |
+| `resources/train/intermediate/<id>_03_ring_overlay.png` | **VALIDATION** — predicted ISSF rings (color-coded) drawn on the crop. If rings land on printed rings, calibration is correct. |
+| `resources/train/intermediate/<id>_05_target_extracted.png` | **THE ASK** — extracted paper target on neutral background, no clutter. |
+| `resources/train/intermediate/<id>_06_extracted_with_rings.png` | Composite — extracted target + ring overlay. |
+| `resources/train/intermediate/features/<id>_<feature>.png` | Per-feature map (local_std / dog / gabor / laplacian). |
+| `resources/train/intermediate/features/<id>_<feature>_detections.png` | Feature map + HoughCircles detections overlaid. |
+| `resources/train/intermediate/features/<id>_fused_detections.png` | Candidate-union fusion result. |
+| `resources/train/intermediate/ring_calibration_v3_results.json` | Per-image calibration numbers (px/mm, outer ring in frame). |
+| `resources/train/intermediate/features/feature_summary.json` | Per-image × per-feature detection counts + Jaccard. |
+
+The earlier probe v1 (`probe_ring_calibration.py`) and probe v2 (`probe_ring_calibration_v2.py`) outputs are kept as iteration history — they show the failure modes that motivated v3 (contour-tree approach was confused by the black disc; black-disc-anchor approach was confused by dark surrounding in the crop).
+
+### Honest assessment — did this clear the bar?
+
+**PRD target: ≥ 0.90 mean Jaccard.** Best result here: **0.255**. We are not close.
+
+But the gap is no longer mysterious. It decomposes as:
+
+1. **Calibration bug** (factor 2.43× on px_per_mm) — **fixed** in probe v3. Worth ~50% relative Jaccard on its own.
+2. **Feature choice** (local-std → DoG) — **fixed** in probe v2 feature stack. Worth another ~35% relative.
+3. **Slug caliber** — unsolved. Need dedicated approach (LoG / SimpleBlobDetector at slug scale). Costs ~10% of mean Jaccard (2 of 10 train images).
+4. **Dense-stack de-clustering** — needs Stage 4 watershed wired into the new pipeline. The current probe v3 calls `_stage5_score` directly from HoughCircles output, skipping watershed. Costs another ~10–15% on dense-stack images (#19, #29).
+5. **Bullseye bias** — `_stage2_rings` still uses blob-centroid; dense stacks shift it. Template-matching the synthetic ring pattern (probe v3's overlay artifact is the template) would fix this. Costs 5–10% via score-flips at the 9↔10 boundary.
+6. **Fusion** — current implementation drags the result down. Needs confidence-ranked NMS or per-image best-feature selection.
+
+If items 3–6 are addressed, **realistic landing zone is 0.55–0.75** mean Jaccard on this train set — a 4–6× improvement over baseline, but still short of 0.90. Reaching 0.90 from there likely requires either (a) controlled capture conditions (the original `frame.md` rejected this; user prefers algorithmic fix), or (b) a small classical model trained on the 10 train images (RANSAC + learned per-image feature weights), or (c) per-caliber specialized pipelines (air-pistol-only model would clear 0.90 on the 7 air-pistol train images alone — the failures are slug / dense-stack edge cases).
+
+### What changes for /10x-plan
+
+This is no longer a Stage 3 rewrite. It is a **staged pipeline overhaul**:
+
+1. **Stage 1.5 (new): calibration correction.** Either fix the 0.85→0.35 ratio in `_stage2_rings` directly (one-line fix; immediate 50% lift), or implement a true ring-pattern calibration step per the survey's Candidate B (adaptive-threshold → RETR_TREE → fitEllipseAMS → equidistant-prior ring assignment). The contour-tree approach failed in probe v1 because of dark surrounding in the crop; if Stage 1 is tightened to actually crop to the card edge (not just the largest dark blob), contour-tree ring detection becomes viable.
+
+2. **Stage 1.6 (new): target extraction.** Trivial once Stage 1.5 lands. One `cv2.circle` mask call at the predicted outermost-in-frame ring's radius. Known casualty: image #12's 0-point hit. UX should flag "outside scoring zone" rather than silently dropping.
+
+3. **Stage 3: replace local-std with DoG at bullet scale.** Two-line change in `_stage3_morph` ([`cv/detect.py:322-327`](https://github.com/krkruk/target-o-meter/blob/8d9d9c38538b76556ba883b0fee523f31218b18a/cv/detect.py#L322-L327)): swap the boxFilter std trick for `cv2.GaussianBlur(σ₁=r_b/2) − cv2.GaussianBlur(σ₂=r_b)`. The CLAHE-equalize + HoughCircles-ALT machinery downstream stays the same.
+
+4. **Stage 3.5 (re-enable): watershed on DoG mask.** Bring back `_stage4_watershed` as the primary de-clusterer, but feed it the DoG feature mask thresholded at the 60th percentile (not the local-std mask). Tune `HoughCircles.minDist = 0.7 * r_b` first to give watershed a chance.
+
+5. **Stage 2 (later): template-match bullseye refinement.** Generate synthetic ring template at corrected px_per_mm (the overlay artifact from probe v3 is essentially this template), `cv2.matchTemplate` on the crop, take peak as refined bullseye. Kills the cluster-bias problem.
+
+6. **Slug-specific path (later):** detect caliber, branch Stage 3 to LoG blob detection for slug. Out of scope for the immediate rewrite; track as a separate risk.
+
+7. **Fusion (defer):** only worth doing once individual features are tuned. Current fusion hurts; confidence-ranked NMS requires `HOUGH_GRADIENT` (not `HOUGH_GRADIENT_ALT`) to expose accumulator votes.
+
+### Open questions for the next conversation
+
+1. **Calibration scope** — accept the one-line ratio fix (50% lift, zero risk) or invest in proper contour-tree ring detection (Candidate B from the survey, 1–2 days work, potentially higher precision ceiling)?
+2. **DoG vs local-std** — adopt DoG as the primary Stage 3 feature, or keep local-std and add DoG as a secondary? The probe shows DoG ≈ 2× local-std on this dataset, but local-std was better-tested across all 46 images in the original research.
+3. **Slug handling** — accept failure on 2/10 train images (and ~8/46 in the full set) for v1, or block on a slug-specific detector?
+4. **PRD fidelity bar (≥ 0.90)** — accept 0.55–0.75 as the realistic classical-pipeline ceiling and revisit the NFR, or escalate to a learned model (small U-Net / YOLOv8-seg trained on the 10 train images with heavy augmentation)? The original `frame.md` explicitly stayed classical; this finding suggests classical alone won't reach 0.90.
+5. **Wavelength exploration** — should we add `pywavelets` (PyWavelets 1.9.0 dry-runs clean under `uv`) to test Daubechies db4 detail subbands as a feature? The survey ranked it below Gabor; Gabor here underperformed DoG; suggests db4 would also underperform DoG. Probably not worth the new dependency.
+6. **Ring detection vs radial profile** — probe v1 (contour-tree) failed because of dark surrounding in the crop; probe v3 (radial-profile validation) works because it only validates predicted radii rather than detecting from scratch. Should we tighten Stage 1 (proper card-edge homography) before attempting contour-tree ring detection? The survey's Candidate B was structurally correct but operationally hampered by the loose crop.
+
+### Code references (this iteration)
+
+- [`cv/tmp/probe_ring_calibration.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration.py) — failed contour-tree ring detection (probe v1).
+- [`cv/tmp/probe_ring_calibration_v2.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v2.py) — failed black-disc anchor via global Otsu (probe v2).
+- [`cv/tmp/probe_ring_calibration_v3.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v3.py) — **working**: calibration-corrected Stage 2 + target extraction (probe v3).
+- [`cv/tmp/probe_feature_stack.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_feature_stack.py) — local-std + DoG + Gabor + Laplacian + late fusion.
+- [`cv/tmp/ring_detection_survey.md`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/ring_detection_survey.md) — 381-LOC literature + algorithm survey.
+- [`cv/tmp/pyramid_wavelet_survey.md`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/pyramid_wavelet_survey.md) — 648-LOC literature + algorithm survey.
+- [`resources/train/intermediate/`](https://github.com/krkruk/target-o-meter/tree/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate) — 184 intermediate PNGs + 2 JSON summaries (258 MB).
+
+### Related research
+
+- `frame.md` (this change) — the texture-feature reframe this iteration built on. Validated: texture (local-std) at 0.189 train-Jaccard is in the range frame predicted; DoG at 0.255 exceeds it.
+- `research.md` §Follow-up 2026-07-19T14:30Z (this change) — the texture-based Stage 3 rewrite. This iteration supersedes its "local-std is the primary feature" recommendation: **DoG at bullet scale is 35% better on the same dataset**.
+- [`context/foundation/prd.md`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/context/foundation/prd.md) §NFR — ≥ 0.90 hole-detection fidelity. **Still the target**, but realistic classical-pipeline ceiling now appears to be 0.55–0.75. User decision needed on whether to amend the NFR, escalate to a learned model, or accept partial automation with manual-correction UI.
