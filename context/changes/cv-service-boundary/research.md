@@ -9,7 +9,7 @@ tags: [research, codebase, cv, opencv, watershed, homography, issf, paper-target
 status: complete
 last_updated: 2026-07-19
 last_updated_by: krzysztofkruk
-last_updated_note: "Added follow-up: concentric-ring calibration + pyramid/wavelet feature probe"
+last_updated_note: "Added v4/v5/v6 follow-up: ring-1-anchored calibration, target extraction with interpolation, addresses user feedback"
 ---
 
 # Research: Robust CV algorithm for ISSF paper-target hole detection
@@ -626,3 +626,144 @@ This is no longer a Stage 3 rewrite. It is a **staged pipeline overhaul**:
 - `frame.md` (this change) — the texture-feature reframe this iteration built on. Validated: texture (local-std) at 0.189 train-Jaccard is in the range frame predicted; DoG at 0.255 exceeds it.
 - `research.md` §Follow-up 2026-07-19T14:30Z (this change) — the texture-based Stage 3 rewrite. This iteration supersedes its "local-std is the primary feature" recommendation: **DoG at bullet scale is 35% better on the same dataset**.
 - [`context/foundation/prd.md`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/context/foundation/prd.md) §NFR — ≥ 0.90 hole-detection fidelity. **Still the target**, but realistic classical-pipeline ceiling now appears to be 0.55–0.75. User decision needed on whether to amend the NFR, escalate to a learned model, or accept partial automation with manual-correction UI.
+
+---
+
+## Follow-up Research 2026-07-19T19:48Z — Calibration overhaul per user feedback
+
+**Git Commit**: [3668733](https://github.com/krkruk/target-o-meter/commit/36687338aa02426e72dd4fc6b83478dda57dbc44)
+
+User reviewed the v3 probe outputs and gave four pieces of corrective feedback:
+
+1. **Ring 10 overlay imprecise** — "Ring with 10-point area covers the real point area only 2/3 (guestimated)".
+2. **Extraction was too small** — "you've extracted too much, the area is the black background with area that match points 8-10. It's missing the remaining parts of the target."
+3. **Iterative approach requested** — "use the big black 7-10 area as your main anchor, and then you match the remaining pieces of the algorithm".
+4. **Interpolation for incomplete photos** — "some pictures may come incomplete, i.e., area 5-10. You need to interpolate and provide the full score then and generate the remaining rings."
+
+This iteration (probes v4, v5, v6) addresses each in turn. **Probe v6 is the current best** — it inverts the previous anchoring strategy and validates a much better calibration.
+
+### Headline finding — my "0.85 → 0.35 correction" was wrong
+
+Probe v3's central claim (existing `_stage2_rings` overestimates px_per_mm 2.43× because it assumes black-disc = 0.85×card_mm instead of 0.35×card_mm) **does not hold up empirically**. The corrected pmm values (16–33 px/mm) implied targets wider than the photo — clearly wrong.
+
+Why the framing was off: `_stage2_rings` does NOT cleanly find the rings-7-10 disc. It runs adaptive threshold + `findContours(RETR_EXTERNAL)` + `minEnclosingCircle` on the largest dark blob. The "largest dark blob" varies by photo:
+
+- Sometimes it's the rings-7-10 disc (correct).
+- Sometimes it's a larger dark region (rings 3-10 silhouette or whole target against dark background).
+- Sometimes it's a smaller region (just the bullseye area when shot-cluster bias shifts the centroid).
+
+So Stage 2's `0.85 * card_mm` was calibrated against a moving target, and my "fix" assumed the moving target was always the rings-7-10 disc. Wrong.
+
+**Direct measurement** on image 1 (full image, HoughCircles on Sobel map with wide radius range): circles detected at r = 86, 163, 324, 492, 657, 823 px, all centered at (852, 1353). These correspond to ISSF rings 9, 8, 7, 5, 3, 1 respectively at **pmm = 10.6** (ring 1 anchor). The 170 mm card spans 1802 px — fits comfortably in the 1842-wide photo. So pmm ≈ 10.6, not 22.5.
+
+### The right anchor is ring 1, not the black disc
+
+Ring 1 is the **largest** circle in the image, the **outermost** scoring ring, and the strongest single geometric feature for calibration:
+
+- Ring 1 radius = 77.75 mm (Air Pistol) or 250 mm (Precision) — 13.5× / 10× larger than ring 10.
+- Larger radius → more pixels to fit → more leverage on px_per_mm (a 1% radius error becomes a 1% pmm error; same relative error but absolute precision is 13× better).
+- Ring 1 is always present in any photo that shows the target (even when only rings 5-10 are visible, ring 1's *predicted* position still anchors the calibration mathematically).
+- A single HoughCircles detection of ring 1 + the ISSF geometry table gives bullseye + pmm + all ring positions in one shot.
+
+The black disc is a **worse anchor** because it's smaller (less leverage) and its boundary is contaminated by bullet holes in the bullseye.
+
+### Probe v6 algorithm
+
+[`cv/tmp/probe_ring_calibration_v6.py`](https://github.com/krzruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v6.py):
+
+1. EXIF-normalize load.
+2. Stage 1 (light): bbox crop with 20% expand (don't trust Stage 2 at all — only Stage 1's bbox).
+3. Compute Sobel-magnitude map of the crop.
+4. **Multi-range HoughCircles** on the Sobel map. Three passes at different radius scales with appropriately tuned `param2`:
+   - Inner rings (r ≤ 15% short-side, p2=0.75) — catches rings 8/9/10 inside the black disc.
+   - Middle rings (10–30% short-side, p2=0.85) — catches rings 5/6/7.
+   - Outer rings (20–55% short-side, p2=0.90) — catches rings 1/2/3/4 thin strokes on white card.
+5. Cluster detections (5% radius tolerance, 10 px center tolerance) — HoughCircles returns multiple near-duplicate detections.
+6. **Largest cluster = ring 1.** Derive pmm = ring1_r / 77.75. Derive bullseye = ring 1 center.
+7. For each cluster, assign to the closest ISSF ring index (least-squares match on radius).
+8. Mask at ring 1 outer + 25 mm margin (covers 0-zone hits like #12's).
+9. Extract target on neutral background.
+10. Render overlay: SOLID + thick for rings confirmed by HoughCircles detection; SOLID + thin for rings in-frame but not detected (still predicted); DASHED for rings outside the photo (extrapolated).
+
+### Per-image results (probe v6, all 10 train images)
+
+| id | crop (px) | pmm | ring 1 r (px) | target card 170 mm at pmm | detected rings |
+| --- | --- | --- | --- | --- | --- |
+| 1  | 1770×1864 | 10.93 | 850 | 1859 px | [1, 3, 5, 7, 9, 10] |
+| 4  | 1670×1639 | 9.53  | 741 | 1620 px | [1, 3, 5, 7, 9, 10] |
+| 6  | 1813×1820 | 10.55 | 820 | 1793 px | [1, 3, 5, 7, 9, 10] |
+| 10 | 1842×2418 | 10.72 | 833 | 1822 px | [1, 3, 6, 8, 9, 10] |
+| **12** | 1894×3081 | 10.95 | 851 | 1862 px | **[1, 2, 4, 5, 6, 7, 8, 9, 10]** (9 of 10) |
+| 19 | 2747×1316 | 6.30  | 490 | 1070 px | [1, 6, 8, 10] |
+| 21 | 2198×1230 | 7.53  | 585 | 1280 px | [1, 7, 9, 10] |
+| 29 | 1099×1010 | 6.21  | 483 | 1056 px | [1, 3, 5, 7, 9, 10] |
+| 31 | 1787×2021 | 9.41  | 731 | 1599 px | [1, 3, 6, 9, 10] |
+| 46 | 1287×1286 | 7.25  | 564 | 1233 px | [1, 3, 5, 6, 8, 9, 10] |
+
+**All 10 images have ring 1 detected**, anchoring the calibration. pmm values are 6.2–11.0 (sanity: target card 170 mm × pmm = 1050–1870 px, which fits inside each crop — confirming the calibration is in the right ballpark). Image 12 (the long-tail case with a 0-point hit) detects 9 of 10 rings directly. Image 19 (extreme tight crop, dense 10-stack) detects only 4 rings but ring 1 is still found, so the predicted positions of rings 2–9 are mathematically determined and rendered dashed.
+
+### Iterative refinement (the user's "iterative approach" ask)
+
+Probe v4 ([`cv/tmp/probe_ring_calibration_v4.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v4.py)) implemented an ICP-style refinement on the radial |Sobel| profile: predict ring radii → search ±15 px window for radial-edge peak → weighted-least-squares update of pmm → repeat until convergence (max 6 iters).
+
+**Result**: refinement converged in 2–6 iters per image but moved pmm by <5% on most images. The limiting factor was that v4 used Stage 2's biased bullseye (offset up to 49 px on image 31), and the radial profile is angle-averaged so it can't recover center offset.
+
+Probe v6 sidesteps the issue: HoughCircles' 2D detection finds the bullseye directly (no angle-averaging). The "iterative refinement" is implicit in the multi-range HoughCircles sweep — each pass refines which circles are real and which are noise. Final bullseye + pmm come from the largest confirmed circle.
+
+**For tighter precision** (sub-pixel bullseye), the right next step is a per-angle-radial-profile fit: divide the angular bins into 36 sectors, fit (cx_shift, cy_shift, pmm) to make observed ring radii constant across sectors. This is the "concentric circles center refinement" technique from the survey ([§2.3 of ring_detection_survey.md](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/ring_detection_survey.md)). Defer to v7 if user wants higher precision.
+
+### Interpolation for incomplete photos (the user's "interpolate" ask)
+
+Already handled by probe v6's rendering logic. For each image:
+
+- Rings detected by HoughCircles → solid colored overlay (confirmed).
+- Rings in-frame but not detected → solid thin overlay (predicted from pmm).
+- Rings outside the photo → dashed overlay (extrapolated from pmm + ISSF table).
+
+Image 19 is the canonical case: only 4 rings optically detected, but all 10 are rendered (rings 1, 2, 3, 4, 5 dashed; rings 6, 8, 10 solid; rings 7, 9 in-frame-thin). The user can see at a glance which parts of the target were actually in the photo vs. extrapolated. The extracted target still covers ring 1 + margin regardless of what was in-frame — the missing rings are *generated* mathematically, not visually clipped.
+
+**Scoring implication**: if a bullet hole lands in an extrapolated zone (e.g. a 4-point hit on image 19 where ring 4 wasn't in frame), the Stage 5 line-break rule still works correctly because it operates on (center_distance, pmm) — both are mathematically determined. The optical detection of ring 4 is *display-only*.
+
+### Generated artifacts
+
+`resources/train/intermediate_v6/` (173 MB, 70 files):
+
+- `<id>_01_original.jpg` — EXIF-normalized source
+- `<id>_02_crop.png` — Stage 1 bbox + 20% expand
+- `<id>_03_sobel_edges.png` — Sobel-magnitude map fed to HoughCircles
+- `<id>_04_target_mask.png` — binary mask at ring 1 + 25 mm margin
+- `<id>_05_target_extracted.png` — **THE ASK** — full target on neutral background (no clipping to black disc)
+- `<id>_06_ring_overlay.png` — **VALIDATION** — overlay with all 10 rings; solid = detected, thin solid = predicted in-frame, dashed = extrapolated
+- `<id>_07_extracted_with_rings.png` — composite
+- `ring_calibration_v6_results.json` — per-image pmm, ring 1 radius, detected rings
+
+### What changed for /10x-plan (vs the v3 plan in §"What changes for /10x-plan" above)
+
+Probe v6 supersedes the v3 plan. Concretely:
+
+1. **Stage 1.5 calibration step**: implement the multi-range HoughCircles + ring-1 anchor from probe v6. Drop the "fix the 0.85 ratio" idea — that was based on a misreading of what `_stage2_rings` finds. The right fix is to **replace** Stage 2's blob-centroid logic with HoughCircles-anchored ring detection.
+2. **Stage 1.6 extraction**: unchanged — `cv2.circle` mask at ring 1 + 25 mm margin. Already implemented in probe v6.
+3. **Stage 3**: still DoG at bullet scale (unchanged from v3 finding).
+4. **Render layer**: ring overlay with solid/dashed distinction is a UX feature, not a CV-accuracy feature. Defer to whichever slice implements the review UI.
+
+### What I did NOT validate this iteration
+
+- Whether the v6 calibration actually produces higher hole-detection Jaccard than v3. The feature stack probe (`probe_feature_stack.py`) was run on v3's calibration (mean Jaccard 0.189 / 0.255 for local-std / DoG). Re-running it on v6's calibration should improve numbers — the bullseye offset is fixed, so Stage 5 scoring lands detections in the right buckets — but I did not run that experiment this iteration. **Worth doing as a sanity check before /10x-plan.**
+- Sub-pixel bullseye precision via per-angle profile fit. The current bullseye comes from HoughCircles' center estimate, which is pixel-accurate at best. A 1-px bullseye error at pmm=11 is 0.09 mm — likely fine for scoring, but worth confirming.
+- Whether the calibration precision ceiling is bound by HoughCircles (param2 tuning) or by the underlying Sobel edge map quality. The survey's Candidate B (contour-tree + fitEllipseAMS) might give higher precision — but the multi-range HoughCircles approach is simpler and works on 10/10 train images, so it's the right starting point.
+
+### Code references (this iteration)
+
+- [`cv/tmp/probe_ring_calibration_v4.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v4.py) — full-target crop + ICP pmm refinement (kept as history; superseded by v6).
+- [`cv/tmp/probe_ring_calibration_v5.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v5.py) — black-disc-anchored HoughCircles (kept as history; superseded by v6).
+- [`cv/tmp/probe_ring_calibration_v6.py`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/cv/tmp/probe_ring_calibration_v6.py) — **current best**: ring-1-anchored multi-range HoughCircles.
+- [`resources/train/intermediate_v6/`](https://github.com/krkruk/target-o-meter/tree/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate_v6) — 70 intermediate files (173 MB).
+- [`resources/train/intermediate_v6/ring_calibration_v6_results.json`](https://github.com/krkruk/target-o-meter/blob/36687338aa02426e72dd4fc6b83478dda57dbc44/resources/train/intermediate_v6/ring_calibration_v6_results.json) — per-image pmm + detected rings.
+
+### Open questions (revised after this iteration)
+
+1. **Sub-pixel bullseye refinement** — does the per-angle-radial-profile fit (Candidate B-style from survey) buy enough precision to be worth implementing? Current bullseye is pixel-accurate from HoughCircles.
+2. **Multi-ring pmm refinement** — probe v6 anchors on ring 1 alone; could we weighted-least-squares over all detected rings to get a more robust pmm? (Quick experiment: in probe v6's data, image 12 detects 9 rings — fitting pmm over all 9 vs just ring 1 likely gives sub-1% precision.)
+3. **Re-run feature stack on v6 calibration** — does the improved bullseye + pmm push DoG's mean Jaccard above 0.30?
+4. **Stage 1 tighter crop** — current crop is Stage 1 bbox + 20% expand. Should be crop = ring 1 outer + 25 mm margin (same as mask). Cleaner I/O; would also speed up HoughCircles.
+5. **PRD fidelity bar (≥ 0.90)** — same as before; this iteration doesn't change the ceiling estimate (still 0.55–0.75 for classical). User decision still needed.
