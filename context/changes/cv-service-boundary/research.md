@@ -9,7 +9,7 @@ tags: [research, codebase, cv, opencv, watershed, homography, issf, paper-target
 status: complete
 last_updated: 2026-07-19
 last_updated_by: krzysztofkruk
-last_updated_note: "Added v4/v5/v6 follow-up: ring-1-anchored calibration, target extraction with interpolation, addresses user feedback"
+last_updated_note: "Added v7/v8 follow-up: per-image target_type (all precision_pistol), 3-iteration differential calibration, anisotropic metric (no rotation), two-stage hole detection"
 ---
 
 # Research: Robust CV algorithm for ISSF paper-target hole detection
@@ -767,3 +767,140 @@ Probe v6 supersedes the v3 plan. Concretely:
 3. **Re-run feature stack on v6 calibration** — does the improved bullseye + pmm push DoG's mean Jaccard above 0.30?
 4. **Stage 1 tighter crop** — current crop is Stage 1 bbox + 20% expand. Should be crop = ring 1 outer + 25 mm margin (same as mask). Cleaner I/O; would also speed up HoughCircles.
 5. **PRD fidelity bar (≥ 0.90)** — same as before; this iteration doesn't change the ceiling estimate (still 0.55–0.75 for classical). User decision still needed.
+
+---
+
+## Follow-up Research 2026-07-19T20:56Z — v7 + v8: per-image target type, 3-iteration differential calibration, two-stage hole detection
+
+**Git Commit**: [612e232](https://github.com/krkruk/target-o-meter/commit/612e2320be8b959c03991435825c19466df5c8b3)
+
+Driven by user feedback on the v6 `46_06_ring_overlay.png` and v7 `01_08_holes_magenta.png` intermediates. Four structural corrections land in this iteration, each addressing a specific user-reported failure mode.
+
+### Headline corrections
+
+| # | User feedback | Root cause | v8 fix |
+|---|---|---|---|
+| 1 | "Target 46.jpg is wrongly mapped... 6-ring represents scores 1 and 2" | `probe_ring_calibration_v6.py:298` `main()` hardcoded `target_type="air_pistol"` for all 10 images. Image 46 (actually precision_pistol) had its visible rings 6-10 re-labelled as 1-10 under the wrong air_pistol assumption. | All 10 train images now use `precision_pistol`. Verified: at precision pmm ≈ 4.5, the v6 "ring 1" detection at 564 px matches precision ring 6 (125 mm × 4.5 = 562 px) — exactly the user's report. |
+| 2 | "All targets are not air pistol... 25m standard 550×550 (or 500×500)" | Same hardcoded assumption. | `IMAGE_CALIBER` dict drives per-image config; target_type fixed to precision_pistol across the train set. ISSF geometry hard-coded: 10-ring Ø50mm, inner-10 Ø25mm, ring spacing 25mm, scoring Ø500mm, card 550mm. |
+| 3 | "Discovered 10-point area covers maybe 2/3 of the real 10-area" | Single-shot pmm from black disc has ±15-20% error on irregular blobs. | Three-iteration differential calibration: iter 1 = black-disc inscribed-circle radius (coarse pmm), iter 2 = HoughCircles concentric fit constrained to ±30% (refine), iter 3 = radial-profile residual minimization capped at ±15% per iteration (fine-tune). |
+| 4 | "You've effectively numbered the digits painted in the paper target" (v7 image 01 magenta overlay) | Texture-based HoughCircles (`_stage3_morph` from detect.py) matches the digit strokes at the same scale as small-caliber bullets. | Two-stage hole detection (user direction): coarse DoG at bullet scale + liberal area filter (catches everything bullet-sized) → per-candidate verifier (texture-ratio + size + circularity test in the local ROI). |
+
+### v7 probe — first attempt at the corrections
+
+[`cv/tmp/probe_ring_calibration_v7.py`](https://github.com/krkruk/target-o-meter/blob/612e2320be8b959c03991435825c19466df5c8b3/cv/tmp/probe_ring_calibration_v7.py) introduced:
+- Per-image `target_type` parameter (image 46 → precision_pistol).
+- Dual-method calibration: ISSF black-disc (authoritative) + HoughCircles concentric fit (cross-check). Cross-check reports |Δpmm| / pmm as a sanity warning.
+- Canvas expansion: pad symmetrically with paper color (245,245,245) so extrapolated ring 1 + margin fits.
+- DoG-based hole detection replacing the texture-HoughCircles.
+
+**Result on image 46**: cross-check showed 14.7% disagreement (pmm_A=5.23 black-disc vs pmm_B=4.46 HoughCircles). The HoughCircles value matched the hand-derived true pmm of 4.5 — the black-disc method was overestimating because `cv2.minEnclosingCircle` returns an upper bound for irregular blobs.
+
+**User's response to v7** (4 corrections):
+1. "Target is not air pistol" — confirmed ALL 10 train images are precision_pistol, not just 46.
+2. "01_08_holes_magenta.png — you've numbered the painted digits, not real holes" — DoG-based detection was matching digit strokes.
+3. "10-point area covers 2/3 of real 10-area" — pmm underestimated.
+4. "Apply differential measurement method up to 3 iterations" — multi-iteration refinement needed.
+
+### v8 probe — implements all 4 corrections
+
+[`cv/tmp/probe_ring_calibration_v8.py`](https://github.com/krkruk/target-o-meter/blob/612e2320be8b959c03991435825c19466df5c8b3/cv/tmp/probe_ring_calibration_v8.py) (1022 LOC) implements:
+
+**1. Three-iteration differential calibration**
+  - Iter 1 (coarse): pmm from black-disc inscribed-circle radius via `cv2.distanceTransform`. Black-disc detected via adaptive threshold + largest-circular-contour, with progressive closing-kernel sizes (sized to expected bullet radius) to fill intra-disc holes for cleaner contour.
+  - Iter 2 (refine): wide-radius HoughCircles on Sobel edge map → hypothesis-test each "largest detected = ring K" assignment, constrained to pmm within ±30% of iter-1 to prevent wild jumps.
+  - Iter 3 (fine-tune): circular radial profile around bullseye → find local minima (printed ring strokes) in ±12.5 mm windows around predicted ISSF ring positions → adjust pmm by signed mean residual, capped at ±15% per iteration.
+  - Stop early if |Δpmm| / pmm < 2%.
+
+**2. Affine 4-param params without image rotation** (user direction: "do NOT rotate the images")
+  - `cv2.fitEllipse` on the black disc → axes (major, minor) + angle.
+  - Per-axis px/mm: `sx = semi_major / 150`, `sy = semi_minor / 150`.
+  - `pmm_avg = sqrt(sx × sy)` for single-number use.
+  - Anisotropic distance: for any pixel offset from bullseye, rotate into the ellipse-aligned frame, divide by per-axis scale, hypot. Used for scoring.
+  - Visualization: rings drawn as **ellipses** via `cv2.ellipse` so they overlay correctly on the un-rotated photo.
+  - The image itself is never warped.
+
+**3. Two-stage hole detection** (user direction: "rather than fine-tuning parameters, use two-stage detection")
+  - Stage 1 (coarse, huge error margin): DoG at bullet scale → Otsu threshold → connected components with liberal area filter [0.15×, 6.0×] expected bullet area → many candidates accepted.
+  - Stage 2 (per-candidate verifier): for each candidate, extract a 3×bullet-radius ROI and run a local matched-filter test:
+    * Texture ratio: local-std inside the candidate disk must exceed local-std in the annulus outside by ≥ 1.3×. This is the load-bearing test inside the black disc, where luminance SNR fails (dark hole on dark ink — no luminance contrast).
+    * Size: equivalent-area radius in [0.4×, 1.8×] bullet_r.
+    * Circularity ≥ 0.20 (set low — real bullet holes have torn/irregular edges, not perfect circles).
+
+**4. ISSF Precision Pistol geometry**
+  - Inner-10 (X): r=12.5 mm (Ø25 mm).
+  - Rings 10..1: r = 25, 50, 75, 100, 125, 150, 175, 200, 225, 250 mm.
+  - Black-disc outer (ring 5): r=150 mm (Ø300 mm).
+  - Scoring diameter: 500 mm; physical card 550 mm.
+
+### Empirical results — v8 per-image table
+
+| id | caliber | crop | pmm1 | pmm2 | pmm3 | aniso | cand | kept | true_n |
+|----|---------|------|------|------|------|-------|------|------|--------|
+| 1  | 22lr    | 1842×2396 | 4.37 | 3.28 | 3.51 | 0.98 | 202 | 18 | 10 |
+| 4  | 9x19    | 1842×2107 | 3.94 | 2.96 | 2.96 | 0.95 | 49 | 6 | 10 |
+| 6  | .223Rem | 1842×2341 | 4.35 | 3.27 | 2.65 | 0.99 | 271 | 46 | 10 |
+| 10 | slug    | 1842×3015 | — (black-disc detection failed) | — | — | — | — | 10 |
+| 12 | 9x19    | 1894×3594 | 2.40 | 2.40 | 2.41 | 0.99 | 10 | 10 | 13 |
+| 19 | 22lr    | 3533×1535 | 5.13 | 5.07 | 3.60 | 0.64 | 206 | 15 | 10 |
+| 21 | slug    | 2826×1435 | 5.00 | 3.87 | 3.03 | 0.78 | 6 | 2 | 5 |
+| 29 | 22lr    | 1413×1171 | 2.65 | 1.99 | 2.02 | 0.96 | 146 | 2 | 5 |
+| 31 | 9x19    | 1842×2599 | — (black-disc detection failed) | — | — | — | — | — | 14 |
+| 46 | 22lr    | 1655×1652 | 5.22 | 4.48 | 4.54 | 0.98 | 39 | 13 | 5 |
+
+### Headline findings
+
+1. **Iterative calibration converges** — iter 2 (HoughCircles) and iter 3 (radial profile) move pmm by 10–35% from iter 1 (black disc) on most images. The constraint caps (±30% in iter 2, ±15% per step in iter 3) prevent oscillation, which was catastrophic when unconstrained (image 6: iter 1=4.27 → iter 2 unconstrained=6.55 → wild).
+2. **Black-disc detection still fails on 2/10 images** — image 10 (slug, large irregular holes) and image 31 (mixed-caliber, dense cluster). The progressive closing-kernel fallback isn't enough. These images need either a different localization method (e.g. HoughCircles on the largest visible ring) or manual fallback.
+3. **Two-stage hole detection works structurally** but the verifier needs per-image-class tuning. The texture-ratio test (1.3× threshold) correctly rejects most printed-digit false positives from v7's image 01 case, but over-rejects on torn-edge holes (image 21: only 2 kept from 6 candidates) and under-rejects on dense clusters (image 6: 46 kept from 271 candidates; image 46: 13 kept from 39).
+4. **The "no rotation" directive is correct** — the affine warp (v8 pre-correction) was destroying pixel-level texture cues that the verifier depends on. Working in the original image frame + anisotropic distance is both more accurate and more debuggable (user can visually compare across versions).
+
+### What did NOT work in v7/v8 iteration
+
+1. **Luminance SNR test** for hole verification inside the black disc — abandoned. Bullet holes inside the black disc are dark-on-dark; there is no luminance contrast. The texture-ratio test (local-std inside vs outside) is the working signal.
+2. **Single-stage HoughCircles on DoG** — abandoned. `param2` sensitivity is brittle: param2=0.80 over-detects (28 holes on image 46), param2=0.85 under-detects (0 holes on image 6). The two-stage approach (coarse + verify) was the user's recommendation and is structurally correct.
+3. **Affine warpAffine to canonical orientation** — abandoned per user direction. The warp changes texture characteristics and breaks the verifier; rings-as-ellipses overlay is the right visualization.
+4. **`cv2.minEnclosingCircle` for black-disc radius** — abandoned. Returns upper bound; overestimates by ~17% on irregular blobs. Replaced by `distanceTransform` inscribed-circle radius, which is robust to protrusions.
+5. **Equivalent-area radius `sqrt(area/π)`** — also abandoned. Inflated by extra dark area (dark holes outside the true black disc). Inscribed-circle is the right measurement.
+
+### Code references (v8 iteration)
+
+- [`cv/tmp/probe_ring_calibration_v8.py`](https://github.com/krkruk/target-o-meter/blob/612e2320be8b959c03991435825c19466df5c8b3/cv/tmp/probe_ring_calibration_v8.py) — current v8 probe (1022 LOC).
+- [`cv/tmp/probe_ring_calibration_v7.py`](https://github.com/krkruk/target-o-meter/blob/612e2320be8b959c03991435825c19466df5c8b3/cv/tmp/probe_ring_calibration_v7.py) — kept as history (v7 introduced per-image target_type, dual cross-check, magenta overlay).
+- [`resources/train/intermediate_v8/`](https://github.com/krkruk/target-o-meter/tree/612e2320be8b959c03991435825c19466df5c8b3/resources/train/intermediate_v8) — 90 intermediate files (9 per image × 10 images).
+- [`resources/train/intermediate_v8/ring_calibration_v8_results.json`](https://github.com/krkruk/target-o-meter/blob/612e2320be8b959c03991435825c19466df5c8b3/resources/train/intermediate_v8/ring_calibration_v8_results.json) — per-image pmm + holes + scores.
+
+Key v8 outputs per image (`<id>` = `01`..`46`):
+- `<id>_03_blackdisc.png` — iter 1: black-disc contour + inscribed circle + fitEllipse.
+- `<id>_04_iter2_rings.png` — iter 2: HoughCircles on the original crop with ISSF ring assignments.
+- `<id>_05_iter3_profile.png` — iter 3: radial profile plot + predicted ring positions.
+- `<id>_06_ring_overlay.png` — final rings drawn as **ellipses** on the original crop.
+- `<id>_07_extracted_rings.png` — extracted target with extrapolated elliptical rings + paper-color margin.
+- `<id>_08_holes_magenta.png` — rings + verified magenta holes (final output).
+- `<id>_09_coarse_candidates.png` — pre-verification candidates (cyan circles) for tuning the verifier.
+
+### Open questions (revised after v8)
+
+1. **Black-disc detection on slug + dense-cluster images** — image 10 (slug) and image 31 (mixed-caliber) still fail at iter 1. Options: (a) HoughCircles-based fallback to find the largest visible ring when black-disc detection fails, (b) caliber-aware closing-kernel sizing (slug needs bigger), (c) manual-ROI fallback for the long tail.
+2. **Verifier texture-ratio threshold (1.3)** — image 21 (slug) rejects 4/6 candidates; image 6 keeps 46/271. Is there a per-caliber threshold, or should the test be re-designed (e.g. compare against a caliber-specific expected texture distribution)?
+3. **Dense-cluster splitting** — when 5+ bullets overlap (image 19 = all-10s 22lr, image 6 = .223Rem cluster), the coarse detector merges them into one candidate. The verifier then either rejects (too big) or accepts-as-one (loses count). Need a cluster-splitting step between stages 1 and 2 (Stage 4 watershed from `cv/detect.py` could be re-purposed here).
+4. **Inner-10 (X-ring) handling in scoring** — `score_to_ring_anisotropic` currently caps at 10; doesn't distinguish X. PRD lists X as a separate symbol; need a separate scoring path.
+5. **Full 4-corner homography vs anisotropic-only** — v8's anisotropic metric handles slight tilt (anisotropy 0.95–1.00 on most images). Image 19 has anisotropy 0.635 (significant tilt) — at what point does the affine approximation break and we need true perspective warp?
+
+### Risk register additions
+
+| # | Risk | Source | Likelihood | Impact | Mitigation |
+|---|------|--------|-----------|--------|------------|
+| 11 | v8 black-disc detection fails on 2/10 train images (slug, mixed-caliber) | Empirical | H (observed) | M (blocks pipeline for those classes) | HoughCircles fallback on largest visible ring; per-caliber closing kernel |
+| 12 | Two-stage verifier thresholds need per-caliber tuning | Empirical | H | M | Caliber-specific `min_texture_ratio` and `min_circularity`; or replace fixed thresholds with caliber-conditional distributions |
+| 13 | Dense hole clusters (>3 overlapping) confuse the coarse detector | Empirical | M | M | Insert Stage 4 watershed between coarse and verify stages to split clusters before per-candidate test |
+| 14 | Affine approximation breaks at anisotropy < 0.7 (image 19 at 0.64) | Geometric | L | M | Detect anisotropy threshold; switch to perspective warp or flag for manual review |
+
+### Recommended next iteration
+
+Ranked by leverage:
+
+1. **Watershed between stages 1 and 2** — split dense clusters before per-candidate verification. Re-uses existing `_stage4_watershed` from `cv/detect.py:399-458`. Highest-leverage fix for image 6 (46 kept, mostly cluster fragments) and image 19 (15 kept from "all-10s" cluster).
+2. **HoughCircles fallback when black-disc detection fails** — for image 10 (slug) and image 31 (mixed). Use the largest detected HoughCircles ring as an alternative black-disc proxy.
+3. **Per-caliber verifier thresholds** — slug bullets are physically different (18 mm tear-up vs 5.7 mm clean hole); fixed thresholds can't span the range. Caliber-conditional `min_texture_ratio` / `min_circularity` tables.
+4. **Inner-10 / X-ring scoring** — extend `score_to_ring_anisotropic` to return 11 (X) for distances inside r=12.5 mm; update PRD symbol handling.
+5. **Sub-pixel bullseye via multi-ring least-squares** — current bullseye = black-disc centroid (image-moments). Template-matching the ISSF ring pattern or LSQ over all detected HoughCircles rings would give sub-pixel bullseye, improving scoring at the 9/10 boundary.
