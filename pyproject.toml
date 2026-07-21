@@ -10,5 +10,6 @@ dependencies = [
     "opencv-python-headless>=5.0.0.93",
     "pillow>=12.3.0",
     "pyyaml>=6.0.3",
+    "scipy>=1.18.0",
     "whitenoise>=6.12.0",
 ]
