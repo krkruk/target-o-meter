@@ -49,6 +49,89 @@ from cv.approaches.iteredge.model import (
 
 
 # ---------------------------------------------------------------------------
+# Module-level constants (must be defined before make_residual_fn since the
+# latter uses some as default arg values).
+# ---------------------------------------------------------------------------
+
+# Schedule (sigma_factor, reg_p, reg_a, reg_d, max_iters, potential_kind, data_weight).
+# reg_perspective (2nd value) is 10× iteredge's defaults — see module docstring #4.
+DEFAULT_SCHEDULE = [
+    (0.55, 1e6, 200.0, 1e3, 60, "mag", 0.5),    # broad basin, strong anchor
+    (0.30, 1e5, 100.0, 200.0, 60, "dt", 1.0),   # exact placement
+    (0.15, 1e4, 50.0, 50.0, 50, "dt", 1.5),
+    (0.08, 2e3, 20.0, 20.0, 40, "dt", 2.0),
+]
+
+# Default perspective bound. Iteredge uses ±1e-2 (sized for near-identity
+# affine init); we use ±1e-4 because multiring's H_init can place the
+# bullseye far from crop corners, amplifying h31/h32's effect on the
+# w-factor at those corners.
+DEFAULT_PERSPECTIVE_BOUND = 1e-4
+
+# Layered orthogonality defenses (see refine_homography docstring).
+SKIP_REFINE_ECC_THRESHOLD = 1.02     # below this → return init unchanged
+AFFINE_LOCK_ECC_THRESHOLD = 1.10     # below this → lock affine, refine only perspective
+
+# Affine bounds when refinement is allowed (ecc >= AFFINE_LOCK_ECC_THRESHOLD).
+# bounds = AFFINE_BOUND_BASE × max(1.0, (ecc - 1.0) × 10)
+# For ecc=1.20 → factor=2.0 → bounds = ±0.20 × |init|
+# For ecc=1.50 → factor=5.0 → bounds = ±0.50 × |init|
+AFFINE_BOUND_BASE = 0.10
+
+# SV-ratio penalty (in residual). Soft penalty when M2's singular-value
+# ratio exceeds this threshold. Drives the optimizer away from anisotropic
+# M2 even when bounds allow some movement.
+SV_RATIO_THRESHOLD = 1.05
+SV_RATIO_WEIGHT = 1e3
+
+# Post-refinement safety gates.
+CORNER_RATIO_ABS_THRESHOLD = 3.0
+CORNER_RATIO_RELATIVE_FACTOR = 2.0
+M2_ANISO_GATE_THRESHOLD = 1.10
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def _sv_ratio(M2: np.ndarray) -> float:
+    """Singular-value ratio SV_max / SV_min of 2x2 M2 (1.0 = isotropic)."""
+    try:
+        s = np.linalg.svd(M2, compute_uv=False)
+        if s[1] < 1e-9:
+            return float("inf")
+        return float(s[0] / s[1])
+    except np.linalg.LinAlgError:
+        return float("inf")
+
+
+def _corner_radius_ratio(
+    H: np.ndarray, crop_shape: tuple[int, int], cx: float, cy: float,
+) -> float:
+    """Asymmetry of warped corner radii under H, relative to bullseye.
+
+    Returns max(corner_radii) / min(corner_radii). A healthy affine warp
+    produces ~1.5-2.5; a warp with degenerate perspective at the corners
+    produces >10 (image 1 reaches 36.6).
+    """
+    h, w = crop_shape
+    corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float64)
+    bull_homog = H @ np.array([cx, cy, 1.0], dtype=np.float64)
+    if abs(bull_homog[2]) < 1e-12:
+        return float("inf")
+    bull_xy = bull_homog[:2] / bull_homog[2]
+    homog = np.hstack([corners, np.ones((4, 1))])
+    projected = (H @ homog.T).T
+    if np.any(np.abs(projected[:, 2]) < 1e-12):
+        return float("inf")
+    projected = projected[:, :2] / projected[:, 2:3]
+    rel = projected - bull_xy.reshape(1, 2)
+    radii = np.linalg.norm(rel, axis=1)
+    if radii.min() < 1.0:
+        return float("inf")
+    return float(radii.max() / radii.min())
+
+
+# ---------------------------------------------------------------------------
 # Residual function (inlined from iteredge.optimize.make_residual_fn with
 # the off-by-one on the degenerate-det early return fixed).
 # ---------------------------------------------------------------------------
@@ -62,11 +145,20 @@ def make_residual_fn(
     reg_det: float = 10.0,
     data_weight: float = 1.0,
     potential_kind: str = "dt",
+    enable_sv_penalty: bool = True,
+    sv_ratio_threshold: float = SV_RATIO_THRESHOLD,
+    sv_ratio_weight: float = SV_RATIO_WEIGHT,
 ) -> Callable[[np.ndarray], np.ndarray]:
     """Build the residuals callable for least_squares.
 
-    Residual vector shape: `n_pts + 10` (data + persp[2] + anchor[6] +
-    det_res[1] + sign_res[1]). All early-return paths use the same length.
+    Residual vector shape: `n_pts + 10 + (1 if sv_penalty else 0)`.
+    Components (all return paths use the same length):
+      - data: n_pts
+      - perspective reg: 2 (h31, h32)
+      - anchor reg: 6 (params[:6] - aff[:6])
+      - det reg: 1 (det - det_target)
+      - det barrier: 1 (sign-respecting soft barrier outside [0.5, 2]×det_target)
+      - sv penalty (optional): 1 (max(0, SV_max/SV_min - threshold) × weight)
     """
     H, W = crop_shape
     n_pts = ring_pts_warped.shape[0]
@@ -81,7 +173,8 @@ def make_residual_fn(
         p_offset = 0.0
 
     sqrt_dw = math.sqrt(data_weight)
-    out_len = n_pts + 10  # fixed across all return paths
+    sqrt_sv_w = math.sqrt(sv_ratio_weight) if enable_sv_penalty else 0.0
+    out_len = n_pts + 10 + (1 if enable_sv_penalty else 0)
 
     def residuals(params: np.ndarray) -> np.ndarray:
         H_mat = params_to_H(params)
@@ -118,70 +211,23 @@ def make_residual_fn(
             barrier = (det_now - hi) * 1e3
         sign_res = np.array([barrier], dtype=np.float64)
 
-        reg_res = np.concatenate([
+        reg_res = [
             math.sqrt(reg_perspective) * persp,
             math.sqrt(reg_anchor) * anchor,
             math.sqrt(reg_det) * det_res,
             sign_res,
-        ])
-        return np.concatenate([sqrt_dw * data_res, reg_res]).astype(np.float64)
+        ]
+        if enable_sv_penalty:
+            sv_ratio = _sv_ratio(H_mat[:2, :2])
+            sv_pen = max(0.0, sv_ratio - sv_ratio_threshold)
+            reg_res.append(np.array([sqrt_sv_w * sv_pen], dtype=np.float64))
+        reg_arr = np.concatenate(reg_res)
+        return np.concatenate([sqrt_dw * data_res, reg_arr]).astype(np.float64)
 
     return residuals
 
 
-# Schedule (sigma_factor, reg_p, reg_a, reg_d, max_iters, potential_kind, data_weight).
-# reg_perspective (2nd value) is 10× iteredge's defaults — see module docstring #4.
-DEFAULT_SCHEDULE = [
-    (0.55, 1e6, 200.0, 1e3, 60, "mag", 0.5),    # broad basin, strong anchor
-    (0.30, 1e5, 100.0, 200.0, 60, "dt", 1.0),   # exact placement
-    (0.15, 1e4, 50.0, 50.0, 50, "dt", 1.5),
-    (0.08, 2e3, 20.0, 20.0, 40, "dt", 2.0),
-]
-
-
-# Default perspective bound. Iteredge uses ±1e-2 (sized for near-identity
-# affine init); we use ±1e-4 because multiring's H_init can place the
-# bullseye far from crop corners, amplifying h31/h32's effect on the
-# w-factor at those corners.
-DEFAULT_PERSPECTIVE_BOUND = 1e-4
-
-# Post-refinement corner-radius-ratio gate. If the asymmetry of warped
-# corner radii under H_opt exceeds max(CORNER_RATIO_ABS_THRESHOLD,
-# CORNER_RATIO_RELATIVE_FACTOR × init_ratio), revert to init.
-# For reference: a healthy affine warp on a centered bullseye has ratio ~1.5-2.5.
-# Catastrophic perspective distortion pushes it past 10-30.
-CORNER_RATIO_ABS_THRESHOLD = 3.0
-CORNER_RATIO_RELATIVE_FACTOR = 2.0
-
-
 StageCallback = Callable[[int, np.ndarray, np.ndarray, np.ndarray, dict], None]
-
-
-def _corner_radius_ratio(
-    H: np.ndarray, crop_shape: tuple[int, int], cx: float, cy: float,
-) -> float:
-    """Asymmetry of warped corner radii under H, relative to bullseye.
-
-    Returns max(corner_radii) / min(corner_radii). A healthy affine warp
-    produces ~1.5-2.5; a warp with degenerate perspective at the corners
-    produces >10 (image 1 reaches 36.6).
-    """
-    h, w = crop_shape
-    corners = np.array([[0, 0], [w, 0], [0, h], [w, h]], dtype=np.float64)
-    bull_homog = H @ np.array([cx, cy, 1.0], dtype=np.float64)
-    if abs(bull_homog[2]) < 1e-12:
-        return float("inf")
-    bull_xy = bull_homog[:2] / bull_homog[2]
-    homog = np.hstack([corners, np.ones((4, 1))])
-    projected = (H @ homog.T).T
-    if np.any(np.abs(projected[:, 2]) < 1e-12):
-        return float("inf")
-    projected = projected[:, :2] / projected[:, 2:3]
-    rel = projected - bull_xy.reshape(1, 2)
-    radii = np.linalg.norm(rel, axis=1)
-    if radii.min() < 1.0:
-        return float("inf")
-    return float(radii.max() / radii.min())
 
 
 def refine_homography(
@@ -200,33 +246,92 @@ def refine_homography(
     perspective_bound: float = DEFAULT_PERSPECTIVE_BOUND,
     edge_band_mask: np.ndarray | None = None,
     corner_gate_enable: bool = True,
+    mean_ring_eccentricity: float = 1.0,
+    skip_ecc_threshold: float = SKIP_REFINE_ECC_THRESHOLD,
+    affine_lock_ecc_threshold: float = AFFINE_LOCK_ECC_THRESHOLD,
+    affine_bound_base: float = AFFINE_BOUND_BASE,
+    enable_sv_penalty: bool = True,
+    sv_ratio_threshold: float = SV_RATIO_THRESHOLD,
+    sv_ratio_weight: float = SV_RATIO_WEIGHT,
+    enable_m2_aniso_gate: bool = True,
+    m2_aniso_gate_threshold: float = M2_ANISO_GATE_THRESHOLD,
 ) -> dict:
-    """Coarse-to-fine 8-DOF homography refinement.
+    """Coarse-to-fine 8-DOF homography refinement with layered orthogonality
+    defenses.
 
-    Args:
-      cal: dict with crop-frame `cx`, `cy`, `s_px`, `r_bull_px`. The crop-
-        frame `s_px` is used by `enhance_ring_edges` for blur/falloff; the
-        crop-frame values are NOT used for ring generation (see below).
-      s_warped, r_bull_warped: WARPED-frame ring spacing and inner bullseye
-        radius. Used to generate `ring_points_warped` — the predicted ring
-        sample points. These MUST be computed from the actual detected rings
-        transformed through `affine_init_params`'s H, NOT just copied from
-        cal.
-      perspective_bound: max |h31|, |h32| allowed (default ±1e-4, was
-        iteredge's ±1e-2). Set smaller (e.g. 1e-5) for orthogonal images.
-      edge_band_mask: optional boolean mask of same shape as `gray_crop`.
-        When provided, the DT is recomputed on Canny edges ANDed with this
-        mask — keeps only edges that fall on/near detected ring ellipses.
-      corner_gate_enable: when True (default), revert to init if the
-        post-refinement corner-radius ratio exceeds the threshold.
+    Defense layers (applied in order):
+      1. SKIP if `mean_ring_eccentricity < skip_ecc_threshold` (1.02) →
+         return multiring's affine H_init unchanged. For near-frontal
+         sources, the analytical circular-points rectifier is provably
+         optimal; the optimizer can only add noise.
+      2. LOCK AFFINE if `ecc < affine_lock_ecc_threshold` (1.10) → set
+         lb[:6] = ub[:6] = aff_init[:6]. Optimizer only refines h31, h32
+         (2 DOF). Prevents the M2 anisotropy drift that causes visible
+         elongation on orthogonal sources (image 1 root cause).
+      3. SCALE BOUNDS by eccentricity if ecc ≥ 1.10 → allows genuine affine
+         refinement for tilted sources, bounded proportionally to how
+         tilted the source is.
+      4. SV-RATIO PENALTY in residual → soft penalty on M2's singular-value
+         ratio exceeding 1.05. Drives optimizer away from anisotropic M2
+         even when bounds allow movement.
+      5. POST-REFINEMENT GATES:
+         - Corner-radius-ratio gate (catastrophic perspective distortion)
+         - M2 anisotropy gate (visible affine elongation)
+
+    Args (in addition to the iteredge-compatible ones):
+      mean_ring_eccentricity: averaged semi_a/semi_b from multiring's
+        detected rings. 1.0 = perfectly circular. Drives defense layers
+        1-3.
+      edge_band_mask: optional boolean mask; when provided, DT is recomputed
+        on Canny edges ANDed with this mask.
+      perspective_bound: max |h31|, |h32| (default ±1e-4).
+      enable_sv_penalty: include SV-ratio penalty in residual (default True).
+      enable_m2_aniso_gate: post-refinement M2 anisotropy check (default True).
 
     Returns {final_params, final_H, final_cost, n_iterations, converged,
-            stages, reverted_to_init, init_data_score, opt_data_score,
-            corner_ratio_init, corner_ratio_final, corner_ratio_gate}.
+            stages, reverted_to_init, revert_reason, init_data_score,
+            opt_data_score, corner_ratio_init, corner_ratio_final,
+            corner_ratio_gate, m2_aniso_init, m2_aniso_final,
+            m2_aniso_gate, mean_ring_eccentricity, defense_layer}.
     """
     cx, cy = cal["cx"], cal["cy"]
     s_px_crop = cal["s_px"]  # crop-frame, for enhance_ring_edges
     ocx, ocy = warped_out_center
+
+    # ----- Defense Layer 1: skip refinement entirely for orthogonal sources
+    if mean_ring_eccentricity < skip_ecc_threshold:
+        skip_reason = (f"skip_refinement: ecc={mean_ring_eccentricity:.3f} < "
+                       f"threshold={skip_ecc_threshold}")
+        if stage_callback is not None:
+            stage_callback(
+                stage_idx=0,
+                current_params=np.asarray(affine_init_params, dtype=np.float64).copy(),
+                current_H=params_to_H(affine_init_params),
+                potential=None,
+                info={"sigma": 0.0, "pot_kind": "skip", "cost": float("nan"),
+                      "nfev": 0, "det": float(np.linalg.det(params_to_H(affine_init_params))),
+                      "reverted_to_init": True, "reason": skip_reason},
+            )
+        return {
+            "final_params": np.asarray(affine_init_params, dtype=np.float64),
+            "final_H": params_to_H(affine_init_params),
+            "final_cost": float("nan"),
+            "n_iterations": 0,
+            "converged": True,
+            "stages": [],
+            "reverted_to_init": True,
+            "revert_reason": skip_reason,
+            "init_data_score": float("nan"),
+            "opt_data_score": float("nan"),
+            "corner_ratio_init": None,
+            "corner_ratio_final": None,
+            "corner_ratio_gate": None,
+            "m2_aniso_init": None,
+            "m2_aniso_final": None,
+            "m2_aniso_gate": None,
+            "mean_ring_eccentricity": float(mean_ring_eccentricity),
+            "defense_layer": "skip",
+        }
 
     if s_px_crop <= 0 or s_warped <= 0 or r_bull_warped <= 0:
         return {
@@ -237,20 +342,24 @@ def refine_homography(
             "converged": False,
             "stages": [],
             "reverted_to_init": False,
-            "reason": "degenerate calibration",
+            "revert_reason": "degenerate calibration",
             "init_data_score": float("nan"),
             "opt_data_score": float("nan"),
             "corner_ratio_init": None,
             "corner_ratio_final": None,
             "corner_ratio_gate": None,
+            "m2_aniso_init": None,
+            "m2_aniso_final": None,
+            "m2_aniso_gate": None,
+            "mean_ring_eccentricity": float(mean_ring_eccentricity),
+            "defense_layer": "degenerate",
         }
 
     if schedule is None:
-        # sigma is a blur amount in CROP px → scale by crop-frame s_px
         schedule = [(s_px_crop * f, rp, ra, rd, mi, pk, dw)
                     for (f, rp, ra, rd, mi, pk, dw) in DEFAULT_SCHEDULE]
 
-    # Rings are generated in WARPED frame with WARPED-frame radii.
+    # Rings in WARPED frame with WARPED-frame radii.
     ring_pts = ring_points_warped(
         ocx=ocx, ocy=ocy,
         r_bull_warped=r_bull_warped, s_warped=s_warped,
@@ -263,11 +372,26 @@ def refine_homography(
     last_cost = float("inf")
     converged = False
 
-    scale = np.maximum(np.abs(aff_init), np.array([0.5] * 8))
-    lb = aff_init - 1.5 * scale
-    ub = aff_init + 1.5 * scale
-    lb[6] = -perspective_bound; ub[6] = perspective_bound
-    lb[7] = -perspective_bound; ub[7] = perspective_bound
+    # ----- Defense Layer 2/3: parameter bounds -----
+    if mean_ring_eccentricity < affine_lock_ecc_threshold:
+        # Layer 2: LOCK AFFINE — refine only h31, h32 (2 DOF). scipy requires
+        # lb < ub strictly, so add a tiny epsilon (effectively locks the param).
+        eps = 1e-9
+        lb = aff_init.copy() - eps
+        ub = aff_init.copy() + eps
+        lb[6] = -perspective_bound; ub[6] = perspective_bound
+        lb[7] = -perspective_bound; ub[7] = perspective_bound
+        defense_layer = "lock_affine"
+    else:
+        # Layer 3: SCALE BOUNDS by eccentricity for genuinely tilted sources
+        ecc_factor = max(1.0, (mean_ring_eccentricity - 1.0) * 10.0)
+        bound_factor = affine_bound_base * ecc_factor
+        scale = np.maximum(np.abs(aff_init), np.array([0.5] * 8))
+        lb = aff_init - bound_factor * scale
+        ub = aff_init + bound_factor * scale
+        lb[6] = -perspective_bound; ub[6] = perspective_bound
+        lb[7] = -perspective_bound; ub[7] = perspective_bound
+        defense_layer = f"ecc_scaled(bf={bound_factor:.3f})"
 
     # Emit a stage-0 callback for the initial state (before any optimization)
     # so the pipeline can render the "before" projection.
@@ -304,6 +428,9 @@ def refine_homography(
             reg_det=reg_d,
             data_weight=dw,
             potential_kind=pot_kind,
+            enable_sv_penalty=enable_sv_penalty,
+            sv_ratio_threshold=sv_ratio_threshold,
+            sv_ratio_weight=sv_ratio_weight,
         )
 
         result = least_squares(
@@ -397,11 +524,32 @@ def refine_homography(
         corner_gate_threshold = None
         corner_gate_triggered = False
 
+    # M2 anisotropy gate: catches visible affine elongation that the corner-
+    # ratio gate might miss (affine anisotropy scales the whole image uniformly
+    # without changing the corner asymmetry ratio). Triggers when M2's SV
+    # ratio exceeds threshold (default 1.10 = max 10% elongation).
+    if enable_m2_aniso_gate:
+        m2_aniso_init = _sv_ratio(params_to_H(aff_init)[:2, :2])
+        m2_aniso_final = _sv_ratio(params_to_H(current_params)[:2, :2])
+        m2_gate_triggered = (
+            not math.isfinite(m2_aniso_final)
+            or m2_aniso_final > m2_aniso_gate_threshold
+        )
+    else:
+        m2_aniso_init = None
+        m2_aniso_final = None
+        m2_gate_triggered = False
+
     revert_reason = None
     if corner_gate_triggered:
         revert_reason = (
             f"corner_ratio_gate: final={corner_ratio_final:.2f} > "
             f"threshold={corner_gate_threshold:.2f} (init={corner_ratio_init:.2f})"
+        )
+    elif m2_gate_triggered:
+        revert_reason = (
+            f"m2_aniso_gate: final={m2_aniso_final:.3f} > "
+            f"threshold={m2_aniso_gate_threshold:.3f} (init={m2_aniso_init:.3f})"
         )
     elif final_score > init_score:
         revert_reason = (
@@ -439,6 +587,11 @@ def refine_homography(
             "corner_ratio_init": corner_ratio_init,
             "corner_ratio_final": corner_ratio_final,
             "corner_ratio_gate": corner_gate_threshold,
+            "m2_aniso_init": m2_aniso_init,
+            "m2_aniso_final": m2_aniso_final,
+            "m2_aniso_gate": m2_aniso_gate_threshold if enable_m2_aniso_gate else None,
+            "mean_ring_eccentricity": float(mean_ring_eccentricity),
+            "defense_layer": defense_layer,
         }
 
     return {
@@ -449,9 +602,15 @@ def refine_homography(
         "converged": converged,
         "stages": stages_log,
         "reverted_to_init": False,
+        "revert_reason": None,
         "init_data_score": init_score,
         "opt_data_score": final_score,
         "corner_ratio_init": corner_ratio_init,
         "corner_ratio_final": corner_ratio_final,
         "corner_ratio_gate": corner_gate_threshold,
+        "m2_aniso_init": m2_aniso_init,
+        "m2_aniso_final": m2_aniso_final,
+        "m2_aniso_gate": m2_aniso_gate_threshold if enable_m2_aniso_gate else None,
+        "mean_ring_eccentricity": float(mean_ring_eccentricity),
+        "defense_layer": defense_layer,
     }

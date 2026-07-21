@@ -1,32 +1,49 @@
 ---
 date: 2026-07-21T18:00:00Z
 researcher: krzysztofkruk
-git_commit: 899921e99532a95b1cebbe090bbfb09376b0f945
+git_commit: 76f6fc46d25d0fae8f94e0c28dea053dd26aaafa
 branch: master
 repository: target-o-meter
-topic: "Phase 1 deterministic pipeline + 3-agent normalization experiment — multiring homography wins; discovery: needs fused multiring-detection + iteredge-refinement"
-tags: [research, codebase, cv, llm, vlm, langchain, gemma, homography, multiring, iteredge, strategy-pattern, dependency-inversion, issf, paper-targets]
+topic: "Phase 1 deterministic pipeline + Phase 2 3-agent experiment + Phase 2.5 fused differential refinement — pre-processing/normalization/homography STABLE; Phase 3 (LangChain + prompt tuning) pending"
+tags: [research, codebase, cv, llm, vlm, langchain, gemma, homography, multiring, iteredge, fused, differential-refinement, strategy-pattern, dependency-inversion, issf, paper-targets]
 status: complete
 last_updated: 2026-07-21
 last_updated_by: krzysztofkruk
-phase: 1 complete (deterministic pipeline + experiment); phase 2 next (combined algorithm); phase 3 pending (LangChain)
+phase: 1 complete; 2 complete (multiring wins); 2.5 complete (fused pipeline stable on 10/10 images); 3 pending (LangChain + prompt tuning — sole remaining work)
 ---
 
-# Research: AI detection — deterministic pipeline + 3-agent normalization experiment
+# Research: AI detection — deterministic pipeline + 3-agent normalization experiment + fused differential refinement
 
 **Date**: 2026-07-21
 **Researcher**: krzysztofkruk
-**Git Commit**: [899921e](https://github.com/krkruk/target-o-meter/commit/899921e99532a95b1cebbe090bbfb09376b0f945)
+**Git Commit**: [76f6fc4](https://github.com/krkruk/target-o-meter/commit/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa)
 **Branch**: master
 **Repository**: [krkruk/target-o-meter](https://github.com/krkruk/target-o-meter)
 
+> **Status snapshot (the uniform view of where we are)**:
+>
+> | Phase | Status | Deliverable |
+> |---|---|---|
+> | 1 — deterministic pipeline + strategy seam | **COMPLETE** | `cv/{detector_base, normalize, mock_detector, pipeline, run_pipeline}.py` — 545 LOC, 10/10 train images, bullseye invert err 2.3e-13 px |
+> | 2 — 3-agent normalization experiment | **COMPLETE** | `cv/approaches/{multiring, singleellipse, iteredge}/` — multiring wins detection; iteredge wins refinement |
+> | 2.5 — fused multiring+iteredge differential refinement | **COMPLETE** | `cv/approaches/fused/` — 1544 LOC, 5 modules, 10/10 images clean, all holes visible, no elongation |
+> | 3 — LangChain LLM integration + prompt tuning | **PENDING** | Pre-processing/normalization/homography **done** — Phase 3 swaps one function call (`MockDetector` → `LangChainAIStudioDetector`) and tunes the prompt |
+>
+> **Phase 2.5 closers (the four user-verified success criteria)**:
+> - Image 12: full 1-ring boundary inside frame ✓
+> - Image 21: all 5 slug holes inside frame ✓
+> - Image 29: localization finds actual target (logo rejected) ✓
+> - Image 46: regression check on gold standard ✓
+>
 > **This document is the handoff artifact for Phase 3 (LangChain implementation).** It must be self-contained — another LLM session picking up Phase 3 should not need to scroll this conversation's history.
 
 ## Research Question
 
 User direction (Phase 1): pivot the hole-detection stage from classical CV (which hit a hard wall at score-Jaccard ≈ 0.255 across 10 prior iterations — see `research.md` and `research-blob-detection.md`) to a **vision-language model**. Use LangChain as the orchestration framework with `gemma-4-31b-it` as the model. The classical pipeline keeps the stages it has already solved (EXIF-orient, target localization, two-anchor calibration, ISSF scoring) and produces a clean 1024×1024 fronto-parallel normalized image with the bullseye at a known location. The LLM receives that normalized image and returns structured XY-coordinates of detected bullet holes plus a per-hole score.
 
-User direction (this iteration): build the deterministic Phase-1 pipeline with a **strategy + dependency-inversion** architecture so the LLM detector can drop in later behind a stable interface. Then run a 3-agent parallel experiment to redesign the normalization (localization + warp + 1024 frame), because the first attempt produced elliptical rings instead of circles. Pick a winner, capture the discovery, and plan the next iteration.
+User direction (Phase 2): build the deterministic Phase-1 pipeline with a **strategy + dependency-inversion** architecture so the LLM detector can drop in later behind a stable interface. Then run a 3-agent parallel experiment to redesign the normalization (localization + warp + 1024 frame), because the first attempt produced elliptical rings instead of circles. Pick a winner, capture the discovery, and plan the next iteration.
+
+User direction (Phase 2.5): *"further tune the multiring implementation with differential fitting to adjust the projection. Refine the deterministic approach keeping the AI integration for later."* Fuse multiring's detection with iteredge's refinement. Iteratively tune the parameters across multiple regression-fix rounds until pre-processing + normalization + homography are stable across all 10 train images.
 
 ## Summary
 
@@ -40,17 +57,15 @@ User direction (this iteration): build the deterministic Phase-1 pipeline with a
 | B — singleellipse | Single black-disc ellipse → focal-length decomposition | Aborted mid-implementation (incomplete outputs) | Not graded |
 | C — iteredge | Iterative patch-against-edges via scipy.optimize.least_squares on 8-DOF homography | COMPLETE | Solid optimizer; weaker detector than multiring |
 
-**Key discovery (user's words)**: *"In general, I believe the application lacks the minimization between the edge detected circles to adjust the perspective parameters and minimize the differences between the real picture and the estimated circles."*
+**Phase 2.5 — fused differential refinement: COMPLETE.** Five modules under `cv/approaches/fused/` fuse multiring's detection with iteredge's refinement, then add a 5-layer orthogonality defense + adaptive warp sizing. Final state on 10/10 train images:
+- All holes visible (farthest hole lands at ≤ 465/512 px from bullseye in 1024 frame)
+- All rings unskewed (M2 anisotropy ≤ 1.033, rotation 0°)
+- All corner projections healthy (corner-radius ratio ≤ 1.42)
+- Bullseye inversion self-test < 1e-12 px on every image
 
-**Translation**: multiring's strength is the **detection** (it correctly rejects printed logos via black-disc contrast — image 29 fixed; it finds 7-13 concentric rings). Its weakness is the **warp** (no iterative refinement; rings still come out slightly off). Iteredge's strength is the **refinement** (iteratively minimizes residuals between predicted rings and detected edges). Its weakness is the **detection** (relies on the existing `crop_to_target` + `calibrate` initialization, which fails on image 29).
+**Phase 3 — LangChain + prompt tuning: PENDING.** Pre-processing, normalization, and homography are **done**. Phase 3 is a single new module (`cv/langchain_detector/`) that plugs into the existing `HoleDetector` seam, plus prompt iteration against the F1 / score-Jaccard gates defined below.
 
-**Next iteration (Phase 2.5)**: **fuse multiring's detection with iteredge's refinement.** The user's literal prescription: *"grayscale, then Gauss blur, then detect edges, threshold so the edges are visible, then finally perform matching for concentric circles. Then you attempt to match the edge detected image onto the generated rings to minimize difference between those. You tinker with the parameters, iteratively."*
-
-**Specific fixes also required**:
-- Image 12: normalization cropped out the 1-ring (outermost ring). MUST preserve the full 1-ring boundary in the 1024 frame.
-- Image 21: normalization cropped out 3 of 5 slug holes. MUST preserve ALL actual holes in the 1024 frame, even if they're outside ring 1.
-
-## User's locked-in decisions (from 10-question interview)
+## User's locked-in decisions (from interviews)
 
 These answers must be respected by every subsequent iteration, including Phase 3.
 
@@ -61,7 +76,7 @@ These answers must be respected by every subsequent iteration, including Phase 3
 | Q1 — Architecture | **Strategy + dependency inversion.** Same output structure across detectors. Two LangChain strategies to wire in Phase 3: `LangChainAIStudioDetector` (primary, env-var token already present) and `LangChainOllamaDetector` (fallback, `ollama` server running locally, model `gemma4:latest`). |
 | Q2 — Vision-token budget | **1120 (max detail)** for the spike; re-measure at 560 once F1 numbers exist. |
 | Q3 — Image fidelity | **Plain grayscale-as-RGB** 1024×1024 of the warped crop. Test multi-channel texture-RGB only if zero-shot F1 is poor. |
-| Q4 — Normalization layout | **Bullseye at (512, 512); 1-ring boundary at radius 500 px.** Symmetric padding outside. The LLM sees a known fixed geometric frame regardless of source resolution or target type. |
+| Q4 — Normalization layout | **Bullseye at (512, 512); 1-ring boundary at a tuned radius.** The Phase-2.5 work dropped the fixed `ring1_px = 500` convention — the warp's content extent now determines the scale (see § Phase 2.5 — Adaptive warp sizing). |
 | Q5 — Scoring authority | **LLM scores.** Structured output includes (x, y, score) per hole. Classical ISSF line-break scoring is computed in parallel for diagnostic comparison only. |
 | Q6 — Few-shot | **Zero-shot first.** Add 2-3 few-shot examples from `{6, 12}` only if F1 < 0.5. Never use `_marked.jpg` as LLM input (would teach magenta-finding, not hole-finding). |
 | Q7 — Output schema | **Rich**: `{x, y, score, confidence}` per hole + top-level `{target_type, notes}`. |
@@ -78,6 +93,57 @@ These answers must be respected by every subsequent iteration, including Phase 3
 | Test images | **4 representatives first** (12 gold, 46 gold, 29 disaster, 21 cropped-holes); expand to all 10 for the winning approach. |
 | Output spec | **Same 8 files as Phase 1 + 1 additional edge-detection diagnostic** = 9 files per image. The `_02b_detect.png` shows cropped image with edges overlaid + concentric circles/ellipses the algorithm fit. |
 | Constraints | **Open deps, create new files only.** May import from `cv/blob_detect.py` but must NOT modify it. `scipy` is the main addition. |
+
+### Phase-2.5 decisions (5-question initial interview)
+
+| Q | Decision | Rationale |
+|---|---|---|
+| Q1 — Optimization parameterization | **8-DOF homography** | Recovers true projective tilt; phone-camera focal length unknown. Default for the refinement kernel. |
+| Q2 — Ring constraints | **All detected rings (7-13)** | Maximum constraints → strongest fit. soft_l1 + per-ring residuals handle outliers. |
+| Q3 — Hole source for `_05_llm_predict.png` (final product) | **MockDetector 5-hole pattern** | Phase 2.5 focuses on geometry; real hole detection is Phase 3's job. |
+| Q4 — Intermediate-image cadence | **Per coarse-to-fine stage** (4 PNGs + 1 horizontal strip per image) | Easy to spot overshoots without flooding disk. |
+| Q5 — Frame sizing | **Adaptive, hole-extent-aware** | Initially `target_ring1_px`; later replaced entirely by warp-content-fit (see § Tuning round 2). |
+
+### Phase-2.5 decisions (3-question tuning round 1 — image 46 frame sizing)
+
+| Q | Decision |
+|---|---|
+| Q1 — Conflict policy when holes poke beyond ring 1 | **Use MAX warped radius (not RMS) for the outermost ring** — fixes elliptical-ring-far-side clipping. |
+| Q2 — Margin between outermost element and frame edge | **50 px** (was 10). Comfortable visual margin. |
+| Q3 — `target_ring1_px` floor | **Raised to 460** (was 350). Ring 1 always dominates the frame. *(Later obsoleted by tuning round 2 — see below.)* |
+
+### Phase-2.5 decisions (5-question tuning round 2 — image 12 normalization regression)
+
+User direction: *"Why don't you use the warp image instead [of cropping it]?"* — normalization was choosing `target_ring1_px` and cropping content from the warp to enforce it. Backwards.
+
+| Q | Decision | What changed |
+|---|---|---|
+| Q1 — Normalization policy | **Fit the ENTIRE warp canvas into 1024 — `scale = 1024 / max(out_w, out_h)`** | Eliminates the regression root cause. No content ever cropped between warp and LLM input. |
+| Q2 — Warp sizing | **Adaptive `margin_factor` based on GT hole extent** | Default 1.30; auto-enlarged when holes extend beyond ring 1; capped at 2.50. |
+
+### Phase-2.5 decisions (5-question tuning round 3 — image 1 perspective overshoot)
+
+User direction: *"picture 1 is still overshot … the fitting is overshot which causes warp/llm_input to be highly sheared and distorted."* Root cause: perspective bound `±1e-2` was sized for iteredge's near-identity affine init, not multiring's Q⁻¹ᐟ² which places the bullseye far from crop corners. Even tiny h31 values like 6.8e-4 caused the w-factor at crop corners to flip through zero (corner-radius ratio 36.6!).
+
+| Q | Decision | Effect |
+|---|---|---|
+| Q1 — Perspective bound | **±1e-4 default, ±1e-5 for orthogonal** | corner-radius ratio: 36.6 → 2.14 on image 1 |
+| Q2 — Orthogonality detection | **Multiring's mean ring eccentricity < 1.05** | Triggers tighter bounds (10× stricter) |
+| Q3 — Regularization | **reg_perspective raised 10× globally** | Schedule: 1e6 / 1e5 / 1e4 / 2e3 (was 1e5 / 1e4 / 1e3 / 200) |
+| Q4 — Edge filter | **Elliptical band-mask on Canny edges (`band_factor=0.3`)** | Rejects digit edges, hole edges, background clutter that drove overfitting |
+| Q5 — Post-refinement safety | **Corner-radius ratio gate (threshold = `max(3.0, 2.0 × init_ratio)`)** | Catastrophic distortion revert |
+
+### Phase-2.5 decisions (5-question tuning round 4 — image 1 affine drift)
+
+User direction: *"picture 1 is still overshot. The paper target is … elongated really heavily … although the crop image is rather orthogonal."* Root cause: even with perspective locked, the AFFINE part M2 drifted to 1.39× anisotropy — the bounds (`±1.5 × |aff_init|`) and anchor regularization (200→20 across stages) weren't strong enough.
+
+| Q | Decision | Effect |
+|---|---|---|
+| Q1 — Affine policy | **Lock affine entirely (refine only h31, h32) when `ecc < 1.10`** | M2 anisotropy: 1.389 → 1.007 on image 1 |
+| Q2 — Direct anisotropy penalty | **SV-ratio penalty in residual (threshold 1.05, weight 1e3)** | Drives optimizer away from anisotropic M2 even when bounds allow movement |
+| Q3 — Skip refinement entirely | **When `ecc < 1.02`, return multiring's H_init unchanged** | 8/10 train images hit this; multiring's analytical rectifier is provably optimal for orthogonal sources |
+| Q4 — Eccentricity-aware bounds | **For tilted sources (ecc ≥ 1.10), bounds scale: `0.10 × max(1, (ecc-1)×10)`** | Allows genuine affine refinement for tilted sources, bounded proportionally |
+| Q5 — M2-aniso post-refinement gate | **Revert if M2_aniso > 1.10** | Catches visible affine elongation directly |
 
 ## Phase 1 — Deterministic pipeline (COMPLETE)
 
@@ -151,7 +217,7 @@ The 5-stage pipeline (`intake → crop_to_target → calibrate → warp_fronto_p
 - **31.jpg**: warp rather good; llm_input cropped the 9x19mm shots in the top.
 - **46.jpg**: ★ NEAR PERFECT — gold standard.
 
-## Phase 2 — 3-agent normalization experiment
+## Phase 2 — 3-agent normalization experiment (COMPLETE)
 
 ### Goal
 Rework BOTH localization (`crop_to_target`) AND warp+normalize. Produce 9 files per image including the `_02b_detect.png` diagnostic. Test on 4 representative images: 12, 46 (gold standards) + 29, 21 (disasters).
@@ -217,109 +283,252 @@ Path: `cv/approaches/iteredge/` (10 files, 1596 LOC, scipy dep added).
 
 > **Discovery**: *"In general, I believe the application lacks the minimization between the edge detected circles to adjust the perspective parameters and minimize the differences between the real picture and the estimated circles."*
 
-## Recommended next iteration — Phase 2.5: fused multiring + iteredge
+## Phase 2.5 — Fused multiring+iteredge differential refinement (COMPLETE)
 
-### The discovery, technically
+### Goal
 
-The user is describing classical **model-to-image registration**: define a parametric warp, predict where the ring strokes should land, measure the mismatch against detected edges, iterate. This is what iteredge does. But iteredge's *detector* is weak; multiring's *detector* is strong. **Fuse them**:
+Fuse multiring's logo-rejecting detection + circular-points initial H with iteredge's 8-DOF differential refinement. Iteratively tune until 10/10 train images are clean (all holes visible, no elongation, no shearing).
 
-```
-DETECTION (multiring)              REFINE (iteredge)              NORMALIZE (fix bugs)
-─────────────────────              ──────────────────              ────────────────────
-1. grayscale                       1. take multiring's H as init   1. ensure 1-ring is
-2. Gaussian blur                   2. predict 10 ring strokes      INSIDE the 1024 frame
-3. Canny edges                         under H^-1                  (don't crop it out)
-4. HoughCircles multi-band         3. compute distance-transform   2. ensure ALL actual
-5. cluster by center                  of edges                    holes are inside the
-6. score by black-disc contrast    4. energy = sum of min(DT,30)  frame (don't crop out
-7. reject logos (image 29 fix)        over predicted points        holes — image 21 fix)
-8. bounded ellipse fit per ring    5. + regularization:           3. target_ring1_px in
-9. circular-points method              perspective penalty,         [450, 500] depending
-   → initial H                         affine anchor,               on hole extent
-                                      determinant barrier       4. bullseye at (512, 512)
-                                   6. scipy.optimize.least_squares
-                                      with soft_l1 + trf
-                                   7. coarse-to-fine: smoothed
-                                      edges → raw edges
-                                   8. safety check: revert if
-                                      worse than init
-```
-
-### Concrete fixes for the user's specific complaints
-
-| Image | User complaint | Root cause | Fix |
-|---|---|---|---|
-| 12 | "you cropped too much of the area (no longer the 1-ring, the most outer one)" | `target_ring1_px = 500` with `r_ring1_warped ≈ 1068.5` (image 46); after resize, ring 1 lands at radius 500, but the source's ring 1 was already clipped by the original photo. The 1024 canvas shows the clipped ring 1 at the very edge or beyond. | Use `target_ring1_px = 470` (or smaller) to leave a 30+ px margin around ring 1. Verify ring 1 is fully visible in `_04_llm_input.png` before accepting. |
-| 21 | "you cropped most of the image keeping only two holes visible rather than all 5 slug holes" | Slug target anisotropy 1.66; ring 1 boundary doesn't contain all 5 shots (some are outside ring 1, which is normal — they score 0). When normalization puts ring 1 at radius 500, outside-ring-1 holes fall outside the 1024 frame. | **NEW**: detect actual hole positions (use `cv.gt.magenta_centers` on `_marked.jpg` for EVAL ONLY; in production, the user will mark hole-centers in a UI). Set `target_ring1_px` such that the outermost actual hole is at radius ≤ 490 (10 px margin). Fallback: if no hole info available, use `target_ring1_px = 420` (puts ring 1 well inside frame, with room for outside-ring shots). |
-| 29 | (was the disaster; now fixed by multiring) | Multiring's black-disc contrast term correctly rejects the logo. **Keep this.** | None — already fixed. |
-
-### Implementation plan for Phase 2.5
+### Architecture: `cv/approaches/fused/`
 
 ```
-cv/approaches/fused/                       # NEW directory
-    __init__.py
-    localize.py                            # import from multiring (logo-rejecting)
-    detect_rings.py                        # import from multiring (bounded ellipse fit)
-    homography.py                          # import from multiring (circular-points initial H)
-    refine.py                              # import from iteredge (energy + optimizer)
-    normalize.py                           # NEW logic: adaptive target_ring1_px
-    pipeline.py                            # orchestration
-    run.py                                 # CLI: uv run python -m cv.approaches.fused.run
+cv/approaches/fused/                            1544 LOC total
+├── __init__.py                  (  23)  Package docstring + 14-file output manifest
+├── adaptive_frame.py            ( 125)  adaptive_margin_factor() — sizes warp canvas from GT hole extent
+├── refine.py                    ( 616)  refine_homography() + inlined make_residual_fn + 5-layer defense
+├── pipeline.py                  ( 655)  run_pipeline() orchestrator + _warped_ring_metrics + band-mask helper
+└── run.py                       ( 125)  argparse CLI
 ```
 
-Test on all 10 train images (not just the 4 representatives). Success criteria:
-- Image 12: `_04_llm_input.png` shows full 1-ring boundary inside the frame.
-- Image 21: `_04_llm_input.png` shows all 5 slug holes inside the frame.
-- Image 29: localization still finds the actual target (regression check).
-- Image 46: regression check on gold standard.
-- All images: bullseye inversion self-test < 0.01 px.
-- All images: ring eccentricity after warp < 0.05 (mean) and < 0.10 (max).
+**Stage sequence** (one image):
+
+```
+1. intake                cv.gt.load_bgr (EXIF-aware)
+2. localize              multiring.localize.crop_to_target (logo-rejecting via black-disc contrast)
+3. detect rings          multiring.detect_rings.detect_rings (bounded 4-param ellipse fit per ring)
+4. initial H             multiring.homography.compute_rectifying_homography (circular-points, AFFINE only —
+                         perspective left to refiner). projective_refine=False is mandatory.
+5. warped-ring metrics   fused.pipeline._warped_ring_metrics — derives s_warped, r_bull_warped, r_ring1_warped
+                         (MAX of outermost ring) from the actual detected rings under H_init. CRITICAL: cannot
+                         copy from cal dict because multiring's Q^{-1/2} rescales rings significantly.
+6. differential refine   fused.refine.refine_homography — 8-DOF, 4-stage coarse-to-fine, with 5-layer
+                         orthogonality defense (see below). Per-stage PNG callback for overshoot tracking.
+7. adaptive warp sizing  fused.adaptive_frame.adaptive_margin_factor — enlarge margin_factor when GT holes
+                         extend beyond ring 1. iteredge.warp.compute_output_shape + apply_warp.
+8. normalize to 1024     iteredge.normalize.normalize_to_1024 with scale = 1024 / max(out_w, out_h).
+                         FITS THE ENTIRE WARP CANVAS — never crops content (tuning-round-2 fix).
+9. detect (mock)         cv.mock_detector.MockDetector (Phase 3 swaps in LangChain detectors)
+10. invert + viz         9 standard PNGs + 4 per-stage intermediates + 1 horizontal strip + result.json
+```
+
+### The 5-layer orthogonality defense (the final tuned form)
+
+The 4 tuning rounds converged on a layered defense against overshoot. Layers are applied in order; each layer's threshold comes from the user's interview answers.
+
+```
+Layer 1 — SKIP REFINEMENT ENTIRELY
+  Threshold: mean_ring_eccentricity < 1.02 (multiring's detected rings)
+  Action: return multiring's H_init unchanged
+  Rationale: for near-frontal sources, the analytical circular-points rectifier is provably optimal;
+             the optimizer can only add noise.
+  Hit by: 8/10 train images (1, 6, 10, 12, 19, 21, 29, all skip)
+
+Layer 2 — LOCK AFFINE (refine only h31, h32)
+  Threshold: 1.02 ≤ mean_ring_eccentricity < 1.10
+  Action: lb[:6] = ub[:6] = aff_init[:6] (with 1e-9 epsilon for scipy's strict-inequality requirement).
+          Only h31, h32 are free (2 DOF).
+  Rationale: prevents the M2 anisotropy drift that causes visible elongation on orthogonal sources
+             (image 1 root cause, tuning round 4).
+  Hit by: 2/10 train images (4, 31, 46)
+
+Layer 3 — SCALE BOUNDS BY ECCENTRICITY
+  Threshold: mean_ring_eccentricity ≥ 1.10
+  Action: bounds = 0.10 × max(1, (ecc - 1) × 10) × |aff_init|. For ecc=1.20 → ±0.20; ecc=1.50 → ±0.50.
+  Rationale: allows genuine affine refinement for tilted sources, bounded proportionally to tilt.
+  Hit by: 0/10 train images (none tilted enough; ready for future inputs)
+
+Layer 4 — SV-RATIO PENALTY IN RESIDUAL
+  Action: add residual term `max(0, SV_max/SV_min - 1.05) × sqrt(1e3)` to make_residual_fn.
+  Always active (regardless of layer).
+  Rationale: drives optimizer away from anisotropic M2 even when bounds allow some movement.
+
+Layer 5 — POST-REFINEMENT GATES (revert to init if triggered)
+  Gate A: corner-radius ratio > max(3.0, 2.0 × init_ratio)
+          → catches catastrophic perspective distortion (image 1 round-3 root cause)
+  Gate B: M2 anisotropy > 1.10
+          → catches visible affine elongation (image 1 round-4 root cause)
+  Gate C: data_score final > init (existing iteredge safety check, kept)
+  Always active.
+```
+
+### Adaptive warp sizing (replaces `target_ring1_px` from earlier phases)
+
+The Phase-1/Phase-2 design chose `target_ring1_px` (the radius where ring 1 lands in the 1024 frame) and let normalization crop whatever fell outside. **Tuning round 2 (user-directed) eliminated this** — the warp's content extent now determines the 1024 scale.
+
+```
+adaptive_margin_factor(bbox, H_opt, cx_crop, cy_crop, r_ring1_warped, gt_marked_path)
+  ├── default_margin_factor = 1.30
+  ├── if GT available:
+  │     └── project GT holes through H_opt → max_hole_r_warped
+  │     └── margin_factor = max(1.30, min(max_hole_r_warped / r_ring1_warped × 1.10, 2.50))
+  └── else: margin_factor = 1.30
+
+compute_output_shape(H_opt, ..., r_ring1_warped, margin_factor)
+  └── out_w = out_h = 2 × ceil(margin_factor × r_ring1_warped)
+  └── H_full = T @ H_opt  (translation T centers bullseye at (out_w/2, out_h/2))
+
+normalize_to_1024(warped, ..., target_ring1_px = r_ring1_warped × 1024 / max(out_w, out_h))
+  └── scale = 1024 / max(out_w, out_h)
+  └── bullseye lands at (512, 512) by construction
+  └── ring 1 lands at radius = 1024 / (2 × margin_factor)  (≈ 394 for default, ≈ 256 for max 2.0)
+  └── GT holes land at ≤ 1024 / (2 × 1.10) ≈ 465  (always)
+```
+
+### Per-image output manifest (14 files + 1 JSON)
+
+| File | Producer | Purpose |
+|---|---|---|
+| `<id>_01_intake.png` | `cv.gt.load_bgr` | EXIF-oriented source |
+| `<id>_02_crop.png` | `multiring.localize.crop_to_target` | After localization (logo-rejecting) |
+| `<id>_02b_detect.png` | multiring Canny + colored ellipses | KEY DIAGNOSTIC: detected rings on edges |
+| `<id>_03_warp.png` | `iteredge.warp.apply_warp` + ring overlay | Warped crop with 10-ring overlay |
+| `<id>_04_llm_input.png` | `normalize_to_1024` | 1024×1024 — **ACTUAL LLM INPUT** |
+| `<id>_05_llm_predict.png` | `_draw_final_product` | **FINAL PRODUCT** — 1024 + canonical ring frame + magenta holes + scores |
+| `<id>_06_crop_predict.png` | `_draw_stage_projection` | Crop + ring overlay under final H + inverted holes |
+| `<id>_07_source_predict.png` | `_draw_magenta_on_bgr` | Source + fully-inverted magenta dots |
+| `<id>_08_stage0.png` | stage_callback at init | Pre-optimization projection (initial state) |
+| `<id>_08_stage{1..4}.png` | stage_callback per coarse-to-fine stage | Per-stage refinement projection (track overshoots) |
+| `<id>_08_stages_strip.png` | `np.hstack(stage_images)` | All stages concatenated horizontally |
+| `<id>_result.json` | — | Structured output (calibration, refinement, defense layer, all metrics) |
+
+### Bugs found in iteredge source (left unmodified; worked around in fused)
+
+Per the "open deps, create new files only" rule, these were copied/inlined into `fused/refine.py` rather than fixing iteredge directly.
+
+1. **Residual-length off-by-one** in `iteredge.optimize.make_residual_fn`. The degenerate-det early return path uses `np.full(n_pts + 9, 1e6)`; the success path concatenates `persp[2] + anchor[6] + det_res[1] + sign_res[1] = 10` reg terms, returning `n_pts + 10`. scipy raises `ValueError: could not broadcast input array from shape (649,) into shape (650,)` when the optimizer wanders into the degenerate region mid-iteration (image 21 with multiring's near-full-image crop). Fixed in `fused/refine.py:make_residual_fn` (single `out_len` constant for all paths).
+
+2. **Crop-frame vs warped-frame conflation** of `cal["s_px"]` and `cal["r_bull_px"]` in `iteredge.optimize.optimize_homography`. The same dict values are used by `enhance_ring_edges` (CROP frame, for blur/falloff) AND by `ring_points_warped` (WARPED frame, for ring generation). Harmless for iteredge (blob_detect's affine H is near-identity so crop ≈ warped), but breaks for multiring's Q⁻¹ᐟ² H_init which rescales rings ~3×. Fixed in `fused/refine.py:refine_homography` by separating `cal["s_px"]` (crop) from explicit `s_warped`, `r_bull_warped` parameters.
+
+3. **Perspective bound `±1e-2`** in `iteredge.optimize.optimize_homography`. Sized for iteredge's near-identity affine init. When combined with multiring's H_init (which places the bullseye at crop origin, far from corners), even tiny `h31 ≈ 6.8e-4` values cause the w-factor at crop corners to flip through zero, producing 36.6× corner-radius asymmetry (image 1 root cause, tuning round 3). Fixed in `fused/refine.py` with `DEFAULT_PERSPECTIVE_BOUND = 1e-4` and orthogonal-tightening to `1e-5`.
+
+### Final tuned parameters (the snapshot)
+
+```python
+# fused/refine.py module-level constants
+
+DEFAULT_SCHEDULE = [
+    # (sigma_factor, reg_perspective, reg_anchor, reg_det, max_iters, pot_kind, data_weight)
+    (0.55,  1e6, 200.0, 1e3, 60, "mag", 0.5),    # broad basin, strong anchor
+    (0.30,  1e5, 100.0, 200.0, 60, "dt",  1.0),  # exact placement
+    (0.15,  1e4,  50.0,  50.0, 50, "dt",  1.5),
+    (0.08,  2e3,  20.0,  20.0, 40, "dt",  2.0),
+]
+DEFAULT_PERSPECTIVE_BOUND = 1e-4         # was iteredge's 1e-2
+
+SKIP_REFINE_ECC_THRESHOLD = 1.02         # Layer 1
+AFFINE_LOCK_ECC_THRESHOLD = 1.10         # Layer 2
+AFFINE_BOUND_BASE = 0.10                 # Layer 3 base (scaled by ecc)
+
+SV_RATIO_THRESHOLD = 1.05                # Layer 4
+SV_RATIO_WEIGHT = 1e3
+
+CORNER_RATIO_ABS_THRESHOLD = 3.0         # Layer 5 Gate A
+CORNER_RATIO_RELATIVE_FACTOR = 2.0
+M2_ANISO_GATE_THRESHOLD = 1.10           # Layer 5 Gate B
+
+# fused/adaptive_frame.py
+DEFAULT_MARGIN_FACTOR = 1.30
+HOLE_MARGIN_FACTOR = 1.10                # slack beyond outermost GT hole
+MAX_MARGIN_FACTOR = 2.50
+
+# fused/pipeline.py
+ELLiptical_BAND_FACTOR = 0.3             # band-mask width around each detected ring (× gmean)
+ORTHOGONAL_ECC_THRESHOLD = 1.05          # below → perspective_bound tightened 10× (1e-5)
+```
+
+### Final per-image results (10/10 train images)
+
+| img | ecc | defense layer | M2 aniso | M2 rot | corner ratio | margin | ring1 @1024 | farthest hole @1024 | inv err px |
+|-----|-----|---------------|----------|--------|--------------|--------|-------------|---------------------|------------|
+| 1   | 1.019 | skip | 1.007 | 0° | — | 1.30 | 394 | 375 | 2.5e-13 |
+| 4   | 1.024 | lock_affine | 1.032 | 0° | 1.20 | 1.30 | 394 | 435 | 0 |
+| 6   | 1.014 | skip | 1.007 | 0° | — | 1.30 | 394 | 247 | 2.5e-13 |
+| 10  | 1.018 | skip | 1.015 | 0° | — | 1.30 | 394 | 393 | 0 |
+| 12  | 1.010 | skip | 1.006 | 0° | — | 1.54 | 333 | 465 | 1.1e-13 |
+| 19  | 1.004 | skip | 1.002 | 0° | — | 1.30 | 393 | 125 | 2.3e-13 |
+| 21  | 1.013 | skip | 1.027 | 0° | — | 1.38 | 371 | 465 | 2.5e-13 |
+| 29  | 1.009 | skip | 1.012 | 0° | — | 1.30 | 394 | 34 | 4.7e-13 |
+| 31  | 1.035 | lock_affine | 1.033 | 0° | 1.42 | 1.60 | 321 | 465 | 3.2e-13 |
+| 46  | 1.047 | lock_affine | 1.016 | 0° | 1.20 | 1.30 | 394 | 435 | 2.5e-13 |
+
+**User verdict (closing quote for Phase 2.5)**:
+> *"Perfect! All llm_inputs are clear, no holes are cropped, even in the most extreme samples. Well done. … the current pre-processing, normalizing and applying homography steps is done."*
+
+### CLI
+
+```bash
+uv run python -m cv.approaches.fused.run 12 46 29 21           # 4-image test set
+uv run python -m cv.approaches.fused.run 1 4 6 10 12 19 21 29 31 46   # all 10
+uv run python -m cv.approaches.fused.run 12 --out /tmp/fused_test    # custom output dir
+uv run python -m cv.approaches.fused.run 12 --no-gt                  # disable adaptive margin_factor
+```
 
 ## Code references
 
 ### Phase 1 files (deterministic pipeline — STABLE, do not modify)
 
-- [`cv/detector_base.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/detector_base.py) — strategy ABC + dataclasses. **The seam.**
-- [`cv/normalize.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/normalize.py) — `wrap_warp`, `to_llm_square`, `norm_to_crop`, `norm_to_source`, `self_test_inversion`, `TransformMeta` dataclass.
-- [`cv/mock_detector.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/mock_detector.py) — fixed 5-hole pattern for plumbing tests.
-- [`cv/pipeline.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/pipeline.py) — `run_pipeline` orchestration.
-- [`cv/run_pipeline.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/run_pipeline.py) — CLI.
+- [`cv/detector_base.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/detector_base.py) — strategy ABC + dataclasses. **The seam.**
+- [`cv/normalize.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/normalize.py) — `wrap_warp`, `to_llm_square`, `norm_to_crop`, `norm_to_source`, `self_test_inversion`, `TransformMeta` dataclass.
+- [`cv/mock_detector.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/mock_detector.py) — fixed 5-hole pattern for plumbing tests.
+- [`cv/pipeline.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/pipeline.py) — `run_pipeline` orchestration.
+- [`cv/run_pipeline.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/run_pipeline.py) — CLI.
 
-### Phase 2 files (3-agent experiment — pick & fuse for Phase 2.5)
+### Phase 2 files (3-agent experiment — fused into Phase 2.5)
 
-- [`cv/approaches/multiring/`](https://github.com/krkruk/target-o-meter/tree/899921e99532a95b1cebbe090bbfb09376b0f945/cv/approaches/multiring) — **WINNER** detection + initial H. 8 files, 1955 LOC. Key files:
+- [`cv/approaches/multiring/`](https://github.com/krkruk/target-o-meter/tree/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/approaches/multiring) — **WINNER** detection + initial H. 8 files, 1955 LOC. Key files:
   - `localize.py` — black-disc-contrast logo rejection (image 29 fix).
   - `detect_rings.py` — bounded 4-parameter ellipse fit per ring (7-13 rings detected).
   - `homography.py` — circular-points method → initial affine H.
-- [`cv/approaches/iteredge/`](https://github.com/krkruk/target-o-meter/tree/899921e99532a95b1cebbe090bbfb09376b0f945/cv/approaches/iteredge) — **WINNER** refinement. 10 files, 1596 LOC. Key files:
+- [`cv/approaches/iteredge/`](https://github.com/krkruk/target-o-meter/tree/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/approaches/iteredge) — **WINNER** refinement primitives. 10 files, 1596 LOC. Key files imported by fused:
   - `optimize.py` — energy function + `scipy.optimize.least_squares` with `trf` method.
   - `model.py` — 8-DOF homography parameterization + ring prediction.
   - `edges.py` — Canny + Sobel + ring-weight + distance transform.
-- [`cv/approaches/singleellipse/`](https://github.com/krkruk/target-o-meter/tree/899921e99532a95b1cebbe090bbfb09376b0f945/cv/approaches/singleellipse) — aborted; not used.
+  - `warp.py` — `compute_output_shape` + `apply_warp`.
+  - `normalize.py` — `normalize_to_1024` + `IterEdgeTransformMeta` + inverse helpers.
+- [`cv/approaches/singleellipse/`](https://github.com/krkruk/target-o-meter/tree/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/approaches/singleellipse) — aborted; not used.
+
+### Phase 2.5 files (fused pipeline — STABLE, this is the pre-LLM end-state)
+
+- [`cv/approaches/fused/`](https://github.com/krkruk/target-o-meter/tree/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/approaches/fused) — 5 files, 1544 LOC. Key files:
+  - `refine.py` — `refine_homography` with 5-layer orthogonality defense, inlined `make_residual_fn` (with iteredge's off-by-one and crop/warped-frame bugs fixed), `_sv_ratio` + `_corner_radius_ratio` geometric gates, `DEFAULT_SCHEDULE` (reg_perspective 10× iteredge).
+  - `pipeline.py` — `run_pipeline` orchestration + `_warped_ring_metrics` (computes warped-frame ring radii from multiring's detected rings under H_init) + `_elliptical_band_mask` (Canny-band filter for noise rejection) + `_mean_ring_eccentricity` (orthogonality detector).
+  - `adaptive_frame.py` — `adaptive_margin_factor` (GT-aware warp sizing, replaces the old `target_ring1_px`).
+  - `run.py` — argparse CLI.
 
 ### Existing files (do not modify; may import)
 
-- [`cv/blob_detect.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/blob_detect.py) — `to_gray`, `crop_to_target`, `calibrate`, `warp_fronto_parallel`, `score_holes`, `deliverable`. The "solved" classical stages.
-- [`cv/gt.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/gt.py) — `load_bgr` (EXIF-aware), `magenta_centers` (eval-only GT).
-- [`cv/eval_blob.py`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/cv/eval_blob.py) — method-agnostic eval harness.
+- [`cv/blob_detect.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/blob_detect.py) — `to_gray`, `crop_to_target`, `calibrate`, `warp_fronto_parallel`, `score_holes`, `deliverable`. The "solved" classical stages.
+- [`cv/gt.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/gt.py) — `load_bgr` (EXIF-aware), `magenta_centers` (eval-only GT).
+- [`cv/eval_blob.py`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/cv/eval_blob.py) — method-agnostic eval harness.
 
 ### Output directories
 
 - `resources/train/intermediate_llm/` — Phase 1 baseline (10 images × 8 files each = 80 files).
 - `resources/train/intermediate_multiring/` — Phase 2 multiring outputs (4 images × 9 files = 36 files).
 - `resources/train/intermediate_iteredge/` — Phase 2 iteredge outputs (4 images × 9 files = 36 files).
-- `resources/train/intermediate_fused/` — Phase 2.5 outputs (TBD; all 10 images).
+- `resources/train/intermediate_fused/` — **Phase 2.5 fused outputs, 4-image test set** (4 images × 14 files + JSON).
+- `resources/train/intermediate_fused_all10/` — **Phase 2.5 fused outputs, full 10-image set** (10 images × 14 files + JSON + `_summary.json`).
 
 ### Data assets
 
-- [`resources/train/{1,4,6,10,12,19,21,29,31,46}.jpg`](https://github.com/krkruk/target-o-meter/tree/899921e99532a95b1cebbe090bbfb09376b0f945/resources/train) — 10 base images (LLM input source).
-- [`resources/train/*_marked.jpg`](https://github.com/krkruk/target-o-meter/tree/899921e99532a95b1cebbe090bbfb09376b0f945/resources/train) — 10 magenta-marked GT (eval-only).
+- [`resources/train/{1,4,6,10,12,19,21,29,31,46}.jpg`](https://github.com/krkruk/target-o-meter/tree/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/resources/train) — 10 base images (LLM input source).
+- [`resources/train/*_marked.jpg`](https://github.com/krkruk/target-o-meter/tree/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/resources/train) — 10 magenta-marked GT (eval-only).
 - `resources/train/intermediate_blob/gt/*_gt.npy` — cached GT centers, shape `(N, 2)` source-px.
-- [`resources/paper_targets/metadata.yml`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/resources/paper_targets/metadata.yml) — score multisets for all 46 images.
+- [`resources/paper_targets/metadata.yml`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/resources/paper_targets/metadata.yml) — score multisets for all 46 images.
 
-## Phase 3 preview — LangChain implementation
+## Phase 3 preview — LangChain implementation (STILL TO BE IMPLEMENTED)
 
-Phase 3 begins after Phase 2.5 (fused algorithm) produces clean 1024×1024 outputs on all 10 train images. The LLM swap is then a single new module that plugs into the existing strategy seam.
+> **Phase 3 is the sole remaining work.** Pre-processing (localize → detect rings → H_init), differential refinement (refine_homography), normalization (adaptive warp sizing + 1024 fit), and visualization are DONE and STABLE on 10/10 train images. Phase 3 swaps one function call (`MockDetector` → `LangChainAIStudioDetector` / `LangChainOllamaDetector`) and tunes the prompt against the F1 / score-Jaccard gates.
 
 ### What to build in Phase 3
 
@@ -332,7 +541,7 @@ cv/langchain_detector/prompt.py          # Unified prompt builder (target_type p
 cv/langchain_detector/fallback.py        # AIStudio -> Ollama retry wrapper
 ```
 
-Update `cv/run_pipeline.py`'s `DETECTORS` dict to register the new strategies.
+Update `cv/approaches/fused/run.py`'s CLI to register the new strategies (currently hard-coded to `MockDetector`).
 
 ### Dependencies to add
 
@@ -371,7 +580,7 @@ Wrap in a top-level object (not bare `list[DetectedHole]`) — top-level objects
 
 Single prompt with `{target_type}` placeholder and conditional ISSF-rules block. The prompt MUST teach:
 - ISSF line-break rule: "a hit touching the higher-value ring line is awarded the higher value."
-- The fixed geometric frame: bullseye at (512, 512), 1-ring boundary at radius 500 px, ring step ≈ 55.5 px.
+- The geometric frame: **bullseye at (512, 512); ring 1 at radius ≈ 1024 / (2 × margin_factor) (varies per image — image 12 puts ring 1 at ~333, image 29 at ~394).** The prompt can either (a) read the actual `target_ring1_px` from the per-image metadata and inject it, or (b) describe the layout qualitatively ("ring 1 is the outermost printed ring, fully visible inside the frame"). Option (b) is more robust to the variable layout introduced in Phase 2.5.
 - What counts as a hole vs what doesn't (ring strokes, printed digits, paper folds, shadow — all NOT holes).
 - Caliber hint (when provided): expected hole radius in 1024-px units.
 - Negative guidance: do NOT report ring strokes as holes; do NOT report printed ring numbers as holes.
@@ -400,38 +609,67 @@ The fallback wrapper tries AI Studio first; on any exception, retries once; on s
 
 Run each image 3× and report mean ± std (LLM outputs are stochastic).
 
+### Open prompt-tuning questions for Phase 3
+
+These are the questions a Phase 3 session should open with (analogous to the 5-question interviews that drove Phase 2.5's tuning rounds):
+
+1. **Variable-layout handling**: should the prompt include the per-image `target_ring1_px` value numerically, or describe the frame qualitatively?
+2. **Few-shot examples**: which 2-3 images from `{6, 12}` to use, and should the few-shot GT be the magenta-centroid JSON or a hand-curated "ideal response"?
+3. **Confidence calibration**: how to map Gemma's `confidence` field to a meaningful probability (it's known to be miscalibrated on open VLMs).
+4. **Caliber-hint format**: pixels in 1024 frame, millimeters, or relative-to-ring-step?
+5. **Negative-guidance strength**: how many "do NOT report X" examples to include before the prompt becomes too long / confuses the model.
+
 ## Architecture decisions to preserve across all phases
 
 1. **Strategy + dependency inversion.** `HoleDetector` is the only seam. Swapping detectors never touches geometry.
 2. **Same `DetectionResult` schema across all detectors** (mock, LangChain-AIStudio, LangChain-Ollama, future DL).
-3. **Magenta GT is eval-only.** NEVER pass `_marked.jpg` to the LLM (would teach magenta-finding). Few-shot examples use `(base_image, JSON_of_centers)` only.
+3. **Magenta GT is eval-only.** NEVER pass `_marked.jpg` to the LLM (would teach magenta-finding). Few-shot examples use `(base_image, JSON_of_centers)` only. (Phase 2.5 uses magenta GT to SIZE THE FRAME — `<id>_marked.jpg` is read by `adaptive_frame.adaptive_margin_factor`, but only the hole-center coordinates are extracted; the magenta pixels are NEVER shown to the LLM.)
 4. **Classical scoring always computed in parallel** as a diagnostic, never authoritative (Q5: LLM scores are authoritative).
-5. **Open deps, create new files only.** `cv/blob_detect.py`, `cv/gt.py`, `cv/eval_blob.py` are stable. Add deps via `uv add`.
-6. **Inversion math must always round-trip.** Self-test `bullseye_invert_err_px < 0.01` is the regression gate.
-7. **Per-image outputs preserve the 9-file convention** (Phase 2+) including the `_02b_detect.png` diagnostic.
+5. **Open deps, create new files only.** `cv/blob_detect.py`, `cv/gt.py`, `cv/eval_blob.py`, `cv/approaches/multiring/*`, `cv/approaches/iteredge/*` are stable. Add deps via `uv add`.
+6. **Inversion math must always round-trip.** Self-test `bullseye_invert_err_px < 0.01` is the regression gate. Phase 2.5 achieves <1e-12 px on every image.
+7. **Per-image outputs preserve the 14-file convention** (Phase 2.5): 9 standard files + 4 per-stage intermediates + 1 horizontal strip + result.json.
+8. **Warp content is sacrosanct.** Normalization MUST NOT crop content from the warp (Phase 2.5 tuning-round-2 rule). The 1024 scale is `1024 / max(out_w, out_h)` — derived from warp extent, not chosen.
+9. **Layered orthogonality defense.** Any future change to `refine_homography` MUST preserve the 5-layer structure (skip / lock-affine / scale-bounds / SV-penalty / post-refinement gates). Tuning round 4 showed unconstrained affine drift causes visible elongation even when perspective is locked.
 
-## Risk register (additions)
+## Risk register
 
-| # | Risk | Source | Mitigation |
-|---|---|---|---|
-| 32 | Normalization crops out actual holes (image 21 root cause) | Phase 2 user feedback | Adaptive `target_ring1_px`: detect hole extent (via magenta GT in eval, via UI marking in production) and shrink ring-1 px to leave margin |
-| 33 | Normalization crops out the 1-ring boundary (image 12 root cause) | Phase 2 user feedback | Enforce `target_ring1_px ≤ 470` default; verify ring 1 visible in `_04_llm_input.png` |
-| 34 | Multiring's circular-points H is mathematically affine; cannot recover true projective tilt | Multiring agent's honest assessment | Phase 2.5: fuse with iteredge's 8-DOF optimizer to recover the projective terms |
-| 35 | Single-ellipse approach abandoned mid-experiment | Agent B aborted | Re-attempt only if multiring+iteredge fusion fails; single-ellipse is theoretically weaker regardless |
-| 36 | Ring-eccentricity after multiring warp can be 0.047 max (image 46) — not perfectly circular | Phase 2 multiring report | Iteredge refinement should drive this below 0.02 |
-| 37 | Localization may pick up printed logos in non-train images (image 29 generalized) | Phase 1 disaster | Multiring's black-disc-contrast scoring is the fix; verify on held-out images 32-46 in Phase 2.5 |
+| # | Risk | Source | Mitigation | Status |
+|---|---|---|---|---|
+| 32 | Normalization crops out actual holes (image 21 root cause) | Phase 2 user feedback | Phase 2.5 tuning round 2: eliminated `target_ring1_px`; normalization fits entire warp canvas into 1024 | **CLOSED** |
+| 33 | Normalization crops out the 1-ring boundary (image 12 root cause) | Phase 2 user feedback | Phase 2.5 tuning round 2: warp canvas sized via adaptive `margin_factor`; ring 1 always visible at radius ≈ 1024/(2×margin) | **CLOSED** |
+| 34 | Multiring's circular-points H is mathematically affine; cannot recover true projective tilt | Multiring agent's honest assessment | Phase 2.5 fused with iteredge's 8-DOF optimizer; perspective bound tightened; layered defense prevents overshoot | **CLOSED** |
+| 35 | Single-ellipse approach abandoned mid-experiment | Agent B aborted | Not re-attempted; multiring+iteredge fusion succeeds | **CLOSED** |
+| 36 | Ring-eccentricity after multiring warp can be 0.047 max (image 46) | Phase 2 multiring report | Phase 2.5: M2 anisotropy ≤ 1.033 across all 10 train images (was 1.389 before tuning round 4) | **CLOSED** |
+| 37 | Localization may pick up printed logos in non-train images (image 29 generalized) | Phase 1 disaster | Multiring's black-disc-contrast scoring is the fix; verified on all 10 train images including image 29 | **CLOSED** |
+| 38 | iteredge's `make_residual_fn` has residual-length off-by-one on degenerate-det path | Phase 2.5 implementation | Inlined corrected copy in `fused/refine.py`; iteredge source left unmodified per "create new files only" rule | **DOCUMENTED** |
+| 39 | iteredge's `cal["s_px"]` conflates crop-frame and warped-frame | Phase 2.5 implementation | `fused/refine_homography` accepts explicit `s_warped`, `r_bull_warped` parameters; cal dict stays crop-frame only | **DOCUMENTED** |
+| 40 | Perspective bound `±1e-2` too loose for multiring's far-from-origin bullseye | Phase 2.5 image-1 regression (tuning round 3) | Tightened to `±1e-4` default, `±1e-5` for orthogonal images (ecc < 1.05) | **CLOSED** |
+| 41 | Affine terms drift to high anisotropy under loose anchor regularization | Phase 2.5 image-1 regression (tuning round 4) | Layered defense: lock affine entirely when ecc < 1.10; SV-ratio penalty in residual; M2-aniso post-refinement gate at 1.10 | **CLOSED** |
+| 42 | Phase 3 prompt may not handle variable ring-1 layout | Phase 2.5 dropped fixed `ring1_px = 500` | Open prompt-tuning question for Phase 3 (see above) | **OPEN** |
+| 43 | Held-out images 32-46 may have eccentricity > 1.10 (triggering Layer 3 ecc-scaled bounds) | None of the 10 train images exercise Layer 3 | Verify when Phase 3 expands to held-out set; Layer 3 logic is in place but untested on real data | **OPEN** |
 
 ## Open questions
 
-1. **Should Phase 2.5's fused approach detect ALL 10 rings, or focus on the 3 the user specified (outer, black/white boundary, middle)?** The user's prescription mentions 3, but multiring detected 7-13. More rings = more constraints = better optimization, but also more failure modes. Default: detect as many as possible (≥3), use all in the optimization.
-2. **Should the iterative refinement optimize the full 8-DOF homography, or a constrained rotation+tilt (5 DOF)?** Iteredge chose 8-DOF with regularization. The user's prescription doesn't specify. Default: 8-DOF with regularization (matches iteredge's reasoning: phone-camera focal length unknown).
-3. **For image 21 specifically, what's the fallback when no magenta GT is available to size the frame?** In production, the user will UI-mark hole centers. In the spike, we have magenta GT. The pipeline should accept an optional `hole_centers_hint` parameter; when absent, fall back to a conservative `target_ring1_px = 420`.
-4. **When should Phase 2.5 expand to all 10 train images?** Per user: after the 4-image test passes the criteria. Specifically: image 12 must keep 1-ring visible; image 21 must keep all 5 holes visible.
-5. **Should Phase 3 (LangChain) wait for Phase 2.5 to fully converge, or run in parallel on Phase-2 outputs?** Per user's original plan: Phase 2.5 first, then Phase 3 in another LLM session. The LLM detector needs clean 1024×1024 inputs to do its best work.
+### Resolved by Phase 2.5
+
+1. ~~Should Phase 2.5's fused approach detect ALL 10 rings, or focus on the 3 the user specified?~~ **Resolved**: detect as many as multiring finds (7-13); use all in the optimization (Q2 of initial interview).
+2. ~~Should the iterative refinement optimize the full 8-DOF homography, or a constrained rotation+tilt (5 DOF)?~~ **Resolved**: 8-DOF (Q1 of initial interview); constrained via the 5-layer defense rather than reduced DOF.
+3. ~~For image 21 specifically, what's the fallback when no magenta GT is available to size the frame?~~ **Resolved**: `adaptive_margin_factor` returns default 1.30 when GT unavailable; user will UI-mark hole centers in production (Phase 4+).
+4. ~~When should Phase 2.5 expand to all 10 train images?~~ **Resolved**: complete — all 10 pass.
+5. ~~Should Phase 3 (LangChain) wait for Phase 2.5 to fully converge, or run in parallel on Phase-2 outputs?~~ **Resolved**: Phase 2.5 first; Phase 3 starts now.
+
+### Open for Phase 3
+
+1. **Variable-layout prompt handling** — embed per-image `target_ring1_px` numerically, or describe frame qualitatively? (Risk #42)
+2. **Few-shot selection** — which 2-3 images, and which GT format?
+3. **Confidence calibration** — how to map Gemma's `confidence` to a meaningful probability?
+4. **Caliber-hint format** — pixels, millimeters, or relative?
+5. **Negative-guidance strength** — how many "do NOT report X" examples before the prompt saturates?
+6. **Held-out validation** — when to expand from 10 train images to the 32-46 held-out range; expect Layer 3 (ecc-scaled bounds) to trigger on some (Risk #43).
 
 ## Related research
 
-- [`research.md`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/context/changes/cv-service-boundary/research.md) — iterations 1-8 (classical). Best score-Jaccard 0.255.
-- [`research-blob-detection.md`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/context/changes/cv-service-boundary/research-blob-detection.md) — iterations 9-10 (matched filter). Best F1 0.26.
-- [`research-llm-pivot.md`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/context/changes/cv-service-boundary/research-llm-pivot.md) — LLM-pivot proposal + 10-question interview answers. This document is the implementation-detail companion to that proposal.
-- [`frame.md`](https://github.com/krkruk/target-o-meter/blob/899921e99532a95b1cebbe090bbfb09376b0f945/context/changes/cv-service-boundary/frame.md) — `/10x-frame` artifact that redirected classical detection from luminance to texture.
+- [`research.md`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/context/changes/cv-service-boundary/research.md) — iterations 1-8 (classical). Best score-Jaccard 0.255.
+- [`research-blob-detection.md`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/context/changes/cv-service-boundary/research-blob-detection.md) — iterations 9-10 (matched filter). Best F1 0.26.
+- [`research-llm-pivot.md`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/context/changes/cv-service-boundary/research-llm-pivot.md) — LLM-pivot proposal + 10-question interview answers. This document is the implementation-detail companion to that proposal.
+- [`frame.md`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/context/changes/cv-service-boundary/frame.md) — `/10x-frame` artifact that redirected classical detection from luminance to texture.

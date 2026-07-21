@@ -471,6 +471,7 @@ def run_pipeline(
         perspective_bound=perspective_bound,
         edge_band_mask=band_mask,
         corner_gate_enable=True,
+        mean_ring_eccentricity=mean_ecc,
     )
     H_opt = opt["final_H"]
 
@@ -586,9 +587,13 @@ def run_pipeline(
             "is_orthogonal": bool(is_orthogonal),
             "perspective_bound": float(perspective_bound),
             "edge_band_mask_px": int(band_mask.sum()),
+            "defense_layer": opt.get("defense_layer"),
             "corner_ratio_init": opt.get("corner_ratio_init"),
             "corner_ratio_final": opt.get("corner_ratio_final"),
             "corner_ratio_gate": opt.get("corner_ratio_gate"),
+            "m2_aniso_init": opt.get("m2_aniso_init"),
+            "m2_aniso_final": opt.get("m2_aniso_final"),
+            "m2_aniso_gate": opt.get("m2_aniso_gate"),
         },
         "adaptive_frame": frame_info,
         "norm_meta": {
