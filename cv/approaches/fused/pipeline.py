@@ -23,7 +23,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from cv.approaches.fused.adaptive_frame import adaptive_target_ring1_px
+from cv.approaches.fused.adaptive_frame import adaptive_margin_factor
 from cv.approaches.fused.refine import refine_homography
 from cv.approaches.iteredge.edges import canny_edges
 from cv.approaches.iteredge.model import (
@@ -71,6 +71,54 @@ def _is_plausible_cal(s_px: float, r_bw_px: float, r_bull_px: float) -> bool:
     return True
 
 
+def _elliptical_band_mask(
+    crop_shape: tuple[int, int],
+    rings: list[dict],
+    band_factor: float = 0.3,
+) -> np.ndarray:
+    """Boolean mask: True where pixel is within ±band_factor·gmean-radius of
+    any detected ring's ellipse.
+
+    Used to filter Canny edges before computing DT for the differential
+    fitter — keeps only edges that lie on or near detected ring strokes,
+    rejecting digit edges, hole edges, and background clutter that
+    otherwise pull the optimizer off the true rings (overfitting root
+    cause on images 1 and 4).
+
+    The mask is computed in CROP frame (where multiring's rings live).
+    """
+    h, w = crop_shape
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    mask = np.zeros((h, w), dtype=bool)
+    for r in rings:
+        cx, cy = float(r["cx"]), float(r["cy"])
+        a = max(float(r["semi_a"]), 1.0)
+        b = max(float(r["semi_b"]), 1.0)
+        th = math.radians(r["angle_deg"])
+        cos_t, sin_t = math.cos(th), math.sin(th)
+        dx = xx - cx
+        dy = yy - cy
+        # Rotate into ellipse-axis frame
+        rx = cos_t * dx + sin_t * dy
+        ry = -sin_t * dx + cos_t * dy
+        # Effective elliptical radius: 1.0 on the ellipse, <1 inside, >1 outside
+        r_eff = np.sqrt((rx / a) ** 2 + (ry / b) ** 2)
+        mask |= np.abs(r_eff - 1.0) < band_factor
+    return mask
+
+
+def _mean_ring_eccentricity(rings: list[dict]) -> float:
+    """Mean semi_a / semi_b across detected rings. 1.0 = perfectly circular;
+    values near 1 indicate an orthogonal source (rings already circular in
+    crop frame). Used to detect orthogonal images and tighten perspective
+    bounds accordingly.
+    """
+    if not rings:
+        return 1.0
+    eccs = [float(r["semi_a"]) / max(float(r["semi_b"]), 1e-6) for r in rings]
+    return float(np.mean(eccs))
+
+
 def _warped_ring_metrics(rings: list[dict], H: np.ndarray) -> tuple[float, float, float, np.ndarray]:
     """Compute (s_warped, r_bull_warped, r_ring1_warped, center_warped) by
     transforming the detected rings through H and measuring their radii in
@@ -83,9 +131,13 @@ def _warped_ring_metrics(rings: list[dict], H: np.ndarray) -> tuple[float, float
     rings significantly — so we MUST compute warped values explicitly.
 
     Returns:
-        s_warped: median gap between consecutive warped ring radii.
-        r_bull_warped: smallest warped ring radius (≈ the 9-ring outer).
-        r_ring1_warped: largest warped ring radius (≈ the 1-ring outer).
+        s_warped: median gap between consecutive warped ring RMS radii.
+        r_bull_warped: smallest warped ring RMS radius (≈ the 9-ring outer).
+        r_ring1_warped: MAX sample-radius of the outermost ring under H
+            (NOT the RMS). For an elliptical ring 1, the far side from the
+            bullseye extends well beyond the RMS — using MAX here ensures
+            the frame sizing accounts for that far side so it doesn't get
+            clipped at the 1024 frame edge. Image 46 root cause.
         center_warped: 2-vec, where multiring's averaged ring center lands
             under H (the warped-frame bullseye).
     """
@@ -98,7 +150,8 @@ def _warped_ring_metrics(rings: list[dict], H: np.ndarray) -> tuple[float, float
         center_homog[2] = 1e-12
     center_warped = center_homog[:2] / center_homog[2]
 
-    warped_radii: list[float] = []
+    rms_radii: list[float] = []
+    max_radii: list[float] = []
     for r in rings:
         th = math.radians(r["angle_deg"])
         ca, sa = math.cos(th), math.sin(th)
@@ -113,15 +166,21 @@ def _warped_ring_metrics(rings: list[dict], H: np.ndarray) -> tuple[float, float
         mapped = mapped[:, :2] / mapped[:, 2:3]
         d = np.hypot(mapped[:, 0] - center_warped[0],
                      mapped[:, 1] - center_warped[1])
-        warped_radii.append(float(np.sqrt(np.mean(d * d))))
+        rms_radii.append(float(np.sqrt(np.mean(d * d))))
+        max_radii.append(float(np.max(d)))
 
-    warped_radii.sort()
-    r_bull_warped = warped_radii[0]
-    r_ring1_warped = warped_radii[-1]
-    if len(warped_radii) >= 2:
-        gaps = [warped_radii[i + 1] - warped_radii[i]
-                for i in range(len(warped_radii) - 1)
-                if warped_radii[i + 1] > warped_radii[i]]
+    # Order rings by RMS (robust to single-point outliers), then take the MAX
+    # sample-radius for the outermost ring as r_ring1_warped.
+    order = np.argsort(rms_radii)
+    rms_sorted = [rms_radii[i] for i in order]
+    max_sorted = [max_radii[i] for i in order]
+
+    r_bull_warped = rms_sorted[0]
+    r_ring1_warped = max_sorted[-1]  # MAX of outermost ring (frame-sizing)
+    if len(rms_sorted) >= 2:
+        gaps = [rms_sorted[i + 1] - rms_sorted[i]
+                for i in range(len(rms_sorted) - 1)
+                if rms_sorted[i + 1] > rms_sorted[i]]
         s_warped = float(np.median(gaps)) if gaps else r_ring1_warped / 9.0
     else:
         s_warped = r_ring1_warped / 9.0
@@ -356,6 +415,19 @@ def run_pipeline(
         _warped_ring_metrics(rings, H_init)
     )
 
+    # Detect orthogonality: low ring eccentricity → source was nearly
+    # frontal → multiring's affine H_init is already near-perfect → tighten
+    # perspective bounds 10× further to prevent the optimizer from inventing
+    # unnecessary perspective correction.
+    mean_ecc = _mean_ring_eccentricity(rings)
+    is_orthogonal = mean_ecc < 1.05
+    perspective_bound = 1e-5 if is_orthogonal else 1e-4
+
+    # Build the elliptical band mask for edge filtering. Only Canny edges
+    # near detected ring strokes will drive the optimizer — rejects digits,
+    # holes, background clutter that caused overfitting on images 1 and 4.
+    band_mask = _elliptical_band_mask(crop.shape, rings, band_factor=0.3)
+
     # cal carries CROP-frame s_px/r_bull for enhance_ring_edges's blur/falloff.
     cal = {
         "ok": True,
@@ -396,6 +468,9 @@ def run_pipeline(
         warped_out_center=(ocx_init, ocy_init),
         s_warped=s_warped_init, r_bull_warped=r_bull_warped_init,
         stage_callback=stage_callback,
+        perspective_bound=perspective_bound,
+        edge_band_mask=band_mask,
+        corner_gate_enable=True,
     )
     H_opt = opt["final_H"]
 
@@ -403,9 +478,21 @@ def run_pipeline(
     # Use the warped-derived r_ring1 (from actual detected rings) to size the
     # output frame, NOT the init's r_bull + 9*s — those are crop-frame and
     # would give a frame 3× too small (image 12 root cause).
-    r_ring1_warped = float(r_ring1_warped_init)
+    #
+    # Adaptive margin_factor: enlarge the warp canvas when GT holes extend
+    # beyond ring 1 (e.g. image 21 slugs at 1.31× ring 1) so the warp
+    # doesn't crop them. Default 1.30 is fine when holes are inside ring 1.
+    margin_factor, frame_info = adaptive_margin_factor(
+        bbox=bbox,
+        H_opt=H_opt,
+        cx_crop=cx_crop,
+        cy_crop=cy_crop,
+        r_ring1_warped=r_ring1_warped_init,
+        gt_marked_path=gt_marked_path,
+    )
     out_w, out_h, H_full = compute_output_shape(
-        H_opt, crop.shape, cx_crop, cy_crop, r_ring1_warped, margin_factor=1.30,
+        H_opt, crop.shape, cx_crop, cy_crop, r_ring1_warped_init,
+        margin_factor=margin_factor,
     )
     warped = apply_warp(crop, H_full, (out_w, out_h))
     bullseye_warped = (out_w / 2.0, out_h / 2.0)
@@ -415,22 +502,21 @@ def run_pipeline(
         cv2.imwrite(str(out_path / f"{stem}_03_warp.png"),
                     _draw_ring_overlay_warped(warped, bullseye_warped, s_warped))
 
-    # ---- Stage 6: adaptive target_ring1_px ----
-    target_ring1_px, frame_info = adaptive_target_ring1_px(
-        bbox=bbox,
-        H_full=H_full,
-        bullseye_warped=bullseye_warped,
-        r_ring1_warped=r_ring1_warped,
-        gt_marked_path=gt_marked_path,
-    )
+    # ---- Stage 6: normalize to 1024 — fit the ENTIRE warp canvas, no content cropping ----
+    # scale is set so the whole warp canvas (out_w × out_h) fits inside 1024²
+    # with bullseye centered. This GUARANTEES that whatever is visible in
+    # _03_warp.png is also visible in _04_llm_input.png — the previous
+    # regression was choosing target_ring1_px and cropping content that
+    # fell outside it.
+    scale_for_1024 = 1024.0 / max(out_w, out_h)
+    target_ring1_px = float(r_ring1_warped_init) * scale_for_1024
 
-    # ---- Stage 7: normalize to 1024 ----
     image_1024, meta = normalize_to_1024(
         warped=warped,
         H_full=H_full,
         bullseye_warped=bullseye_warped,
         bbox=bbox,
-        r_ring1_warped=r_ring1_warped,
+        r_ring1_warped=r_ring1_warped_init,
         cx_crop=cx_crop, cy_crop=cy_crop,
         target_ring1_px=target_ring1_px,
     )
@@ -484,6 +570,7 @@ def run_pipeline(
         "refinement": {
             "parameterization": "homography_8dof",
             "final_cost": float(opt["final_cost"]),
+            "final_H": [[float(x) for x in row] for row in opt["final_H"]],
             "n_iterations": int(opt["n_iterations"]),
             "converged": bool(opt["converged"]),
             "n_stages": len(opt["stages"]),
@@ -492,8 +579,16 @@ def run_pipeline(
                 for s in opt["stages"]
             ],
             "reverted_to_init": bool(opt.get("reverted_to_init", False)),
+            "revert_reason": opt.get("revert_reason"),
             "init_data_score": float(opt.get("init_data_score", float("nan"))),
             "opt_data_score": float(opt.get("opt_data_score", float("nan"))),
+            "mean_ring_eccentricity": float(mean_ecc),
+            "is_orthogonal": bool(is_orthogonal),
+            "perspective_bound": float(perspective_bound),
+            "edge_band_mask_px": int(band_mask.sum()),
+            "corner_ratio_init": opt.get("corner_ratio_init"),
+            "corner_ratio_final": opt.get("corner_ratio_final"),
+            "corner_ratio_gate": opt.get("corner_ratio_gate"),
         },
         "adaptive_frame": frame_info,
         "norm_meta": {

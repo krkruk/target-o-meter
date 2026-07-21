@@ -50,7 +50,7 @@ def main() -> None:
     print(f"approach=fused  detector={detector.name}  target_type={args.target_type}  out={out_dir}")
     print(f"{'img':>5} {'ok':>3} {'s':>6} {'r_bw':>6} {'r_bl':>6} "
           f"{'nit':>4} {'cost':>9} {'revert':>6} "
-          f"{'ring1px':>8} {'invErr':>9}")
+          f"{'margin':>7} {'r1@1024':>8} {'hole@1024':>10} {'invErr':>9}")
 
     summary = []
     for img_id in args.ids:
@@ -70,9 +70,17 @@ def main() -> None:
             cal = r.get("calibration", {})
             opt = r.get("refinement", {})
             af = r.get("adaptive_frame", {})
+            nm = r.get("norm_meta", {})
             st = r.get("self_test", {})
             ok_flag = "Y" if r.get("ok") else "N"
             revert = "Y" if opt.get("reverted_to_init") else "N"
+            margin = af.get("margin_factor_chosen", 0)
+            r_ring1_warped = nm.get("r_ring1_warped", 0)
+            ring1_px_used = nm.get("target_ring1_px", 0)
+            max_hole_r = af.get("max_hole_r_warped", 0) or 0
+            scale = ring1_px_used / r_ring1_warped if r_ring1_warped else 0
+            ring1_at = r_ring1_warped * scale
+            hole_at = max_hole_r * scale if max_hole_r else 0
             print(
                 f"{img_id:>5} {ok_flag:>3} "
                 f"{cal.get('s_px', 0):>6.1f} "
@@ -81,7 +89,9 @@ def main() -> None:
                 f"{opt.get('n_iterations', 0):>4} "
                 f"{opt.get('final_cost', 0) or float('nan'):>9.2e} "
                 f"{revert:>6} "
-                f"{af.get('chosen', 0):>8.1f} "
+                f"{margin:>7.2f} "
+                f"{ring1_at:>8.0f} "
+                f"{hole_at:>10.0f} "
                 f"{st.get('bullseye_invert_err_px', 0):>9.2e}"
             )
             summary.append({"id": img_id, "ok": bool(r.get("ok")), "result": r})
