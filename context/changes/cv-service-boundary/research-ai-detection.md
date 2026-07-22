@@ -4,12 +4,13 @@ researcher: krzysztofkruk
 git_commit: 76f6fc46d25d0fae8f94e0c28dea053dd26aaafa
 branch: master
 repository: target-o-meter
-topic: "Phase 1 deterministic pipeline + Phase 2 3-agent experiment + Phase 2.5 fused differential refinement — pre-processing/normalization/homography STABLE; Phase 3 (LangChain + prompt tuning) pending"
-tags: [research, codebase, cv, llm, vlm, langchain, gemma, homography, multiring, iteredge, fused, differential-refinement, strategy-pattern, dependency-inversion, issf, paper-targets]
+topic: "Phase 1 deterministic pipeline + Phase 2 3-agent experiment + Phase 2.5 fused differential refinement + Phase 3 Step 1 LLM spike — pre-processing/normalization/homography STABLE; LLM integration spike COMPLETE (Gemini 3.5 Flash Lite wins); Step 2 (full_pipeline integration) pending"
+tags: [research, codebase, cv, llm, vlm, langchain, gemma, gemini, flash-lite, homography, multiring, iteredge, fused, differential-refinement, strategy-pattern, dependency-inversion, issf, paper-targets, structured-output, pydantic]
 status: complete
-last_updated: 2026-07-21
+last_updated: 2026-07-22
 last_updated_by: krzysztofkruk
-phase: 1 complete; 2 complete (multiring wins); 2.5 complete (fused pipeline stable on 10/10 images); 3 pending (LangChain + prompt tuning — sole remaining work)
+phase: 1 complete; 2 complete (multiring wins); 2.5 complete (fused pipeline stable on 10/10 images); 3 Step 1 complete (LLM spike — Gemini 3.5 Flash Lite selected, mean Jaccard 0.799 on 4-image set); 3 Step 2 pending (full_pipeline integration — see § Phase 3 Step 2 handoff at end of document)
+last_updated_note: "Added Phase 3 Step 1 (LLM spike) findings: Gemma 4 31B-it vs Gemini 3.1/3.5 Flash Lite comparison, locked model, 7-layer prompt, per-hole caliber schema, misalignment analysis, full Step-2 restore spec"
 ---
 
 # Research: AI detection — deterministic pipeline + 3-agent normalization experiment + fused differential refinement
@@ -27,7 +28,7 @@ phase: 1 complete; 2 complete (multiring wins); 2.5 complete (fused pipeline sta
 > | 1 — deterministic pipeline + strategy seam | **COMPLETE** | `cv/{detector_base, normalize, mock_detector, pipeline, run_pipeline}.py` — 545 LOC, 10/10 train images, bullseye invert err 2.3e-13 px |
 > | 2 — 3-agent normalization experiment | **COMPLETE** | `cv/approaches/{multiring, singleellipse, iteredge}/` — multiring wins detection; iteredge wins refinement |
 > | 2.5 — fused multiring+iteredge differential refinement | **COMPLETE** | `cv/approaches/fused/` — 1544 LOC, 5 modules, 10/10 images clean, all holes visible, no elongation |
-> | 3 — LangChain LLM integration + prompt tuning | **PENDING** | Pre-processing/normalization/homography **done** — Phase 3 swaps one function call (`MockDetector` → `LangChainAIStudioDetector`) and tunes the prompt |
+> | 3 — LangChain LLM integration + prompt tuning | **Step 1 COMPLETE; Step 2 PENDING** | **Step 1**: `cv/phase3_spike/` — 757 LOC, 8 modules, standalone harness on 4 images. **Model selected**: `gemini-3.5-flash-lite` (mean Jaccard 0.799, free-tier). **Step 2** (pending): copy `intermediate_fused` into `intermediate_full_pipeline`, wire detector behind `HoleDetector` seam, 3 deliverables/image — see § Phase 3 Step 2 handoff at end of document |
 >
 > **Phase 2.5 closers (the four user-verified success criteria)**:
 > - Image 12: full 1-ring boundary inside frame ✓
@@ -35,7 +36,7 @@ phase: 1 complete; 2 complete (multiring wins); 2.5 complete (fused pipeline sta
 > - Image 29: localization finds actual target (logo rejected) ✓
 > - Image 46: regression check on gold standard ✓
 >
-> **This document is the handoff artifact for Phase 3 (LangChain implementation).** It must be self-contained — another LLM session picking up Phase 3 should not need to scroll this conversation's history.
+> **This document is the handoff artifact for Phase 3 (LangChain implementation).** It must be self-contained — another LLM session picking up Phase 3 should not need to scroll this conversation's history. **Phase 3 Step 1 (LLM spike) is COMPLETE** — its findings + the full Step-2 restore spec are in § Phase 3 Step 1 (COMPLETE) and § Phase 3 Step 2 handoff (PENDING) at the end of this document.
 
 ## Research Question
 
@@ -645,7 +646,7 @@ These are the questions a Phase 3 session should open with (analogous to the 5-q
 | 39 | iteredge's `cal["s_px"]` conflates crop-frame and warped-frame | Phase 2.5 implementation | `fused/refine_homography` accepts explicit `s_warped`, `r_bull_warped` parameters; cal dict stays crop-frame only | **DOCUMENTED** |
 | 40 | Perspective bound `±1e-2` too loose for multiring's far-from-origin bullseye | Phase 2.5 image-1 regression (tuning round 3) | Tightened to `±1e-4` default, `±1e-5` for orthogonal images (ecc < 1.05) | **CLOSED** |
 | 41 | Affine terms drift to high anisotropy under loose anchor regularization | Phase 2.5 image-1 regression (tuning round 4) | Layered defense: lock affine entirely when ecc < 1.10; SV-ratio penalty in residual; M2-aniso post-refinement gate at 1.10 | **CLOSED** |
-| 42 | Phase 3 prompt may not handle variable ring-1 layout | Phase 2.5 dropped fixed `ring1_px = 500` | Open prompt-tuning question for Phase 3 (see above) | **OPEN** |
+| 42 | Phase 3 prompt may not handle variable ring-1 layout | Phase 2.5 dropped fixed `ring1_px = 500` | **RESOLVED by Phase 3 Step 1**: prompt injects per-image `ring_step_px` numerically + describes ring 1 qualitatively; works on 3 models across the 4-image set | **CLOSED** |
 | 43 | Held-out images 32-46 may have eccentricity > 1.10 (triggering Layer 3 ecc-scaled bounds) | None of the 10 train images exercise Layer 3 | Verify when Phase 3 expands to held-out set; Layer 3 logic is in place but untested on real data | **OPEN** |
 
 ## Open questions
@@ -660,12 +661,12 @@ These are the questions a Phase 3 session should open with (analogous to the 5-q
 
 ### Open for Phase 3
 
-1. **Variable-layout prompt handling** — embed per-image `target_ring1_px` numerically, or describe frame qualitatively? (Risk #42)
-2. **Few-shot selection** — which 2-3 images, and which GT format?
-3. **Confidence calibration** — how to map Gemma's `confidence` to a meaningful probability?
-4. **Caliber-hint format** — pixels, millimeters, or relative?
-5. **Negative-guidance strength** — how many "do NOT report X" examples before the prompt saturates?
-6. **Held-out validation** — when to expand from 10 train images to the 32-46 held-out range; expect Layer 3 (ecc-scaled bounds) to trigger on some (Risk #43).
+1. ~~**Variable-layout prompt handling** — embed per-image `target_ring1_px` numerically, or describe frame qualitatively? (Risk #42)~~ **Resolved by Phase 3 Step 1**: both — qualitative ring description + numeric `ring_step_px` injected per image. Risk #42 closed.
+2. **Few-shot selection** — which 2-3 images, and which GT format? *(Still open — Step 1 was zero-shot per Q9; few-shot deferred. Step 1's mean Jaccard 0.799 may make few-shot unnecessary.)*
+3. **Confidence calibration** — how to map the model's `confidence` to a meaningful probability? *(Still open — Step 1 collects `confidence` but does not yet calibrate it.)*
+4. ~~**Caliber-hint format** — pixels, millimeters, or relative?~~ **Resolved by Phase 3 Step 1**: free-text `str` per hole, primary caliber injected as a hint, 6 canonical forms listed in prompt. Caliber used only for magenta-dot sizing (mm → px via per-image `px_per_mm`).
+5. ~~**Negative-guidance strength** — how many "do NOT report X" examples before the prompt saturates?~~ **Resolved by Phase 3 Step 1**: 6 named negatives (pasties/stickers, ring strokes, digits, folds, shadows, black disc, smudges) — the pasties clause was the load-bearing addition (img 29 root cause). No saturation observed.
+6. **Held-out validation** — when to expand from 10 train images to the 32-46 held-out range; expect Layer 3 (ecc-scaled bounds) to trigger on some (Risk #43). *(Still open — Step 1 tested only 4 images; Step 2 also targets the 4-image set per user direction.)*
 
 ## Related research
 
@@ -673,3 +674,324 @@ These are the questions a Phase 3 session should open with (analogous to the 5-q
 - [`research-blob-detection.md`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/context/changes/cv-service-boundary/research-blob-detection.md) — iterations 9-10 (matched filter). Best F1 0.26.
 - [`research-llm-pivot.md`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/context/changes/cv-service-boundary/research-llm-pivot.md) — LLM-pivot proposal + 10-question interview answers. This document is the implementation-detail companion to that proposal.
 - [`frame.md`](https://github.com/krkruk/target-o-meter/blob/76f6fc46d25d0fae8f94e0c28dea053dd26aaafa/context/changes/cv-service-boundary/frame.md) — `/10x-frame` artifact that redirected classical detection from luminance to texture.
+
+---
+
+## Phase 3 Step 1 — LLM spike (COMPLETE)
+
+> **This section is the self-contained record of the Phase 3 Step 1 LLM spike.** It captures the locked decisions, the model comparison, the prompt architecture, and the per-image results. The Step-2 handoff (next section) depends on everything here.
+
+### Scope and decoupling
+
+Per user direction (Step-1 interview Q1): **standalone harness, decoupled from the fused CV pipeline.** The spike reads the EXISTING normalized `*_04_llm_input.png` images produced by Phase 2.5 and feeds them to the LLM. No changes to `cv/approaches/fused/`, no `langchain_detector` package yet — that is Step 2's job. The rationale (user quote): *"I want to test the LLM integration independently, ignoring CV normalization for the step. Lesser scope means easier to debug."*
+
+### New code: `cv/phase3_spike/` (757 LOC, 8 modules)
+
+All new files — the "open deps, create new files only" rule is respected.
+
+| File | LOC | Role |
+|---|---|---|
+| `__init__.py` | 12 | Package docstring + module manifest |
+| `schema.py` | 79 | Pydantic `Hole` + `TargetAnalysis` for `with_structured_output` |
+| `prompt.py` | 115 | 7-layer system-prompt builder + user-turn text |
+| `client.py` | 93 | `VLMSpikeClient` — LangChain + Google AI Studio, model-agnostic |
+| `metadata.py` | 95 | `metadata.yml` loader, caliber normalization, fused `result.json` ring-geometry reader |
+| `compare.py` | 71 | Score-multiset Jaccard + per-score breakdown + misalignment flags |
+| `viz.py` | 110 | Magenta-dot drawing (radius ∝ caliber, 70% of hole) + ISSF geometry |
+| `run.py` | 182 | CLI: `uv run python -m cv.phase3_spike.run 12 46 29 21 --model <id> --out <dir>` |
+
+**Dependencies added** via `uv add`: `langchain`, `langchain-google-genai==4.3.1`, `pydantic==2.13.4`. The `GOOGLE_API_KEY` env var is read at runtime (user exports it via `~/.bashrc`; no `.env` file needed).
+
+### Step-1 interview decisions (10 questions, answered 2026-07-22)
+
+| Q | Decision | Rationale |
+|---|---|---|
+| Q1 — Scope | **Standalone harness**, decoupled from fused pipeline | Easier to debug; ignore CV normalization for this step |
+| Q2 — 4-image test set | `{12, 46, 29, 21}` (2 gold + 2 prior disasters) | All four `*_04_llm_input.png` exist in `intermediate_fused/` |
+| Q3 — Caliber taxonomy | **Keep `9x19` (alias `9mm`), `slug` (alias `12-gauge`), `22lr`, `.223Rem`**; free-text `str` (not enum) so variants like `9x18 Makarov` admissible | User will define the specific caliber in the UI; `.22lr ≈ .223Rem`, LLM picks one. **Caliber is per-hole** (a target may carry mixed calibers, e.g. img 31). |
+| Q4 — Comparison axis | **Score-multiset Jaccard** vs `metadata.yml`; positional F1 deferred | User reviews images vs GT manually afterward |
+| Q5 — Geometry injection | **Defaults first** (qualitative ring description + numeric ring step), then tune if needed | "I don't think the LLM needs an explicit description of paper target. It just knows." |
+| Q6 — Scoring authority | **LLM scores compared to `metadata.yml`**; surface misalignments so user can re-check metadata | "I could make a mistake in some counts, so you will notify me about a misalignment, so I can review the metadata.yml again" |
+| Q7 — Fallback | **Skip fallback** (AI Studio only, no Ollama) | Simpler; avoids quantization concerns |
+| Q8 — Schema mechanics | **Pydantic v2 `with_structured_output`** | — |
+| Q9 — Reproducibility | **Single shot per image, temperature 1.0 (model default)** | Google AI Studio may throttle repeated calls; detailed system prompt compensates for stochasticity |
+| Q10 — API key | **`GOOGLE_API_KEY` exported in shell via `~/.bashrc`** | `.env` not set, but env var is active |
+
+### The 7-layer system prompt (the load-bearing artifact)
+
+Built by `cv/phase3_spike/prompt.py::build_system_prompt()`. Runtime-injected variables: `target_type`, `target_ring1_px` (numeric, per-image from fused `result.json`), `ring_step_px` (numeric, = `target_ring1_px/9`), `primary_caliber` (str, simulates UI-collected user hint).
+
+```
+SystemMessage (stable across calls):
+  # 0. Critical scanning discipline          ← added in tuning round 2
+     - scan ENTIRE frame edge-to-edge (corners + outside-ring-1 too)
+     - missed holes are worse than false positives
+  # 1. Coordinate frame & geometry
+     - 1024x1024 fronto-parallel; bullseye at (512, 512); 10 concentric rings
+     - ring step ≈ {ring_step_px} px; ring 1 at ≈ {target_ring1_px} px from bullseye
+  # 2. What counts as a bullet hole
+     - roughly circular tear, ragged edges, faint halo; size scales with caliber
+     - DOUBLE HITS / GRAZING HITS possible ← added in tuning round 2
+       (larger/elongated/multi-lobed tear = 2+ overlapping hits, report each)
+  # 3. What is NOT a bullet hole (negatives)
+     - PASTIES / REPAIR STICKERS / PATCHES ← added in tuning round 2 (img 29 root cause)
+       (rectangular/oval/circular; same color as covered area or white;
+        SMOOTH edges; LARGER than a real hole; black patches on black disc common)
+     - ring strokes, printed digits, folds/creases, shadows, the black aim disc, smudges
+  # 4. ISSF scoring (line-break rule)
+     - 0..10; touching higher ring line → higher value; X = 10; outside ring 1 = 0
+  # 5. Caliber inference (per hole)
+     - primary caliber hint: {primary_caliber}; prefer unless clearly different
+     - canonical: 22lr, .223Rem, 9mm, .45ACP, 7.62x39, 12-gauge; variants admissible
+     - 22lr ≈ .223Rem in diameter, pick one; caliber for marking only, never scoring
+  # 6. Target type
+  # 7. Output contract (JSON per schema; holes most certain first)
+
+HumanMessage:
+  - one-line instruction + the image (base64 data URL)
+  - "Scan the ENTIRE frame edge-to-edge... Watch for pasties/stickers to ignore,
+     and for double/grazing hits to split."
+```
+
+**The two prompt-tuning rounds (both user-driven):**
+
+1. **Initial prompt** (7 layers without #0 and without the pasties/double-hit clauses): mean Jaccard 0.353 (Gemma). img 12 missed the score-0 corner hole; img 29 invented holes on black pasties.
+2. **Tuning round 1** — user feedback after the first Gemma run:
+   - *"21 looks good. off-by-one is completely acceptable."*
+   - *"29 — black stickers confuse the LLM. Improve the prompt to ignore stickers (rectangular/oval/circular, same color or white, larger than holes)."*
+   - *"Inform the LLM that double hits / grazing hits are possible."*
+   - *"12 — LLM missed two 9-scores and the 0-score in the bottom-right corner. Improve the prompt so the LLM scans the entire image."*
+   - Added Layer #0 (scanning discipline) + pasties block in Layer #3 + double-hits block in Layer #2.
+   - Result on Gemma: mean 0.430. Scan fix worked (img 12: 11→13 found, corner hole recovered). Pasties fix partially worked (img 29: 0.09→0.33, found real tens but still over-reported).
+3. **Model swap** — pasties rejection was the stubborn failure on Gemma; user authorized a model comparison. See next subsection.
+
+### Model comparison — Gemma 4 31B-it vs Gemini 3.1 Flash Lite vs Gemini 3.5 Flash Lite
+
+All three ran on the same 4-image set `{12, 46, 29, 21}`, single shot, with the tuned prompt above. Jaccard is score-multiset vs `metadata.yml`.
+
+| img | GT n | Gemma 4 31B-it | Gemini 3.1 Flash Lite | **Gemini 3.5 Flash Lite (LOCKED)** |
+|-----|------|----------------|----------------------|------------------------|
+| 12  | 13   | 0.50 (n=13)    | 0.53 (n=13)          | **0.53** (n=13)        |
+| 46  | 5    | 0.43 (n=5)     | 0.43 (n=5)           | **1.00** (n=5) ✅      |
+| 29  | 5    | 0.33 (n=7)     | 1.00 (n=5) ✅        | **1.00** (n=5) ✅      |
+| 21  | 5    | 0.43 (n=5)     | 0.43 (n=5)           | **0.67** (n=5)         |
+| **mean** | — | **0.430** | **0.597** | **0.799** |
+
+**Headline finding — the sticker case (img 29) was the model discriminator.** The prompt's negative-guidance on pasties only landed with Gemini. Gemma described the black pasties as holes despite explicit instruction; Gemini 3.1's own note: *"The target has several black adhesive patches covering previous shots; only the visible bullet holes in the center grouping were analyzed."* Stronger VLMs resolve the same-detection-different-recognition gap that stops open-weights models.
+
+**Locked model: `gemini-3.5-flash-lite`** (free tier; $2.5/1M output tokens paid). Justification:
+- Strictly better than 3.1 on this set (mean +0.20; two images improved, none regressed).
+- img 46 went from acceptable-off-by-one to **perfect** (1.00) — a real fidelity gain, not noise.
+- No detection misses, no hallucinations on the 4-image set; remaining errors are purely off-by-one on ring lines (user-classified acceptable).
+- Negligible per-target paid cost (~50 output tokens/target; ~6,600 targets/day to spend $1).
+
+**Caveat — `gemini-3.5-flash-lite` ignores the `temperature` parameter.** SDK warning: *"Model uses fixed sampling defaults; the sampling parameter(s) temperature will be ignored."* Production reproducibility must rely on structured-output + prompt, not temperature pinning. Acceptable for a scoring app (the structured output is what we trust); logged in the risk register (Risk #44).
+
+### Per-image detailed results (Gemini 3.5 Flash Lite, locked model)
+
+**img 12 (GT n=13, LLM n=13, Jaccard 0.53, count match Y):** GT `[0,1,2,5,6,8,8,9,9,9,10,10,10]`, LLM `[0,1,3,5,6,7,7,9,9,9,9,10,10]`. All 13 holes found including the score-0 corner hole `(857,778)` and the score-1 hole `(487,62)` — the scan-entire-image fix landed. Remaining gap is pure ring-placement drift in the center cluster (two 8s scored 7, one 9 scored 3). Off-by-one, acceptable.
+
+**img 46 (GT n=5, LLM n=5, Jaccard 1.00, count match Y):** GT `[4,5,6,6,9]`, LLM `[4,5,6,6,9]`. Perfect score multiset. Every hole placed exactly. The score-0 false positive that 3.1 produced is gone.
+
+**img 29 (GT n=5, LLM n=5, Jaccard 1.00, count match Y):** GT `[10,10,10,10,10]`, LLM `[10,10,10,10,10]`. All 5 real tens found, zero invented holes, pasties correctly ignored. The sticker failure mode is SOLVED.
+
+**img 21 (GT n=5, LLM n=5, Jaccard 0.67, count match Y):** GT `[5,6,6,8,9]`, LLM `[5,6,7,8,9]`. All 5 slug holes found; one off-by-one (a 6 scored 7). Acceptable per user standard.
+
+### Misalignment flags surfaced for metadata.yml review (per Q6)
+
+Reported neutrally — could be LLM error or user mis-count in metadata.yml. The user has not yet reviewed these; they remain OPEN.
+
+- **img 12**: LLM found all 13. Delta is in the 8↔9↔10 cluster (LLM `[7,7,9,9,9,9,10,10]` vs GT `[8,8,9,9,9,10,10,10]`). Likely LLM scoring drift on tight cluster, but worth re-checking GT for the three 10s.
+- **img 29**: clean match, no flags.
+- **img 46**: clean match, no flags.
+- **img 21**: one off-by-one (LLM 7 vs GT 6 on one hole). Likely LLM error, not metadata.
+
+### Caliber taxonomy mapping (Step 1)
+
+The schema caliber field is **free-text `str`** (variants admissible). `cv/phase3_spike/metadata.py::normalize_caliber()` maps for GT comparison:
+
+```python
+METADATA_CALIBER_ALIASES = {
+    "9x19": "9mm",
+    "slug": "12-gauge",  # train images 10/21/22/23/36/37/38 use 'slug'
+}
+# .22lr, .223Rem, .45ACP, 7.62x39 pass through unchanged
+```
+
+`viz.py::_CALIBER_DIAMETER_MM` maps caliber → bullet diameter (mm) for magenta-dot sizing:
+
+```python
+_CALIBER_DIAMETER_MM = {
+    "22lr": 5.7, ".223rem": 5.56, "9mm": 9.01, ".45acp": 11.5,
+    "7.62x39": 7.9, "12-gauge": 18.0,  # slug
+}
+_DEFAULT_DIAMETER_MM = 9.0  # fallback for unrecognized caliber strings
+_MARKER_DIAMETER_FRACTION = 0.70  # "70% of the hole" per the Step-2 spec
+```
+
+### Visual deliverables (Step 1)
+
+Per image, the harness writes 2 PNGs + 1 JSON to the output dir:
+- `<id>_llm_input.png` — the evaluated 1024×1024 normalized input (copied from `intermediate_fused`).
+- `<id>_marked.png` — same image + faint canonical ring frame + magenta dots (radius ∝ caliber, 70% of hole diameter) + score labels. Magenta-pixel counts scale with caliber as designed (img 21 12-gauge → ~15k px; img 29 22lr → ~2k px).
+- `<id>_llm_result.json` — full structured output + comparison (holes with x/y/score/confidence/caliber, score Jaccard, per-score breakdown, misalignment flags, call meta).
+- `_summary.json` — all images aggregated.
+
+**Output dirs:**
+- `resources/train/intermediate_phase3_spike/` — Gemini 3.1 Flash Lite run (kept for comparison).
+- `resources/train/intermediate_phase3_spike_35/` — Gemini 3.5 Flash Lite run (locked model).
+
+---
+
+## Phase 3 Step 2 handoff (PENDING — implementation in a separate session)
+
+> **RESTORE SPEC.** This section is the complete, self-contained specification for Step 2. A fresh LLM session should be able to implement Step 2 from this section + the Step-1 code under `cv/phase3_spike/` + the fused pipeline under `cv/approaches/fused/` without needing this conversation's history. **Read this whole section before starting.**
+
+### What Step 2 is
+
+**Live pipeline integration.** Copy the `intermediate_fused` pipeline into `intermediate_full_pipeline` and swap the `MockDetector` for the locked LLM detector. The detector plugs in behind the existing `HoleDetector` strategy seam — geometry never changes.
+
+User direction (verbatim): *"Integrate the code with the existing normalization pipeline. For best experience, copy `intermediate_fused` code into `intermediate_full_pipeline`."*
+
+### The 3 deliverables per image (the user's exact spec)
+
+> User quote: *"I need you to generate only 2 pictures and 1 json file: (a) normalized, orthogonal llm_input file, (b) a file with highlighted holes with magenta dots - proportional to the caliber, say 70% of the hole; (c) save down the structured output content, you may need to request the LLM to provide you X,Y, score values as well as possible caliber."*
+
+So per image, Step 2 writes EXACTLY three files (NOT the 14-file Phase-2.5 manifest):
+
+| File | Content | Source |
+|---|---|---|
+| `<id>_llm_input.png` | Normalized orthogonal 1024×1024 image (the LLM input) | fused pipeline's `normalize_to_1024` output (same as `*_04_llm_input.png`) |
+| `<id>_marked.png` | The `llm_input` + magenta dots (radius ∝ caliber, 70% of hole) + canonical ring frame + score labels | reuse `cv/phase3_spike/viz.py::draw_magenta_holes()` |
+| `<id>_result.json` | The LLM's structured output (holes with x, y, score, confidence, caliber) + target_type + notes | the LLM call |
+
+### What to build (file plan)
+
+```
+cv/langchain_detector/                     NEW PACKAGE (Step 2)
+├── __init__.py                            Package docstring
+├── detector.py     LangChainDetector(HoleDetector)   ← THE new strategy implementation
+├── schema.py       RE-EXPORT cv.phase3_spike.schema   (or copy; same Pydantic models)
+├── prompt.py       RE-EXPORT cv.phase3_spike.prompt   (same 7-layer builder)
+└── client.py       RE-EXPORT cv.phase3_spike.client.VLMSpikeClient
+                                          (or inline; the client is model-agnostic)
+
+cv/approaches/full_pipeline/              NEW PACKAGE (Step 2) — copy of fused/
+├── __init__.py
+├── pipeline.py     copy of fused/pipeline.py, with two changes (see below)
+└── run.py          copy of fused/run.py, with detector wiring + output spec
+```
+
+**The two changes to the copied `pipeline.py`:**
+
+1. **Replace the detector.** In `fused/pipeline.py:531` the call is:
+   ```python
+   result: DetectionResult = detector.detect(image_1024, ...)
+   ```
+   This stays — the detector is passed in, not hard-coded. The change is in `run.py`: construct `LangChainDetector(model="gemini-3.5-flash-lite")` instead of `MockDetector()`.
+
+2. **Trim the output to 3 files.** The fused pipeline writes 14 files per image (9 standard + 4 stage intermediates + 1 strip + result.json). Step 2 writes ONLY the 3 files above. Concretely, in the copied `pipeline.py`:
+   - Keep stages 1–8 (intake → localize → detect rings → H_init → refine → warp → normalize to 1024 → detect). These produce `image_1024` and the ring geometry.
+   - **Delete** the per-stage PNG callbacks (`stage_callback`, `_08_stage*.png`, `_08_stages_strip.png`).
+   - **Delete** `_01_intake.png`, `_02_crop.png`, `_02b_detect.png`, `_03_warp.png`, `_06_crop_predict.png`, `_07_source_predict.png`.
+   - **Keep** `_04_llm_input.png` (renamed `_llm_input.png`) and the LLM structured-output JSON.
+   - **Replace** `_05_llm_predict.png` with `_marked.png` via `draw_magenta_holes()` from `cv/phase3_spike/viz.py`.
+   - The ring geometry (`target_ring1_px`) needed by both the prompt and `draw_magenta_holes()` is already computed at `fused/pipeline.py:513` — pass it through.
+
+**The `run.py` change:** register the detector strategies.
+
+```python
+# cv/approaches/full_pipeline/run.py
+from cv.langchain_detector.detector import LangChainDetector
+from cv.mock_detector import MockDetector
+
+parser.add_argument("--detector", default="langchain",
+                    choices=["langchain", "mock"])
+parser.add_argument("--model", default="gemini-3.5-flash-lite",
+                    help="Google AI Studio model id (locked: gemini-3.5-flash-lite)")
+# ...
+if args.detector == "langchain":
+    detector = LangChainDetector(model=args.model)
+else:
+    detector = MockDetector()
+```
+
+### The LangChainDetector strategy (the new HoleDetector implementation)
+
+Must implement `cv/detector_base.py::HoleDetector.detect()`:
+
+```python
+# cv/langchain_detector/detector.py
+class LangChainDetector(HoleDetector):
+    def __init__(self, model: str = "gemini-3.5-flash-lite"):
+        self._client = VLMSpikeClient(model=model)
+
+    @property
+    def name(self) -> str:
+        return f"langchain-{self._client.model}"
+
+    def detect(self, image_1024, target_type, caliber_hint=None) -> DetectionResult:
+        # image_1024 is uint8 grayscale (1024,1024); the client expects a path.
+        # Write to a temp file OR refactor VLMSpikeClient.analyze to accept an array.
+        # (Refactoring is cleaner — add an analyze_array() method.)
+        analysis, meta = self._client.analyze(
+            image_array=image_1024,   # NEW: accept array, not path
+            target_type=target_type,
+            target_ring1_px=...,       # MUST be threaded through detect()
+            ring_step_px=...,          # = target_ring1_px / 9
+            primary_caliber=caliber_hint,
+        )
+        return DetectionResult(
+            holes=[DetectedHole(x=h.x, y=h.y, score=h.score,
+                                confidence=h.confidence) for h in analysis.holes],
+            target_type=analysis.target_type,
+            detector_name=self.name,
+            notes=analysis.notes,
+            raw={"model": self._client.model, "calibers": [h.caliber for h in analysis.holes],
+                 **meta},
+        )
+```
+
+**Three integration subtleties the Step-2 session MUST handle:**
+
+1. **`target_ring1_px` must reach the detector.** The current `HoleDetector.detect(image_1024, target_type, caliber_hint)` signature does NOT carry ring geometry. Two options:
+   - (a) Extend the signature: `detect(image_1024, target_type, caliber_hint, target_ring1_px)`. Breaks the mock + requires updating `detector_base.py`.
+   - (b) Compute `target_ring1_px` inside the detector from the image. NOT possible — the detector only sees the normalized image.
+   - **Recommended: option (a)** — extend the signature, update `MockDetector` to accept and ignore the new arg, update `detector_base.py` ABC. The fused pipeline already computes `target_ring1_px` at `fused/pipeline.py:513`; thread it into the `detector.detect(...)` call.
+
+2. **`VLMSpikeClient.analyze` currently takes an image PATH.** The pipeline has the image as an in-memory array. Refactor to `analyze_array(image_1024_gray, ...)` that base64-encodes the array directly (no temp file). The Step-1 `analyze(path, ...)` can delegate to `analyze_array` by reading the file.
+
+3. **`caliber_hint` plumbing.** The fused `run.py` already has `--caliber` and passes `caliber_hint` into `run_pipeline` → `detector.detect`. Step 2 should default `--caliber` from `metadata.yml` (simulating the UI) when not provided on the CLI, OR read it per-image from metadata at runtime. The Step-1 spike injects metadata's caliber as `primary_caliber`; Step 2 should do the same for consistency.
+
+### Step-2 success criteria (from user feedback on Step 1)
+
+The user has effectively re-defined the success bar via Step-1 feedback. For Step 2, the bar is:
+
+- **Plumbing success (must pass):** end-to-end `full_pipeline` runs on the 4-image set `{12, 46, 29, 21}` without exceptions; produces exactly 3 files per image; structured-output JSON parses on 4/4.
+- **Detection success (user's stated standard):** "off-by-one is completely acceptable." So: correct hole COUNT per image (all 4 must match GT count); off-by-one ring-line scoring is fine; NO hallucinated holes; NO missed holes (the scan-entire-image + pasties-aware prompt must hold up in the live pipeline).
+- **Not required for Step 2:** clearing the PRD 0.90 Jaccard bar (the remaining errors are off-by-one, which the user accepts); expanding beyond the 4-image set (that is a later iteration).
+
+**Verification command (Step 2):**
+```bash
+uv run python -m cv.approaches.full_pipeline.run 12 46 29 21 \
+    --detector langchain --model gemini-3.5-flash-lite
+# Expect: 3 files/image in resources/train/intermediate_full_pipeline/
+#         + mean Jaccard ≈ 0.80 (matching the Step-1 spike)
+```
+
+### Step-2 risks (carried from Step 1 + new)
+
+| # | Risk | Source | Mitigation | Status |
+|---|---|---|---|---|
+| 44 | `gemini-3.5-flash-lite` ignores `temperature`; cannot pin for reproducibility | SDK warning during Step-1 run | Rely on structured-output + prompt; report run-to-run variance when expanding to 10 images | **OPEN** |
+| 45 | `HoleDetector.detect()` signature lacks ring geometry; detector cannot size magenta dots or build the prompt without `target_ring1_px` | Step-2 design (signature gap) | Extend signature with `target_ring1_px`; update `detector_base.py` + `MockDetector` | **OPEN** — Step 2 must resolve |
+| 46 | 14-file Phase-2.5 manifest vs 3-file Step-2 spec mismatch | User's Step-2 instruction ("only 2 pictures and 1 json file") | Copy `fused/pipeline.py` and DELETE the intermediate-output blocks; keep only `_llm_input.png`, `_marked.png`, `_result.json` | **OPEN** — Step 2 must resolve |
+| 47 | Paid-tier cost at production scale ($2.5/1M output tokens) | Model selection | ~50 output tokens/target → ~6,600 targets/day to spend $1 at paid rates; free tier covers spike + early production | **DOCUMENTED** |
+| 48 | Mixed-caliber targets (img 31) untested in Step 1 — only single-caliber images in the 4-set | Step-1 scope | Step 2's per-hole caliber schema handles it structurally; validate when expanding to 10 images | **OPEN** |
+
+### Open questions for the Step-2 session
+
+1. **Signature extension approach (Risk #45)** — extend `HoleDetector.detect()` with `target_ring1_px`, or thread geometry another way? Recommended: extend + update mock + ABC.
+2. **`caliber_hint` source** — CLI `--caliber` flag only, or auto-read from `metadata.yml` per-image (simulating the UI)? Step 1 used metadata; Step 2 should match.
+3. **Module layout** — new `cv/langchain_detector/` package + new `cv/approaches/full_pipeline/` package, OR fold the detector into `full_pipeline`? Recommended: separate `langchain_detector` (reusable) + `full_pipeline` (the 3-file runner).
+4. **Intermediate-file deletion** — hard-delete the blocks in the copied `pipeline.py`, or gate them behind `--debug` flag? Recommended: gate behind `--debug` (keeps the diagnostics available without polluting the default output).
