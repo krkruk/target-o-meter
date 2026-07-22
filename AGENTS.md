@@ -1,53 +1,131 @@
-# Repository Guidelines — Target-o-meter
+# AGENTS.md: System Architecture & Development Rules
 
-## Stack
+## 1. Project & Stack Overview
+*   **Project Name:** Target-o-meter
+*   **Architecture:** Monolithic Domain-Driven Design (DDD) with a Backend-For-Frontend (BFF) layer.
+*   **Backend:** Django 6.0.5, Python package manager: `uv` (PEP 735).
+*   **Frontend:** React + Oval + Redux, integrated via `django-vite` (HMR enabled for dev).
+*   **API Layer:** `django-ninja` (strictly enforcing Pydantic DTO contracts).
+*   **Database:** SQLite3 (WAL mode) at `db.sqlite3`.
+*   **Storage:** Django `FileSystemStorage` with hashed path bucketing for OpenCV binaries. DB stores metadata only.
+*   **Deployment Target:** Render (Persistent Disk) via GitHub Actions CI/CD.
 
-- **Django 6.0.5** project, Python package manager: `uv`
-- Django settings module: `target_o_meter.settings` (note: underscores, not hyphens)
-- Database: SQLite3 (dev default at `db.sqlite3` in project root)
-- Project name is "Target-o-meter" but the Python package is `target_o_meter`
+## 2. Domain Constraints (Source of Truth: `context/foundation/prd.md`)
+*   **Target Types:** 10m Air Pistol (170x170mm) and 25m/50m Precision Pistol (550x550mm).
+*   **Scoring Logic:** 0–10 points plus "X" (center hit, counts as 10).
+*   **Fidelity Requirement:** Computer vision hole detection fidelity must be ≥90%.
+*   **Background Processing:** The CV module runs asynchronously via `django-q2` (SQLite broker). Queue strictly capped at **Max 3 concurrent processing tasks**.
+*   **Identity & Roles:** 
+    *   OAuth 2.0 (Google or Auth0) ONLY. 
+    *   **Zero Email Storage:** The system stores ONLY the immutable provider `sub` ID. 
+    *   **Roles:** `User` (own data only) and `Owner`. The `Owner` is identified strictly by matching the `sub` against the `OWNER_SUB_ID` environment variable upon login.
+    *   **Sessions:** Managed via Django encrypted `HttpOnly` cookies (BFF pattern).
 
-## Commands
+## 3. Dependency Management
+Dependencies are explicitly managed via `uv` using groups in `pyproject.toml`. Do not use `requirements.txt`.
+*   `default`: django, django-ninja, django-q2, pydantic, langchain, opencv-python-headless
+*   `dev`: ruff, import-linter, django-vite
+*   `test`: pytest, pytest-django, pytest-bdd
+*   `system-test`: httpx, playwright
+
+## 4. Directory Structure (V-Model & DDD)
+All executable Python code is isolated in `src/`. Tests follow the V-Model: domain unit/integration tests co-locate with their domains; system and acceptance tests reside globally.
+
+```text
+.
+├── pyproject.toml
+├── uv.lock
+├── context/
+│   └── foundation/             # PRD and tech-stack docs (Do not modify without checking intent)
+├── src/
+│   ├── manage.py               # Django entrypoint
+│   ├── target_o_meter/         # ASGI/WSGI, Settings, Root URLs
+│   ├── frontend/               # React + Oval + Redux SPA (Vite target)
+│   ├── bff/                    # Application Layer: HTTP routers & Orchestration
+│   └── domains/                # Bounded Contexts (Zero HTTP, Pure Logic)
+│       ├── identity/           # OAuth, UUID mapping, Roles
+│       ├── vision/             # OpenCV, LangChain pipelines (q2 tasks)
+│       └── core/               # Uploads, Chart plotting
+│           ├── models.py       # Private Django ORM models
+│           ├── ports.py        # typing.Protocol interfaces
+│           ├── dtos.py         # Pydantic schema contracts
+│           ├── services.py     # Pure business logic implementation
+│           ├── test_utils.py   # Data seeders for System tests
+│           └── tests/          # pytest-bdd Unit & Integration tests
+└── tests/                      
+    ├── system/                 # Cross-domain API & Integration tests
+    └── acceptance/             # Playwright E2E tests
+```
+
+## 5. Strict Boundary Rules (Zero-Conflict Parallelism)
+Code generators and developers MUST adhere to these non-negotiable invariants:
+
+* **No Cross-Domain ORM Imports**: Models in domains.<X> MUST NOT be imported by domains.<Y>.
+* **No HTTP in Domains**: Domains define pure Python services.py. ONLY src/bff/ is permitted to import django-ninja or handle HTTP requests.
+* **DTOs Only**: All inter-domain communication and API responses must use Pydantic DTOs. Never return or accept Django QuerySets across boundaries.
+* **No Foreign Keys Across Domains**: Relationships between modules must use UUIDField.
+* **Transaction Atomicity**: Multi-domain workflows coordinated by the BFF MUST be wrapped in transaction.atomic() to guarantee full success or complete rollback.
+* **Test Encapsulation**: System tests MUST NOT use ORM tools (e.g., factory_boy) directly against domain models. Use test_utils.py or the REST API.
+
+## 6. Architectural Enforcement Tests
+
+### 6.1. Import Linter (.importlinter)
+Acts as a hard CI/CD gate against architectural degradation.
+
+```
+Ini, TOML
+[importlinter]
+root_package = src
+
+[importlinter:contract:1]
+name = Enforce Domain Isolation
+type = independence
+modules =
+    src.domains.core
+    src.domains.identity
+    src.domains.vision
+```
+
+### 6.2. Orchestration & Atomicity Contract (BFF Example)
+The BFF orchestrates multiple domains safely using atomic transactions.
+
+```python
+# src/bff/routers/vision_routes.py
+from django.db import transaction
+from ninja import Router
+from src.domains.identity.services import get_user_context
+from src.domains.vision.services import schedule_image_processing
+from src.domains.core.services import log_action
+
+router = Router()
+
+@router.post("/process-image")
+@transaction.atomic
+def upload_and_process(request, payload: UploadDTO):
+    # 1. Identity Domain (Resolve who is executing)
+    user_dto = get_user_context(request.session['sub'])
+    
+    # 2. Core Domain (State modification)
+    log_action(user_dto.uuid, "UPLOAD_INITIATED")
+    
+    # 3. Vision Domain (Side effect / Async dispatch to q2)
+    job_id = schedule_image_processing(payload.file_path, user_dto.uuid)
+    
+    # Implicit Rollback: If any service fails, the DB state reverts entirely.
+    return {"job_id": job_id, "status": "pending"}
+```
+
+## 7. Commands
 
 ```bash
-uv run python manage.py runserver          # dev server
-uv run python manage.py migrate            # apply migrations
-uv run python manage.py makemigrations     # generate migrations
-uv run python manage.py test               # run tests (when added)
-uv run python manage.py check              # system checks
+uv run python src/manage.py runserver          # dev server
+uv run python src/manage.py qcluster           # start django-q2 async worker
+uv run python src/manage.py migrate            # apply migrations
+uv run python src/manage.py makemigrations     # generate migrations
+uv run pytest                                  # run tests 
+uv run ruff check .                            # linting
+uv run lint-imports
 ```
-
-No `pyproject.toml`, `requirements.txt`, or `Makefile` exists yet — dependencies are managed through `uv` and the Django project scaffold.
-
-## Project structure
-
-```
-target_o_meter/          # Django project package (settings, urls, wsgi, asgi)
-  settings.py            # INSTALLED_APPS, MIDDLEWARE, DATABASES — add new apps here
-  urls.py                # Root URL config — include app URLs here
-context/
-  foundation/
-    prd.md               # Product requirements (source of truth for features)
-    tech-stack.md        # Stack decisions and deployment target (Render, GitHub Actions)
-manage.py                # Django entrypoint
-```
-
-No Django apps have been created yet. New apps should follow Django conventions and be added to `INSTALLED_APPS` in `@target_o_meter/settings.py`.
-
-## Architecture decisions (from PRD)
-
-- OAuth-only auth (no stored email, OAuth association links identity)
-- Two roles: Owner (single designated email, full admin + user) and User (own data only)
-- Computer vision module for ISSF target hole detection sits alongside Django as a service
-- Two supported target types: 10m Air Pistol (170x170mm) and 25m/50m Precision Pistol (550x550mm)
-- Max 3 concurrent image uploads processing; additional queue
-
-## Key constraints
-
-- Scoring values: 0–10 points plus "X" (center hit, counts as 10)
-- Hole detection fidelity target: ≥90%
-- `context/foundation/` contains project planning docs — do not modify without checking PRD intent
-- No CI/CD pipeline configured yet — planned: GitHub Actions with auto-deploy to Render
 
 <!-- BEGIN @przeprogramowani/10x-cli -->
 

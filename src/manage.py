@@ -6,7 +6,14 @@ import sys
 
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'target_o_meter.settings')
+    # The Django project lives under src/, so expose the repository root on the
+    # import path. This makes the `src` package (and its DDD layout such as
+    # `src.domains.*` and `src.bff`) importable regardless of the cwd.
+    REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if REPO_ROOT not in sys.path:
+        sys.path.insert(0, REPO_ROOT)
+
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'src.target_o_meter.settings')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

@@ -38,6 +38,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Bounded Contexts (DDD). Prefixed with `src.` to match the import-linter
+    # root package (AGENTS.md \u00a76.1) and the BFF import convention (AGENTS.md \u00a76.2).
+    'src.domains.core',
+    'src.domains.identity',
+    'src.domains.vision',
 ]
 
 MIDDLEWARE = [
@@ -51,7 +56,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'target_o_meter.urls'
+ROOT_URLCONF = 'src.target_o_meter.urls'
 
 TEMPLATES = [
     {
@@ -68,7 +73,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'target_o_meter.wsgi.application'
+WSGI_APPLICATION = 'src.target_o_meter.wsgi.application'
 
 
 # Database

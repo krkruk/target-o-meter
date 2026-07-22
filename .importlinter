@@ -1,0 +1,10 @@
+[importlinter]
+root_package = src
+
+[importlinter:contract:1]
+name = Enforce Domain Isolation
+type = independence
+modules =
+    src.domains.core
+    src.domains.identity
+    src.domains.vision
