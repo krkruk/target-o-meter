@@ -58,7 +58,10 @@ class MockDetector(HoleDetector):
         image_1024: np.ndarray,
         target_type: TargetType,
         caliber_hint: Optional[str] = None,
+        target_ring1_px: Optional[float] = None,
     ) -> DetectionResult:
+        # target_ring1_px is accepted and ignored — the mock returns a fixed
+        # pattern and needs no ring geometry. (Phase 3 Step 2 signature extension.)
         return DetectionResult(
             holes=[DetectedHole(**{"x": h.x, "y": h.y, "score": h.score, "confidence": h.confidence}) for h in _MOCK_HOLES],
             target_type=target_type,
