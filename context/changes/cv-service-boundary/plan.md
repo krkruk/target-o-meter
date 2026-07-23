@@ -690,10 +690,10 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 5: Django production path (models + q2 + services + storage)
 
 #### Automated
-- [x] 5.1 `makemigrations vision` produces 0001_initial only
-- [x] 5.2 `uv run python src/manage.py migrate` applies cleanly
-- [x] 5.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (mock detector)
-- [x] 5.4 `uv run ruff check src/domains/vision/models.py src/domains/vision/services.py` clean
+- [x] 5.1 `makemigrations vision` produces 0001_initial only — 9cf2cee
+- [x] 5.2 `uv run python src/manage.py migrate` applies cleanly — 9cf2cee
+- [x] 5.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (mock detector) — 9cf2cee
+- [x] 5.4 `uv run ruff check src/domains/vision/models.py src/domains/vision/services.py` clean — 9cf2cee
 
 #### Manual
 - [ ] 5.5 Django shell: schedule_image_processing → process_image writes 3 deliverables under storage bucket
@@ -701,9 +701,9 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 6: Standalone CLI (`__main__`)
 
 #### Automated
-- [ ] 6.1 `uv run python -m src.domains.vision 12 --detector mock --out /tmp/vision_cli_test` exits 0, writes 3 files + _summary.json
-- [ ] 6.2 `uv run pytest src/domains/vision/tests/test_cli.py` passes
-- [ ] 6.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
+- [x] 6.1 `uv run python -m src.domains.vision 12 --detector mock --out /tmp/vision_cli_test` exits 0, writes 3 files + _summary.json
+- [x] 6.2 `uv run pytest src/domains/vision/tests/test_cli.py` passes
+- [x] 6.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
 
 #### Manual
 - [ ] 6.4 `--detector google` on 4-image set prints mean Jaccard ~0.6–0.8; `--detector ollama` runs without errors
