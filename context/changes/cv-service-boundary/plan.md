@@ -706,7 +706,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 6.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — ee2368c
 
 #### Manual
-- [ ] 6.4 `--detector google` on 4-image set prints mean Jaccard ~0.6–0.8; `--detector ollama` runs without errors
+- [x] 6.4 `--detector google` on 4-image set prints mean Jaccard ~0.6–0.8; `--detector ollama` runs without errors
 
 ### Phase 7: Final verification & guardrails
 
@@ -718,4 +718,4 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 7.5 `rg -n "^import cv|^from cv\b" src/domains/vision` empty (guardrail test green) — aa11083
 
 #### Manual
-- [ ] 7.6 Cross-path numerics: CLI mock run vs Django process_image agree on target_ring1_px + invert err (img 12); NOT-doing list reviewed with user
+- [x] 7.6 Cross-path numerics: CLI mock run vs Django process_image agree on target_ring1_px + invert err (img 12); NOT-doing list reviewed with user
