@@ -1,7 +1,8 @@
 """``PipelineRunner`` end-to-end integration test (mock detector, no network).
 
-Runs the full pipeline (geometry + MockDetector + renderer) on img 12 and
-asserts the 3-file deliverable contract.
+Runs the full pipeline (geometry + MockDetector + renderer) on img 12 (from
+the versioned ``tests/fixtures/`` set) and asserts the 3-file deliverable
+contract.
 """
 from __future__ import annotations
 
@@ -14,14 +15,17 @@ from src.domains.vision.detectors.mock_detector import MockDetector
 from src.domains.vision.pipeline.pipeline_runner import PipelineRunner
 
 
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
 @pytest.fixture(scope="module")
 def img_12_path() -> Path:
-    return Path("resources/train/12.jpg")
+    return FIXTURES / "12.jpg"
 
 
 @pytest.fixture(scope="module")
 def img_12_marked() -> Path:
-    return Path("resources/train/12_marked.jpg")
+    return FIXTURES / "12_marked.jpg"
 
 
 def test_pipeline_runner_writes_three_deliverables(
