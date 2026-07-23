@@ -50,3 +50,9 @@ system-test = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "src.target_o_meter.settings"
 pythonpath = ["."]
+
+[tool.ruff]
+# `cv/` is the frozen research sandbox (commit 76f6fc4) — reference-only,
+# explicitly out-of-scope per plan §"What We're NOT Doing". Production code
+# lives under `src/`. Exclude `cv/` from lint so the gate reflects maintained code.
+exclude = ["cv/", ".venv/", "node_modules/"]

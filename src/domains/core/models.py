@@ -1,3 +1,5 @@
-from django.db import models
+"""Identity domain ORM models.
 
-# Create your models here.
+Intentionally empty during architecture migration. AGENTS.md §1 (DB stores
+metadata only).
+"""

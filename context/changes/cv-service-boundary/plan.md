@@ -701,9 +701,9 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 6: Standalone CLI (`__main__`)
 
 #### Automated
-- [x] 6.1 `uv run python -m src.domains.vision 12 --detector mock --out /tmp/vision_cli_test` exits 0, writes 3 files + _summary.json
-- [x] 6.2 `uv run pytest src/domains/vision/tests/test_cli.py` passes
-- [x] 6.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
+- [x] 6.1 `uv run python -m src.domains.vision 12 --detector mock --out /tmp/vision_cli_test` exits 0, writes 3 files + _summary.json — ee2368c
+- [x] 6.2 `uv run pytest src/domains/vision/tests/test_cli.py` passes — ee2368c
+- [x] 6.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — ee2368c
 
 #### Manual
 - [ ] 6.4 `--detector google` on 4-image set prints mean Jaccard ~0.6–0.8; `--detector ollama` runs without errors
@@ -711,11 +711,11 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 7: Final verification & guardrails
 
 #### Automated
-- [ ] 7.1 `uv run pytest src/domains/vision` full suite green
-- [ ] 7.2 `uv run ruff check .` clean
-- [ ] 7.3 `uv run lint-imports` holds
-- [ ] 7.4 `uv run python src/manage.py migrate --check` no drift
-- [ ] 7.5 `rg -n "^import cv|^from cv\b" src/domains/vision` empty (guardrail test green)
+- [x] 7.1 `uv run pytest src/domains/vision` full suite green
+- [x] 7.2 `uv run ruff check .` clean
+- [x] 7.3 `uv run lint-imports` holds
+- [x] 7.4 `uv run python src/manage.py migrate --check` no drift
+- [x] 7.5 `rg -n "^import cv|^from cv\b" src/domains/vision` empty (guardrail test green)
 
 #### Manual
 - [ ] 7.6 Cross-path numerics: CLI mock run vs Django process_image agree on target_ring1_px + invert err (img 12); NOT-doing list reviewed with user
