@@ -1,3 +1,5 @@
-from django.db import models
+"""Vision domain ORM models.
 
-# Create your models here.
+Phase 5 defines ``ScoringJob`` here. Intentionally empty until Phase 5 —
+AGENTS.md §1 (DB stores metadata only).
+"""
