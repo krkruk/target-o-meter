@@ -648,11 +648,11 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 1: Foundation, conventions & test harness
 
 #### Automated
-- [ ] 1.1 `.env.example` extended with OLLAMA_HOST/OLLAMA_MODEL; python-dotenv in pyproject.toml
-- [ ] 1.2 `uv run ruff check src/domains/vision` clean (ports.py, dtos.py, geometry/calibration.py, detectors/*)
-- [ ] 1.3 `uv run lint-imports` passes (domain isolation unaffected)
-- [ ] 1.4 `uv run pytest src/domains/vision/tests -k mock_detector` passes
-- [ ] 1.5 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
+- [x] 1.1 `.env.example` extended with OLLAMA_HOST/OLLAMA_MODEL; python-dotenv in pyproject.toml
+- [x] 1.2 `uv run ruff check src/domains/vision` clean (ports.py, dtos.py, geometry/calibration.py, detectors/*)
+- [x] 1.3 `uv run lint-imports` passes (domain isolation unaffected)
+- [x] 1.4 `uv run pytest src/domains/vision/tests -k mock_detector` passes
+- [x] 1.5 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
 
 #### Manual
 - [ ] 1.6 `.env.example` has all three vars; `python -c "import dotenv"` succeeds; MockDetector returns [10,7,7,7,7]
