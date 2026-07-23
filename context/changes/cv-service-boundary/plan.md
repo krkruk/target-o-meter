@@ -670,9 +670,9 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 3: Detector strategies (Google AI Studio + Ollama)
 
 #### Automated
-- [x] 3.1 `uv run pytest src/domains/vision/tests/test_google_detector.py src/domains/vision/tests/test_ollama_detector.py` passes (mocked)
-- [x] 3.2 `uv run ruff check src/domains/vision/detectors` clean
-- [x] 3.3 Schema/prompt snapshot test byte-identical to cv/
+- [x] 3.1 `uv run pytest src/domains/vision/tests/test_google_detector.py src/domains/vision/tests/test_ollama_detector.py` passes (mocked) — 37948df
+- [x] 3.2 `uv run ruff check src/domains/vision/detectors` clean — 37948df
+- [x] 3.3 Schema/prompt snapshot test byte-identical to cv/ — 37948df
 
 #### Manual
 - [ ] 3.4 OllamaDetector constructs against local `ollama serve` + `gemma4:latest`
@@ -680,9 +680,9 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 4: Pipeline runner + deliverables + eval tooling
 
 #### Automated
-- [ ] 4.1 `uv run pytest src/domains/vision/tests/test_pipeline_runner.py` passes (mock detector)
-- [ ] 4.2 `uv run ruff check src/domains/vision/pipeline src/domains/vision/eval` clean
-- [ ] 4.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
+- [x] 4.1 `uv run pytest src/domains/vision/tests/test_pipeline_runner.py` passes (mock detector)
+- [x] 4.2 `uv run ruff check src/domains/vision/pipeline src/domains/vision/eval` clean
+- [x] 4.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
 
 #### Manual
 - [ ] 4.4 PipelineRunner img-12 `_marked.png` renders magenta dots + ring frame + score labels
