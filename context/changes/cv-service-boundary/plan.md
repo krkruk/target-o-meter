@@ -711,11 +711,11 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 7: Final verification & guardrails
 
 #### Automated
-- [x] 7.1 `uv run pytest src/domains/vision` full suite green
-- [x] 7.2 `uv run ruff check .` clean
-- [x] 7.3 `uv run lint-imports` holds
-- [x] 7.4 `uv run python src/manage.py migrate --check` no drift
-- [x] 7.5 `rg -n "^import cv|^from cv\b" src/domains/vision` empty (guardrail test green)
+- [x] 7.1 `uv run pytest src/domains/vision` full suite green — aa11083
+- [x] 7.2 `uv run ruff check .` clean — aa11083
+- [x] 7.3 `uv run lint-imports` holds — aa11083
+- [x] 7.4 `uv run python src/manage.py migrate --check` no drift — aa11083
+- [x] 7.5 `rg -n "^import cv|^from cv\b" src/domains/vision` empty (guardrail test green) — aa11083
 
 #### Manual
 - [ ] 7.6 Cross-path numerics: CLI mock run vs Django process_image agree on target_ring1_px + invert err (img 12); NOT-doing list reviewed with user
