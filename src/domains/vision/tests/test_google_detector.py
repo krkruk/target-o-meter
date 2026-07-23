@@ -5,7 +5,6 @@ error messages without making live API calls.
 """
 from __future__ import annotations
 
-import os
 from unittest.mock import patch
 
 import numpy as np
