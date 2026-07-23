@@ -1,7 +1,7 @@
 ---
 change_id: cv-service-boundary
 title: CV detection service boundary
-status: implementing
+status: implemented
 created: 2026-07-19
 updated: 2026-07-23
 archived_at: null
