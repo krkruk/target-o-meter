@@ -46,3 +46,7 @@ system-test = [
     "httpx>=0.28.0",
     "playwright>=1.40.0",
 ]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "src.target_o_meter.settings"
+pythonpath = ["."]

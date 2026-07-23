@@ -680,9 +680,9 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 4: Pipeline runner + deliverables + eval tooling
 
 #### Automated
-- [x] 4.1 `uv run pytest src/domains/vision/tests/test_pipeline_runner.py` passes (mock detector)
-- [x] 4.2 `uv run ruff check src/domains/vision/pipeline src/domains/vision/eval` clean
-- [x] 4.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty
+- [x] 4.1 `uv run pytest src/domains/vision/tests/test_pipeline_runner.py` passes (mock detector) — e5e08f5
+- [x] 4.2 `uv run ruff check src/domains/vision/pipeline src/domains/vision/eval` clean — e5e08f5
+- [x] 4.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — e5e08f5
 
 #### Manual
 - [ ] 4.4 PipelineRunner img-12 `_marked.png` renders magenta dots + ring frame + score labels
@@ -690,10 +690,10 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 ### Phase 5: Django production path (models + q2 + services + storage)
 
 #### Automated
-- [ ] 5.1 `makemigrations vision` produces 0001_initial only
-- [ ] 5.2 `uv run python src/manage.py migrate` applies cleanly
-- [ ] 5.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (mock detector)
-- [ ] 5.4 `uv run ruff check src/domains/vision/models.py src/domains/vision/services.py` clean
+- [x] 5.1 `makemigrations vision` produces 0001_initial only
+- [x] 5.2 `uv run python src/manage.py migrate` applies cleanly
+- [x] 5.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (mock detector)
+- [x] 5.4 `uv run ruff check src/domains/vision/models.py src/domains/vision/services.py` clean
 
 #### Manual
 - [ ] 5.5 Django shell: schedule_image_processing → process_image writes 3 deliverables under storage bucket
