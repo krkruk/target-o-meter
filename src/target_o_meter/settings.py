@@ -38,6 +38,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Async task queue (AGENTS.md §2: django-q2 with SQLite broker via ORM
+    # broker — task records live in the Django DB, which is SQLite here).
+    'django_q',
     # Bounded Contexts (DDD). Prefixed with `src.` to match the import-linter
     # root package (AGENTS.md \u00a76.1) and the BFF import convention (AGENTS.md \u00a76.2).
     'src.domains.core',
@@ -84,6 +87,24 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': Path(os.environ.get('RAILWAY_VOLUME_MOUNT_PATH', BASE_DIR)) / 'db.sqlite3',
     }
+}
+
+
+# django-q2 — async task queue. AGENTS.md §2: SQLite broker, max 3 concurrent
+# workers. The ORM broker stores task records in the Django DB (sqlite here),
+# so no external Redis dependency is introduced. The plan §"What We're NOT
+# Doing" calls out that the BFF router is a follow-up; this config is just the
+# queue plumbing schedule_image_processing uses.
+Q_CLUSTER = {
+    'name': 'targetometer',
+    'workers': 3,            # AGENTS.md §2 cap: Max 3 concurrent processing tasks
+    'recycle': 500,
+    'timeout': 600,          # CV pipeline can take ~30s/image; allow generous headroom
+    'retry': 1200,
+    'queue_limit': 50,
+    'bulk': 1,               # one image per task — each job is a single task
+    'orm': 'default',        # the SQLite-backed broker
+    'catch_up': False,       # don't run missed scheduled tasks on restart (none defined)
 }
 
 
