@@ -655,7 +655,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 1.5 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — 217bafd
 
 #### Manual
-- [ ] 1.6 `.env.example` has all three vars; `python -c "import dotenv"` succeeds; MockDetector returns [10,7,7,7,7]
+- [x] 1.6 `.env.example` has all three vars; `python -c "import dotenv"` succeeds; MockDetector returns [10,7,7,7,7]
 
 ### Phase 2: Geometry port + numerical-identity gate
 
@@ -665,7 +665,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 2.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — 7276fcb
 
 #### Manual
-- [ ] 2.4 GeometryPipeline img-12 image_1024 byte-matches cv/ fused output; defense-layer classifications match research table
+- [x] 2.4 GeometryPipeline img-12 image_1024 byte-matches cv/ fused output; defense-layer classifications match research table
 
 ### Phase 3: Detector strategies (Google AI Studio + Ollama)
 
@@ -675,7 +675,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 3.3 Schema/prompt snapshot test byte-identical to cv/ — 37948df
 
 #### Manual
-- [ ] 3.4 OllamaDetector constructs against local `ollama serve` + `gemma4:latest`
+- [x] 3.4 OllamaDetector constructs against local `ollama serve` + `gemma4:latest`
 
 ### Phase 4: Pipeline runner + deliverables + eval tooling
 
@@ -685,7 +685,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 4.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — e5e08f5
 
 #### Manual
-- [ ] 4.4 PipelineRunner img-12 `_marked.png` renders magenta dots + ring frame + score labels
+- [x] 4.4 PipelineRunner img-12 `_marked.png` renders magenta dots + ring frame + score labels
 
 ### Phase 5: Django production path (models + q2 + services + storage)
 
@@ -696,7 +696,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 5.4 `uv run ruff check src/domains/vision/models.py src/domains/vision/services.py` clean — 9cf2cee
 
 #### Manual
-- [ ] 5.5 Django shell: schedule_image_processing → process_image writes 3 deliverables under storage bucket
+- [x] 5.5 Django shell: schedule_image_processing → process_image writes 3 deliverables under storage bucket
 
 ### Phase 6: Standalone CLI (`__main__`)
 
