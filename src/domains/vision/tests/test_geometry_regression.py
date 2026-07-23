@@ -5,10 +5,10 @@ metrics from cv/ (commit 76f6fc4, ``resources/train/intermediate_fused_all10/``)
 The rewrite must copy the cv/ math verbatim — drift here means the port is
 wrong, not the gate.
 
-The frozen floats below are the actual ``norm_meta.target_ring1_px`` and
-``refinement.mean_ring_eccentricity`` values cv/ produced; the research
-§ "Final per-image results" table rounded them for display. Tolerance 1e-9
-allows for harmless float64 reordering but flags any real algorithmic drift.
+**Local-only**: requires the unversioned ``resources/train/`` set (10 images
++ their ``_marked.jpg`` siblings, per project policy ``resources/`` is not in
+git). The test skips gracefully when the local set is absent — CI runs the
+4-image versioned fixture tests under ``tests/fixtures/`` instead.
 
 Run: ``uv run --group test pytest src/domains/vision/tests/test_geometry_regression.py``.
 """
@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from src.domains.vision.geometry.geometry_pipeline import GeometryPipeline
+from src.domains.vision.tests.conftest import has_local_train_set, TRAIN_IDS
 
 
 # Frozen floats extracted from cv/approaches/full_pipeline/pipeline.py output
@@ -38,7 +39,16 @@ FROZEN: dict[int, tuple[float, float, str]] = {
 }
 
 
-@pytest.mark.parametrize("img_id", sorted(FROZEN.keys()))
+_LOCAL_TRAIN_AVAILABLE = has_local_train_set()
+_SKIP_REASON = (
+    "requires the local 10-image train set at resources/train/ (not in git; "
+    "ship the images manually before running this gate). The 4-image versioned "
+    "fixture tests under tests/fixtures/ run regardless."
+)
+
+
+@pytest.mark.skipif(not _LOCAL_TRAIN_AVAILABLE, reason=_SKIP_REASON)
+@pytest.mark.parametrize("img_id", TRAIN_IDS)
 def test_geometry_pipeline_preserves_frozen_numerics(
     img_id: int,
     train_images: list[Path],
@@ -79,3 +89,4 @@ def test_geometry_pipeline_preserves_frozen_numerics(
     assert layer == frozen_defense, (
         f"img {img_id}: defense_layer={layer!r} expected {frozen_defense!r}"
     )
+

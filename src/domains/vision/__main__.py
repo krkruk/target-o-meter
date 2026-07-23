@@ -1,14 +1,15 @@
 """Standalone CLI for the vision domain.
 
-``uv run python -m src.domains.vision [ids...] --detector {google,ollama,mock}``
+``uv run python -m src.domains.vision <IMAGE_PATH>... --detector {google,ollama,mock}``
+
+Accepts one or more **image paths** (relative or absolute). For each image, an
+optional ``<stem>_marked.jpg`` sibling (in the same directory) feeds
+``AdaptiveFrameSizer``'s GT-aware margin; pass ``--no-gt`` to skip the lookup.
 
 Loads ``.env`` via ``python-dotenv`` BEFORE importing the detectors (so
 ``GOOGLE_API_KEY`` is present when ``GoogleAIStudioDetector`` constructs). Does
-NOT require Django — pure-Python path only. Per image: ``PipelineRunner.run`` →
-collect result → optional Jaccard eval table → write ``_summary.json``.
-
-Defaults mirror the cv/ CLI (commit 76f6fc4): ids=[12,46,29,21],
-detector=google, target_type=air_pistol, out=`resources/train/intermediate_vision`.
+NOT require Django — pure-Python path only. Per image: ``PipelineRunner.run``
+→ collect result → optional Jaccard eval table → write ``_summary.json``.
 """
 from __future__ import annotations
 
@@ -31,7 +32,6 @@ from src.domains.vision.eval.score_comparison import (
 from src.domains.vision.pipeline.pipeline_runner import PipelineRunner
 
 
-DEFAULT_IDS = ["12", "46", "29", "21"]
 DEFAULT_OUT = "resources/train/intermediate_vision"
 
 
@@ -54,11 +54,15 @@ def _print_env_status(env: dict[str, bool]) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="python -m src.domains.vision",
-        description="Run the vision pipeline (geometry + LLM detector) on train images.",
+        description=(
+            "Run the vision pipeline (geometry + LLM detector) on one or more "
+            "image paths. For each image, an optional <stem>_marked.jpg "
+            "sibling feeds GT-aware warp sizing (use --no-gt to disable)."
+        ),
     )
     p.add_argument(
-        "ids", nargs="*", default=DEFAULT_IDS,
-        help=f"Image ids (e.g. 12 46 29 21). Default: {DEFAULT_IDS}",
+        "images", nargs="+", type=Path,
+        help="One or more image paths (relative or absolute) to process.",
     )
     p.add_argument(
         "--detector", choices=("google", "ollama", "mock"), default="google",
@@ -72,7 +76,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", default=DEFAULT_OUT, help=f"Output dir. Default: {DEFAULT_OUT}")
     p.add_argument(
         "--no-gt", action="store_true",
-        help="Disable AdaptiveFrameSizer's GT-aware margin (skip _marked.jpg lookup).",
+        help="Disable AdaptiveFrameSizer's GT-aware margin (skip <stem>_marked.jpg lookup).",
     )
     p.add_argument(
         "--debug", action="store_true",
@@ -85,6 +89,16 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _resolve_marked_sibling(image_path: Path) -> Path | None:
+    """Look up ``<stem>_marked.jpg`` in the same directory as ``image_path``.
+
+    Returns the path if it exists, else None. The CLI uses this for
+    AdaptiveFrameSizer's GT-aware margin (disabled by --no-gt).
+    """
+    sibling = image_path.parent / f"{image_path.stem}_marked.jpg"
+    return sibling if sibling.exists() else None
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()  # must run before detector construction reads env
     env = _env_status()
@@ -95,7 +109,6 @@ def main(argv: list[str] | None = None) -> int:
     detector = DetectorFactory.build(args.detector)
     runner = PipelineRunner(detector)
 
-    train_dir = Path("resources/train")
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -104,20 +117,20 @@ def main(argv: list[str] | None = None) -> int:
     summaries: list[dict] = []
     jaccards: list[float] = []
 
-    for img_id in args.ids:
-        image_path = train_dir / f"{img_id}.jpg"
+    for image_arg in args.images:
+        image_path = Path(image_arg)
         if not image_path.exists():
-            print(f"img {img_id}: MISSING ({image_path})")
+            print(f"{image_path}: MISSING (skipping)")
+            summaries.append({"image": str(image_arg), "ok": False, "error": "file not found"})
             continue
 
-        marked_path = None if args.no_gt else train_dir / f"{img_id}_marked.jpg"
-        if marked_path is not None and not marked_path.exists():
-            marked_path = None
+        marked_path = None if args.no_gt else _resolve_marked_sibling(image_path)
 
-        # Per-image caliber: explicit flag wins; otherwise metadata.yml's primary.
+        # Per-image caliber: explicit flag wins; otherwise metadata.yml's primary
+        # (matched by stem, e.g. "12" for "12.jpg").
         caliber = args.caliber
         if caliber is None and args.eval:
-            entry = metadata.get(str(img_id), {})
+            entry = metadata.get(image_path.stem, {})
             caliber = MetadataLoader.primary_caliber_for(entry)
 
         try:
@@ -130,14 +143,16 @@ def main(argv: list[str] | None = None) -> int:
                 gt_marked_path=marked_path,
             )
         except Exception as exc:
-            print(f"img {img_id}: FAILED ({type(exc).__name__}: {exc})")
-            summaries.append({"image": image_path.name, "ok": False, "error": str(exc)})
+            print(f"{image_path.name}: FAILED ({type(exc).__name__}: {exc})")
+            summaries.append({
+                "image": str(image_arg), "ok": False, "error": str(exc),
+            })
             continue
 
-        entry: dict = {"image": image_path.name, "ok": True, "count": result["count"]}
+        entry: dict = {"image": str(image_arg), "ok": True, "count": result["count"]}
 
         if args.eval and metadata:
-            meta_entry = metadata.get(str(img_id), {})
+            meta_entry = metadata.get(image_path.stem, {})
             gt_hits = MetadataLoader.gt_hits_for(meta_entry)
             llm_scores = result["scores_llm"]
             llm_ms = score_multiset(llm_scores)
@@ -154,11 +169,14 @@ def main(argv: list[str] | None = None) -> int:
             })
             jaccards.append(jac)
             print(
-                f"img {img_id}: jaccard={jac:.3f} count_match={count_match} "
+                f"{image_path.name}: jaccard={jac:.3f} count_match={count_match} "
                 f"n_llm={sum(llm_ms.values())} n_gt={sum(gt_ms.values())}"
             )
         else:
-            print(f"img {img_id}: ok count={result['count']} total_llm={result['total_llm']}")
+            print(
+                f"{image_path.name}: ok count={result['count']} "
+                f"total_llm={result['total_llm']}"
+            )
 
         summaries.append(entry)
 
@@ -181,3 +199,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
