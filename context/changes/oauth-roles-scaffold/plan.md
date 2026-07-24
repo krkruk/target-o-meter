@@ -649,14 +649,14 @@ Stand up the pytest marker system, the autouse UAT-skip, the acceptance-test fix
 
 #### Automated
 
-- [x] 6.1 `uv run pytest` runs DEV suite, skips uat
-- [x] 6.2 `uv run pytest -m uat` skips without RUN_UAT=1
-- [x] 6.3 `uv run ruff check .` passes
-- [x] 6.4 `uv run lint-imports` passes
+- [x] 6.1 `uv run pytest` runs DEV suite, skips uat — 2be31f3
+- [x] 6.2 `uv run pytest -m uat` skips without RUN_UAT=1 — 2be31f3
+- [x] 6.3 `uv run ruff check .` passes — 2be31f3
+- [x] 6.4 `uv run lint-imports` passes — 2be31f3
 
 #### Manual
 
-- [x] 6.5 `.env.uat` gitignored
-- [x] 6.6 `.github/workflows/uat.yml` is valid YAML
+- [x] 6.5 `.env.uat` gitignored — 2be31f3
+- [x] 6.6 `.github/workflows/uat.yml` is valid YAML — 2be31f3
 
 <!-- Phase 7 (Docker Dev Environment) deferred by plan-review F6 — not tracked here. See the "Deferred: Docker Dev Environment" section above. -->
