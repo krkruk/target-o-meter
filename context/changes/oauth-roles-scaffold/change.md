@@ -1,7 +1,7 @@
 ---
 change_id: oauth-roles-scaffold
 title: OAuth + roles scaffold (F-01)
-status: new
+status: planned
 created: 2026-07-24
 updated: 2026-07-24
 archived_at: null
