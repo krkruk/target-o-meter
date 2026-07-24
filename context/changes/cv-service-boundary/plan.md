@@ -54,10 +54,10 @@ Graduate the completed Phase-3 LLM hole-detection pipeline out of the `cv/` rese
 
 `src/domains/vision/` is a self-contained Django domain that:
 
-1. **Runs standalone** via `uv run python -m src.domains.vision 12 46 29 21 --detector google` (loads `.env`, calls Google AI Studio, writes 3 files/image + `_summary.json` to a `--out` dir), or `--detector ollama` (local `gemma4:latest`), or `--detector mock` (no API calls, plumbing).
-2. **Runs in production** via `services.schedule_image_processing(...)` (enqueues a q2 task) → `services.process_image(job_id)` (runs `PipelineRunner`, stores result JSON + output paths on a `ScoringJob` row; PNG deliverables on `FileSystemStorage`).
-3. **Has zero runtime imports from `cv/`** — verified by a grep gate in CI.
-4. **Preserves geometry numerics exactly** — regression test on all 10 train images asserts bullseye invert err < 1e-12 px AND the frozen r1@1024 table (1→394, 4→394, 6→394, 10→394, 12→333, 19→394, 21→371, 29→394, 31→321, 46→394).
+1. **Runs standalone** via `uv run python -m src.domains.vision <IMAGE_PATH>... --detector google` (loads `.env`, calls Google AI Studio, writes 3 files/image + `_summary.json` to a `--out` dir). Image paths are relative or absolute; an optional `<stem>_marked.jpg` sibling in the same directory feeds `AdaptiveFrameSizer`'s GT-aware margin (disable with `--no-gt`). Use `--detector ollama` (local `gemma4:latest`) or `--detector mock` (no API calls, plumbing). The CLI exits non-zero when every requested image skipped or failed. *(Revised from the original id-based sketch after the implementer-reviews review: path-based access scales to system testing and arbitrary fixtures without a hardcoded image-id lookup table.)*
+2. **Runs in production** via `services.schedule_image_processing(...)` (enqueues a q2 task) → `services.process_image(job_id)` (runs `PipelineRunner`, stores result JSON + output paths on a `ScoringJob` row; PNG deliverables on `FileSystemStorage`). `services.reap_stuck_jobs()` reaps rows orphaned by a SIGKILLed worker.
+3. **Has zero runtime imports from `cv/`** — verified by a grep gate in CI (`test_no_cv_imports.py`).
+4. **Preserves geometry numerics exactly** — regression test on all 10 train images asserts bullseye invert err < 1e-12 px AND the frozen r1@1024 table (1→394, 4→394, 6→394, 10→394, 12→333, 19→394, 21→371, 29→394, 31→321, 46→394). **Always runs on the 4 versioned fixtures** (ids 12, 46, 29, 21 — byte-identical to `resources/train/`, shipped under `tests/fixtures/`) so CI enforces the gate on every clone; the remaining 6 ids are appended when `resources/train/` is present locally.
 5. **Honors AGENTS.md** — domain is pure Python (no HTTP; BFF wiring is a follow-up), DTOs cross boundaries, import-linter domain isolation passes.
 
 ## What We're NOT Doing
@@ -77,20 +77,35 @@ Package layout (root contract files + internal subpackages):
 
 ```
 src/domains/vision/
-├── __init__.py            public re-exports
+├── __init__.py            empty (Django package marker; downstream imports use full paths)
 ├── apps.py                Django AppConfig (exists)
 ├── models.py              ScoringJob ORM model
 ├── ports.py               HoleDetector ABC + TargetType + GeometryPort
 ├── dtos.py                DetectedHoleDTO, ScoringResultDTO, ScoringJobDTO (Pydantic)
-├── services.py            schedule_image_processing(), process_image()
-├── test_utils.py          seeders for tests
-├── __main__.py            standalone CLI
+├── services.py            schedule_image_processing(), process_image(), reap_stuck_jobs(), get_job()
+├── test_utils.py          seeders for tests (stub during this change)
+├── __main__.py            standalone CLI (path-based image args, no Django)
 ├── geometry/              deterministic geometry (OOP-rewritten from cv/)
+│   ├── results.py         *Result dataclasses (contract-collection exception to one-class-per-file)
+│   └── ...                one class per file (ImageGrayscaler, BlackDiscCalibrator, IssfScorer, etc.)
 ├── detectors/             HoleDetector strategies + schema/prompt/client
+│   ├── google_studio_vlm_client.py, ollama_vlm_client.py  split per one-class-per-file
+│   └── ...
 ├── pipeline/              PipelineRunner + deliverables + storage
-├── eval/                  diagnostic/test-only (ScoreJaccard, MetadataLoader)
-└── tests/                 pytest-bdd unit + integration
+├── eval/                  diagnostic/test-only (ScoreJaccard, MetadataLoader, magenta_gt)
+└── tests/                 pytest-bdd unit + integration + fixtures/ (4 versioned images)
 ```
+
+## Addenda discovered during implementation
+
+These landed during implementation but were not in the original "Changes Required" sections. Recorded here so the plan stays reliable ground truth.
+
+- **`settings.py` adds `django_q` to `INSTALLED_APPS` + a `Q_CLUSTER` block (workers=3, orm='default', retry=1200).** Undocumented in the original plan but REQUIRED — `services.schedule_image_processing` imports `from django_q.tasks import async_task` lazily inside the atomic block, which raises if `django_q` isn't a registered app. `workers=3` honors AGENTS.md §2 (max 3 concurrent processing tasks); `orm='default'` keeps the broker in SQLite so the enqueue lands in the same transaction as the `ScoringJob` row (atomicity contract; pinned by `test_q_cluster_uses_orm_default_broker`).
+- **`tests/fixtures/{12,21,29,46}{,_marked}.jpg`** — 4 versioned images (byte-identical to `resources/train/<id>.jpg`) ship in-repo so CLI / pipeline / services tests run identically in CI without depending on the gitignored `resources/train/` set. Backing for `conftest.regression_image_set()` (the regression gate's always-runs-in-CI fallback).
+- **`eval/magenta_gt.py`** — the plan §212 either/or ("magenta GT helpers stay in eval/ later, or are dropped") resolved as "stay in eval/". Consumed by `eval/score_comparison.py` for ground-truth overlay rendering in the CLI's eval table.
+- **`services.reap_stuck_jobs()` + `ScoringJob.started_at`** — added during impl-review F2 to close the SIGKILL-while-running window. Migration `0002_scoringjob_started_at`. Sweeper is intended to be invoked by a scheduled q2 task or the BFF-on-GET.
+- **`services.process_image` idempotency guard** — added during impl-review F1. Wraps the claim in `transaction.atomic()` + `select_for_update()` and early-returns when the job is already in a terminal state (q2 retry safety).
+- **CLI takes image paths, not integer ids** — revised during impl-review F4. Path-based access scales to system testing and arbitrary fixtures without a hardcoded image-id lookup table; the success criterion was updated accordingly. CLI exits non-zero when every requested image skipped or failed (no silent-failure mode).
 
 ## Critical Implementation Details
 
@@ -183,7 +198,7 @@ OLLAMA_MODEL=gemma4:latest
 - `uv run ruff check src/domains/vision` passes (new files lint clean).
 - `uv run lint-imports` passes (domain isolation unaffected — vision imports nothing from core/identity).
 - `uv run pytest src/domains/vision/tests -k mock_detector` passes (MockDetector returns the 5-hole pattern; trivial unit test).
-- Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` returns no matches.
+- Grep gate: `rg -n "^import cv\.|^from cv\." src/domains/vision` returns no matches.
 
 #### Manual Verification:
 - `.env.example` contains all three vars; `uv run python -c "import dotenv"` succeeds.
@@ -302,7 +317,7 @@ The order below matches the pipeline stage sequence (each class cites its cv/ so
 #### Automated Verification:
 - `uv run pytest src/domains/vision/tests/test_geometry_regression.py` passes on all 10 images (the load-bearing gate).
 - `uv run ruff check src/domains/vision/geometry` passes.
-- Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` returns no matches.
+- Grep gate: `rg -n "^import cv\.|^from cv\." src/domains/vision` returns no matches.
 
 #### Manual Verification:
 - Run `GeometryPipeline` on img 12 (gold standard); visually confirm `image_1024` matches `resources/train/intermediate_fused_all10/12_04_llm_input.png` byte-for-byte (or within cv2 imencode noise).
@@ -437,7 +452,7 @@ Wire geometry + detector into `PipelineRunner`, port the magenta-dot deliverable
 #### Automated Verification:
 - `uv run pytest src/domains/vision/tests/test_pipeline_runner.py` passes (mock detector, no network).
 - `uv run ruff check src/domains/vision/pipeline src/domains/vision/eval` passes.
-- Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` returns no matches.
+- Grep gate: `rg -n "^import cv\.|^from cv\." src/domains/vision` returns no matches.
 
 #### Manual Verification:
 - Run `PipelineRunner` on img 12 with MockDetector; open `<out>/12_marked.png` — magenta dots + ring frame + score labels render correctly.
@@ -541,17 +556,17 @@ Ship the runnable standalone application: `uv run python -m src.domains.vision .
 **Intent**: The standalone entrypoint. argparse mirrors the cv/ `run.py` surface but points at the domain. Loads `.env` via python-dotenv BEFORE importing the detectors (so `GOOGLE_API_KEY` is present when `GoogleAIStudioDetector` constructs). Must NOT require Django (no `django.setup()`); pure-Python path only.
 
 **Contract**:
-- CLI: `python -m src.domains.vision [ids...] --detector {google,ollama,mock} --target-type ... --caliber ... --out ... --no-gt --debug --eval`
-- Defaults: ids=[12,46,29,21], detector=google, target_type=air_pistol, out=`resources/train/intermediate_vision`, caliber per-image from `MetadataLoader` when `--eval` and not overridden.
-- Flow: load_dotenv() → build detector via factory → per image: `PipelineRunner.run(...)` → collect result → if `--eval`: compute `score_jaccard` vs metadata.yml, print per-image table + mean. → write `_summary.json`.
+- CLI: `python -m src.domains.vision <IMAGE_PATH>... --detector {google,ollama,mock} --target-type ... --caliber ... --out ... --no-gt --debug --eval`
+- Defaults: detector=google, target_type=air_pistol, out=`resources/train/intermediate_vision`, caliber per-image from `MetadataLoader` when `--eval` and not overridden. `IMAGE_PATH` is one or more paths (no default — explicit, for system-test reuse).
+- Flow: load_dotenv() → build detector via factory → per image: `PipelineRunner.run(...)` → collect result → if `--eval`: compute `score_jaccard` vs metadata.yml, print per-image table + mean. → write `_summary.json`. Exit non-zero if every requested image skipped or failed (no silent-failure mode).
 - Prints `GOOGLE_API_KEY`/`OLLAMA_*` presence (not values) at start.
 
 ### Success Criteria:
 
 #### Automated Verification:
-- `uv run python -m src.domains.vision 12 --detector mock --out /tmp/vision_cli_test` exits 0 and writes 3 files + `_summary.json`.
+- `uv run python -m src.domains.vision <FIXTURE_PATH> --detector mock --out /tmp/vision_cli_test` exits 0 and writes 3 files + `_summary.json` (e.g. `<FIXTURE_PATH>=src/domains/vision/tests/fixtures/12.jpg`). Exits non-zero if every requested image skipped or failed.
 - `uv run pytest src/domains/vision/tests/test_cli.py` passes (smoke test invoking `__main__` with `--detector mock` via subprocess or `runpy`, asserting files).
-- Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` returns no matches.
+- Grep gate: `test_no_cv_imports.py` green (the literal `rg "^import cv"` regex catches `cv2`/OpenCV; the AST test is the real guardrail).
 
 #### Manual Verification:
 - `uv run python -m src.domains.vision 12 46 29 21 --detector google` runs end-to-end against Google AI Studio and prints a mean Jaccard in the ~0.6–0.8 range (matching the research's 0.638–0.799).
@@ -590,7 +605,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - `uv run ruff check .` — clean.
 - `uv run lint-imports` — domain isolation contract holds.
 - `uv run python src/manage.py migrate --check` — no drift.
-- `rg -n "^import cv|^from cv\b" src/domains/vision` — empty.
+- `rg -n "^import cv\.|^from cv\." src/domains/vision` — empty.
 
 #### Manual Verification:
 - Cross-path numerics: a `--detector mock` run via the CLI and a `process_image` call via Django shell produce identical `target_ring1_px` + invert err on img 12.
@@ -652,7 +667,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 1.2 `uv run ruff check src/domains/vision` clean (ports.py, dtos.py, geometry/calibration.py, detectors/*) — 217bafd
 - [x] 1.3 `uv run lint-imports` passes (domain isolation unaffected) — 217bafd
 - [x] 1.4 `uv run pytest src/domains/vision/tests -k mock_detector` passes — 217bafd
-- [x] 1.5 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — 217bafd
+- [x] 1.5 Grep gate: `rg -n "^import cv\.|^from cv\." src/domains/vision` empty — 217bafd
 
 #### Manual
 - [x] 1.6 `.env.example` has all three vars; `python -c "import dotenv"` succeeds; MockDetector returns [10,7,7,7,7]
@@ -662,7 +677,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 #### Automated
 - [x] 2.1 `uv run pytest src/domains/vision/tests/test_geometry_regression.py` passes on all 10 images — 7276fcb
 - [x] 2.2 `uv run ruff check src/domains/vision/geometry` clean — 7276fcb
-- [x] 2.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — 7276fcb
+- [x] 2.3 Grep gate: `rg -n "^import cv\.|^from cv\." src/domains/vision` empty — 7276fcb
 
 #### Manual
 - [x] 2.4 GeometryPipeline img-12 image_1024 byte-matches cv/ fused output; defense-layer classifications match research table
@@ -682,7 +697,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 #### Automated
 - [x] 4.1 `uv run pytest src/domains/vision/tests/test_pipeline_runner.py` passes (mock detector) — e5e08f5
 - [x] 4.2 `uv run ruff check src/domains/vision/pipeline src/domains/vision/eval` clean — e5e08f5
-- [x] 4.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — e5e08f5
+- [x] 4.3 Grep gate: `rg -n "^import cv\.|^from cv\." src/domains/vision` empty — e5e08f5
 
 #### Manual
 - [x] 4.4 PipelineRunner img-12 `_marked.png` renders magenta dots + ring frame + score labels
@@ -703,7 +718,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 #### Automated
 - [x] 6.1 `uv run python -m src.domains.vision 12 --detector mock --out /tmp/vision_cli_test` exits 0, writes 3 files + _summary.json — ee2368c
 - [x] 6.2 `uv run pytest src/domains/vision/tests/test_cli.py` passes — ee2368c
-- [x] 6.3 Grep gate: `rg -n "^import cv|^from cv\b" src/domains/vision` empty — ee2368c
+- [x] 6.3 Grep gate: `rg -n "^import cv\.|^from cv\." src/domains/vision` empty — ee2368c
 
 #### Manual
 - [x] 6.4 `--detector google` on 4-image set prints mean Jaccard ~0.6–0.8; `--detector ollama` runs without errors
@@ -715,7 +730,7 @@ Run the full regression suite, confirm the architectural invariants (no cv/ impo
 - [x] 7.2 `uv run ruff check .` clean — aa11083
 - [x] 7.3 `uv run lint-imports` holds — aa11083
 - [x] 7.4 `uv run python src/manage.py migrate --check` no drift — aa11083
-- [x] 7.5 `rg -n "^import cv|^from cv\b" src/domains/vision` empty (guardrail test green) — aa11083
+- [x] 7.5 `rg -n "^import cv\.|^from cv\." src/domains/vision` empty (guardrail test green) — aa11083
 
 #### Manual
 - [x] 7.6 Cross-path numerics: CLI mock run vs Django process_image agree on target_ring1_px + invert err (img 12); NOT-doing list reviewed with user

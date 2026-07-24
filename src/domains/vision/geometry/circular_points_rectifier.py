@@ -7,27 +7,18 @@ paper target.
 
 Math is lifted as-is into class methods and module private helpers; only the
 structure (free functions → ``CircularPointsRectifier`` class + helpers) changes.
+
+``RectificationResult`` (the return shape) lives in ``results.py`` — the
+geometry subpackage's contract collection (sanctioned exception in
+``lessons.md``).
 """
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
 import numpy as np
 
-
-@dataclass
-class RectificationResult:
-    """Shape returned by ``CircularPointsRectifier.compute`` — preserved as the
-    cv/ dict so downstream code reads keys unchanged."""
-
-    H: np.ndarray
-    H_inv: np.ndarray
-    Q: np.ndarray
-    center: np.ndarray
-    circular_points: tuple[complex, complex]
-    center_drift: np.ndarray | None
-    used_projective: bool
+from src.domains.vision.geometry.results import RectificationResult
 
 
 def _ellipse_to_conic(
@@ -62,7 +53,7 @@ def _conic_2x2_block(C: np.ndarray) -> np.ndarray:
     return C[:2, :2]
 
 
-def _average_shared_metric(
+def average_shared_metric(
     rings: list[dict],
 ) -> tuple[np.ndarray, np.ndarray, list[float]]:
     """Compute the average (A, B, C) metric across all rings, weighted by
@@ -157,7 +148,7 @@ class CircularPointsRectifier:
         if len(rings) < 2:
             raise ValueError(f"need ≥2 concentric rings for calibration, got {len(rings)}")
 
-        Q, center, _ = _average_shared_metric(rings)
+        Q, center, _ = average_shared_metric(rings)
         Qinv_sqrt = _matrix_inverse_sqrt(Q)
         circular = _circular_points_from_Q(Q)
 

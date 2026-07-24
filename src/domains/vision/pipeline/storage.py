@@ -30,6 +30,28 @@ class ScoringStorage:
             media_root = getattr(settings, "MEDIA_ROOT", None)
             location = Path(media_root) / "scoring" if media_root else Path(settings.BASE_DIR) / "scoring_storage"
         self._storage = FileSystemStorage(location=str(location), base_url=base_url)
+        # Cache the resolved root once so containment checks see a stable
+        # canonical path even if a caller passes a stored_path containing
+        # ``..`` segments or symlinks pointing outside the bucket.
+        self._root = Path(self._storage.location).resolve()
+
+    def _safe_join(self, stored_path: str) -> Path:
+        """Join ``stored_path`` onto the storage root, refusing to escape it.
+
+        Defense-in-depth against path traversal: today every ``stored_path``
+        originates from ``save_upload`` (hex-controlled digest + final
+        extension), so traversal is unreachable. The moment a future caller
+        (e.g. the BFF) passes anything user-controlled through this surface,
+        ``../../etc/passwd`` would be in scope without this check.
+        """
+        resolved = (self._root / stored_path).resolve()
+        try:
+            resolved.relative_to(self._root)
+        except ValueError as exc:
+            raise ValueError(
+                f"stored_path {stored_path!r} escapes the storage root"
+            ) from exc
+        return resolved
 
     def save_upload(self, upload_bytes: bytes, original_name: str) -> str:
         """Save an uploaded image's raw bytes; return the stored path.
@@ -47,7 +69,7 @@ class ScoringStorage:
 
     def deliverable_dir(self, job_id: UUID) -> Path:
         """The directory deliverables for this job live in."""
-        return Path(self._storage.location) / "jobs" / str(job_id)
+        return self._safe_join(f"jobs/{job_id}")
 
     def write_deliverable(self, job_id: UUID, name: str, data: bytes) -> str:
         """Write ``name`` (e.g. ``12_llm_input.png``) into the job's bucket;
@@ -56,12 +78,12 @@ class ScoringStorage:
         out_dir.mkdir(parents=True, exist_ok=True)
         full = out_dir / name
         full.write_bytes(data)
-        return str(full.relative_to(self._storage.location))
+        return str(full.relative_to(self._root))
 
     def read_upload(self, stored_path: str) -> bytes:
         """Read an upload back as bytes (the q2 task body uses this)."""
-        return (Path(self._storage.location) / stored_path).read_bytes()
+        return self._safe_join(stored_path).read_bytes()
 
     def absolute_path(self, stored_path: str) -> Path:
         """Resolve a stored path relative to the storage root."""
-        return Path(self._storage.location) / stored_path
+        return self._safe_join(stored_path)

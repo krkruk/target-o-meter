@@ -13,52 +13,31 @@ Math is lifted as-is; structure changes only to use the ported classes.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+import logging
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
 from src.domains.vision.geometry.adaptive_frame_sizer import AdaptiveFrameSizer
 from src.domains.vision.geometry.calibration import Calibration
+from src.domains.vision.geometry.black_disc_calibrator import BlackDiscCalibrator
 from src.domains.vision.geometry.circular_points_rectifier import (
     CircularPointsRectifier,
-    _average_shared_metric,
+    average_shared_metric,
 )
-from src.domains.vision.geometry.classical_stages import (
-    BlackDiscCalibrator,
-    ImageGrayscaler,
-)
-from src.domains.vision.geometry.coordinate_frame import CoordinateFrame
 from src.domains.vision.geometry.homography_model import HomographyModel
-from src.domains.vision.geometry.homography_refiner import (
-    FusedHomographyRefiner,
-    RefinementResult,
-)
+from src.domains.vision.geometry.homography_refiner import FusedHomographyRefiner
+from src.domains.vision.geometry.image_grayscaler import ImageGrayscaler
 from src.domains.vision.geometry.image_loader import ImageLoader
 from src.domains.vision.geometry.normalizer import Normalizer
+from src.domains.vision.geometry.results import GeometryResult
 from src.domains.vision.geometry.ring_detector import RingDetector
 from src.domains.vision.geometry.target_localizer import TargetLocalizer
 from src.domains.vision.geometry.warp_projector import WarpProjector
 from src.domains.vision.ports import TargetType
 
 
-@dataclass
-class GeometryResult:
-    """Everything the detector + renderer need from the geometry pass."""
-
-    bgr: np.ndarray
-    gray: np.ndarray
-    image_1024: np.ndarray
-    target_ring1_px: float
-    coordinate_frame: CoordinateFrame
-    calibration: Calibration
-    refinement: RefinementResult
-    frame_info: dict
-    metrics: dict[str, Any]
-    bbox: tuple[int, int, int, int]
-    rings: list[dict]
-    debug_artifacts: dict[str, np.ndarray] = field(default_factory=dict)
+logger = logging.getLogger(__name__)
 
 
 class GeometryPipeline:
@@ -124,7 +103,7 @@ class GeometryPipeline:
         if not rings:
             raise ValueError("no rings")
 
-        _, center, _ = _average_shared_metric(rings)
+        _, center, _ = average_shared_metric(rings)
         center_homog = H @ np.array([center[0], center[1], 1.0], dtype=np.float64)
         if abs(center_homog[2]) < 1e-12:
             center_homog[2] = 1e-12
@@ -201,7 +180,11 @@ class GeometryPipeline:
                         s_px, r_bw_px, r_bull_px_init = s_bd, r_bw_bd, r_bull_bd
                         cal_source = "bd_calibrate_fallback"
             except Exception:
-                pass
+                logger.warning(
+                    "BlackDiscCalibrator fallback failed; continuing with "
+                    "ring-based calibration only",
+                    exc_info=True,
+                )
 
         # ---- Stage 2: detect rings (multiring) ----
         det = RingDetector.detect(crop, init=init)

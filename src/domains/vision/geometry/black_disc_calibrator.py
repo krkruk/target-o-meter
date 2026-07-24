@@ -1,18 +1,11 @@
-"""Classical primitives the pipeline still uses (stage 1 grayscale + black-disc
-calibration fallback + ISSF line-break scoring).
+"""Black-disc calibration fallback — ``BlackDiscCalibrator``.
 
-Ported from ``cv/blob_detect.py`` — only ``to_gray``, the collaborators of
-``calibrate`` (``_sobel_mag``, ``blackdisc_center``, ``ellipse_geometry``),
-``calibrate`` itself, and ``score_holes`` (the symbols
-``full_pipeline/pipeline.py`` imports). The matched-filter/hole-detection
-code is NOT ported (LLM owns hole detection now).
+Ported from ``cv/blob_detect.py:253-294`` (the ``calibrate`` symbol
+``full_pipeline/pipeline.py`` imports). The black-disc-anchor collaborators
+(``_ellipse_geometry``, ``_blackdisc_center``) live here as private module
+functions; they serve only this class.
 
-Per the one-class-per-file rule (``lessons.md``), the three logical concerns
-grayscale / black-disc calibration / scoring are three classes; helpers that
-serve only one class stay as private module functions or static methods of
-that class.
-
-Math is lifted verbatim from cv/ — only structure (free function → class
+Math is lifted verbatim from cv/ — only the structure (free function → class
 method, dict → ``Calibration`` arg) changes.
 """
 from __future__ import annotations
@@ -23,23 +16,7 @@ import cv2
 import numpy as np
 
 from src.domains.vision.geometry.calibration import Calibration
-
-
-# Ring-index prior: the black/white boundary is between rings 6 and 7, i.e.
-# the outer edge of ring 7 = 3 ring-steps outside the 10-ring (bullseye).
-RING_STEPS_BW_TO_BULL = 3
-
-# Caliber → bullet radius table (carried verbatim from cv/blob_detect.py:35).
-BULLET_RADIUS_MM = {"22lr": 2.85, "9x19": 4.5, ".223Rem": 2.78, "slug": 9.0}
-
-
-def _sobel_mag(gray: np.ndarray) -> np.ndarray:
-    """Sobel magnitude (0..255 uint8) — ported verbatim from cv/blob_detect.py:158-163."""
-    blur = cv2.GaussianBlur(gray, (0, 0), 2.0)
-    gx = cv2.Sobel(blur.astype(np.float32), cv2.CV_32F, 1, 0, ksize=3)
-    gy = cv2.Sobel(blur.astype(np.float32), cv2.CV_32F, 0, 1, ksize=3)
-    mag = np.sqrt(gx * gx + gy * gy)
-    return ((mag / max(mag.max(), 1e-6)) * 255).astype(np.uint8)
+from src.domains.vision.geometry.image_grayscaler import _sobel_mag
 
 
 def _ellipse_geometry(contour: np.ndarray) -> dict:
@@ -96,14 +73,6 @@ def _blackdisc_center(gray: np.ndarray) -> tuple[float, float, float, np.ndarray
         major_dir = geo["major_dir"]
         semi_a, semi_b = geo["semi_a"], geo["semi_b"]
     return cx, cy, aniso, major_dir, semi_a, semi_b
-
-
-class ImageGrayscaler:
-    """Stage-1 grayscale conversion — ``cv/blob_detect.py:41-42`` verbatim."""
-
-    @staticmethod
-    def to_gray(bgr: np.ndarray) -> np.ndarray:
-        return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
 
 
 class BlackDiscCalibrator:
@@ -165,25 +134,3 @@ class BlackDiscCalibrator:
             r_bw_px=float(r_bw),
             ok=ok,
         )
-
-
-class IssfScorer:
-    """ISSF line-break scoring — ``cv/blob_detect.py:604-614`` verbatim.
-
-    ``score = 10 - ceil((dist(bull,hole) - r_hole - r_bull)/s)``, clamped to
-    ``[0, 10]``. Uses the *detected* hole radius (user direction).
-    """
-
-    @staticmethod
-    def score_holes(
-        holes: list[tuple[float, float, float]],
-        cal: Calibration,
-    ) -> list[int]:
-        s, r_bull = cal.s_px, cal.r_bull_px
-        cx, cy = cal.cx, cal.cy
-        scores: list[int] = []
-        for x, y, r in holes:
-            d = math.hypot(x - cx, y - cy) - r           # line-break: subtract hole radius
-            steps = int(math.ceil((d - r_bull) / s)) if d > r_bull else 0
-            scores.append(max(0, min(10, 10 - steps)))
-        return scores

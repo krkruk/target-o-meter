@@ -6,25 +6,23 @@ ring strokes (bullet holes, paper folds) than contour-based fitting.
 
 Math is lifted as-is into class methods and module private helpers; only the
 structure (free functions → ``RingDetector`` class + helpers) changes.
+
+``RingDetection`` (the return shape) lives in ``results.py`` — the geometry
+subpackage's contract collection (sanctioned exception in ``lessons.md``).
 """
 from __future__ import annotations
 
+import logging
 import math
-from dataclasses import dataclass
 
 import cv2
 import numpy as np
 from scipy.optimize import least_squares
 
+from src.domains.vision.geometry.results import RingDetection
 
-@dataclass
-class RingDetection:
-    """Shape returned by ``RingDetector.detect`` — preserved as the cv/ dict so
-    downstream code reads ``r["cx"], r["semi_a"]`` etc. unchanged."""
 
-    rings: list[dict]
-    edges: np.ndarray      # uint8 Canny overlay (diagnostic)
-    clahe: np.ndarray      # uint8 CLAHE-equalized crop (diagnostic)
+logger = logging.getLogger(__name__)
 
 
 def _clahe(gray: np.ndarray, clip: float = 2.5, tile: int = 8) -> np.ndarray:
@@ -154,6 +152,10 @@ def _fit_ring_ellipse(
             max_nfev=200,
         )
     except Exception:
+        logger.warning(
+            "_fit_ring_ellipse: least_squares failed for ring; skipping",
+            exc_info=True,
+        )
         return None
 
     a_fit, b_fit, alpha_fit, r0_fit = result.x

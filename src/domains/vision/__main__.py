@@ -116,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
 
     summaries: list[dict] = []
     jaccards: list[float] = []
+    succeeded = 0
 
     for image_arg in args.images:
         image_path = Path(image_arg)
@@ -148,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
                 "image": str(image_arg), "ok": False, "error": str(exc),
             })
             continue
+
+        succeeded += 1
 
         entry: dict = {"image": str(image_arg), "ok": True, "count": result["count"]}
 
@@ -194,6 +197,15 @@ def main(argv: list[str] | None = None) -> int:
         "mean_jaccard": statistics.mean(jaccards) if jaccards else None,
     }, indent=2))
     print(f"\n# wrote {summary_path}")
+    # Non-zero exit when every requested image skipped or failed — prevents CI
+    # from greenlighting a run that produced no deliverables (the original
+    # exit-0-on-all-skipped was a silent-failure mode).
+    if args.images and succeeded == 0:
+        print(
+            f"# error: 0 of {len(args.images)} images produced deliverables",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

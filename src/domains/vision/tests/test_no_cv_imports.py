@@ -1,14 +1,14 @@
 """No-cv-import guardrail — a CI test that the invariant cannot regress silently.
 
 Parses the domain source tree (``src/domains/vision/**/*.py``) with the
-``ast`` module and asserts no module-level import starts with the ``cv``
-package (the research sandbox at commit 76f6fc4). ``cv2`` (opencv) is a
-separate package and is allowed.
+``ast`` module and asserts no import — at module level OR nested inside a
+function/method/try-block — starts with the ``cv`` package (the research
+sandbox at commit 76f6fc4). ``cv2`` (opencv) is a separate package and is
+allowed.
 
-Per plan §7 §1: ``test_no_runtime_cv_imports()`` walks
-``src/domains/vision/**/*.py``, parses imports, asserts none start with
-``cv``. Excludes ``tests/`` fixtures if any deliberately reference cv/ for
-comparison (none expected).
+``TYPE_CHECKING`` blocks are allowed (they don't execute at runtime); the
+walker still surfaces them as observations but the guard only fails on
+runtime-evaluated imports.
 """
 from __future__ import annotations
 
@@ -23,9 +23,15 @@ VISION_PKG = REPO_ROOT / "src" / "domains" / "vision"
 
 
 def _imported_modules(tree: ast.AST) -> list[str]:
-    """All module names imported at module level (``import x`` or ``from x``)."""
+    """All module names imported anywhere in the tree (``import x`` or
+    ``from x``), including nested function/try/TYPE_CHECKING blocks.
+
+    A top-level-only walk would miss the lazy-import pattern (e.g. ``def f():
+    import cv.approaches.x``) and let a regression hide inside a function
+    body. ``ast.walk`` covers every node.
+    """
     out: list[str] = []
-    for node in tree.body:
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             out.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
