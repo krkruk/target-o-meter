@@ -102,12 +102,29 @@ def process_image(job_id: str | UUID) -> dict:
 
     Returns the result dict (also stored as ``job.result``). On exception,
     sets ``status="failed"`` + ``error`` trace.
-    """
-    job = ScoringJob.objects.get(id=job_id)
 
-    # Mark running.
-    job.status = ScoringJob.Status.RUNNING
-    job.save(update_fields=["status", "updated_at"])
+    Idempotency: if the job is already in a terminal state (SUCCEEDED or
+    FAILED), returns immediately without re-running — q2 retries (configured
+    at settings.Q_CLUSTER['retry']) will not double-bill the LLM API or
+    overwrite prior deliverables. The claim is a short atomic block so the
+    ~30s pipeline does not hold a row lock (SQLite uses database-level
+    locking under WAL).
+    """
+    with transaction.atomic():
+        job = ScoringJob.objects.select_for_update().get(id=job_id)
+        if job.status in (
+            ScoringJob.Status.SUCCEEDED,
+            ScoringJob.Status.FAILED,
+        ):
+            logger.warning(
+                "process_image called for job %s already in terminal %s; "
+                "skipping (q2 retry).",
+                job_id, job.status,
+            )
+            return job.result or {}
+        job.status = ScoringJob.Status.RUNNING
+        job.started_at = timezone.now()
+        job.save(update_fields=["status", "started_at", "updated_at"])
 
     try:
         # Build the detector from config (default Google; future: env switch).
@@ -150,11 +167,11 @@ def process_image(job_id: str | UUID) -> dict:
         # strict (Python's ``json.dumps`` emits bare ``NaN`` / ``Infinity``
         # tokens which SQLite rejects). The on-disk _result.json file is fine
         # because consumers (browsers, jq) tolerate them; the DB column is not.
-        from src.domains.vision.pipeline.pipeline_runner import _json_default
+        from src.domains.vision.pipeline.pipeline_runner import json_default
         job.result = json.loads(
             json.dumps(
                 _sanitize_nan_inf(result_dict),
-                default=_json_default,
+                default=json_default,
                 allow_nan=False,
             )
         )
@@ -179,13 +196,58 @@ def process_image(job_id: str | UUID) -> dict:
         raise
 
 
+# Stuck-job detection — rows older than this while still RUNNING are assumed
+# orphaned by a SIGKILLed worker (OOM, deploy, host reboot) and reaped.
+STUCK_RUNNING_TIMEOUT_SECONDS = 1200  # 2× settings.Q_CLUSTER['retry']
+
+
+def reap_stuck_jobs(timeout_seconds: int = STUCK_RUNNING_TIMEOUT_SECONDS) -> int:
+    """Flip stale ``RUNNING`` rows back to ``FAILED``.
+
+    A worker that is SIGKILL'd between setting ``status=RUNNING`` and writing
+    a terminal state strands the row. This helper (intended to be called by a
+    scheduled q2 task or the BFF-on-GET) marks such rows FAILED so callers
+    see a terminal state instead of waiting forever.
+
+    Returns the count of reaped rows. Rows without ``started_at`` (queued
+    before the field existed, or never picked up) are not touched — those are
+    q2's responsibility, not ours.
+    """
+    cutoff = timezone.now() - timezone.timedelta(seconds=timeout_seconds)
+    with transaction.atomic():
+        stale = list(
+            ScoringJob.objects.select_for_update().filter(
+                status=ScoringJob.Status.RUNNING,
+                started_at__lt=cutoff,
+            )
+        )
+        for job in stale:
+            job.status = ScoringJob.Status.FAILED
+            job.error = (
+                f"Reaped: started_at {job.started_at.isoformat()} exceeded "
+                f"STUCK_RUNNING_TIMEOUT_SECONDS={timeout_seconds}"
+            )
+            job.completed_at = timezone.now()
+            job.save(update_fields=[
+                "status", "error", "completed_at", "updated_at",
+            ])
+            logger.warning("Reaped stuck ScoringJob %s", job.id)
+    return len(stale)
+
+
 def get_job(job_id: str | UUID, user_uuid: UUID) -> ScoringJobDTO:
     """Read accessor enforcing owner-only access.
 
     Raises ``PermissionError`` if ``user_uuid`` does not match the job's
-    ``user_uuid`` (AGENTS.md §2 roles). Returns a ``ScoringJobDTO``.
+    ``user_uuid`` (AGENTS.md §2 roles) OR if the row is absent — both cases
+    look identical to the caller so an ID-prober can't distinguish "exists,
+    not mine" from "doesn't exist". The BFF should still map to 404.
+    Returns a ``ScoringJobDTO``.
     """
-    job = ScoringJob.objects.get(id=job_id)
+    try:
+        job = ScoringJob.objects.get(id=job_id)
+    except ScoringJob.DoesNotExist as exc:
+        raise PermissionError(f"ScoringJob {job_id} not visible to user_uuid {user_uuid}") from exc
     if job.user_uuid != user_uuid:
         raise PermissionError(
             f"user_uuid {user_uuid} does not own ScoringJob {job_id}"
@@ -214,26 +276,35 @@ def _to_result_dto(result: DetectionResult) -> ScoringResultDTO:
 
 
 def _job_to_dto(job: ScoringJob) -> ScoringJobDTO:
-    """Map ``ScoringJob`` ORM row → ``ScoringJobDTO``."""
+    """Map ``ScoringJob`` ORM row → ``ScoringJobDTO``.
+
+    Raises ``ValueError`` if the stored ``result`` JSON is malformed (missing
+    keys / wrong types) rather than silently substituting 0-defaults. The
+    ``DetectionResult`` → dict → DTO hand-rebuild is fragile by construction
+    (two parallel mappings); the validation makes drift loud. A future
+    refactor should persist ``_to_result_dto(result).model_dump_json()`` at
+    success time and ``model_validate_json()`` on read (one mapping, typed).
+    """
     result_dto: Optional[ScoringResultDTO] = None
     if job.result:
-        # job.result is the result_dict shape (not DetectionResult); reconstruct
-        # via the dict shape PipelineRunner wrote. For now, expose the stored
-        # dict's detector + holes if present.
         result_dict = job.result
         if isinstance(result_dict, dict) and result_dict.get("ok"):
             holes_list = result_dict.get("holes", [])
-            result_dto = ScoringResultDTO(
-                holes=[
-                    DetectedHoleDTO(
-                        x=int(h.get("x", 0)),
-                        y=int(h.get("y", 0)),
-                        score=int(h.get("score", 0)),
-                        confidence=float(h.get("confidence", 1.0)),
-                        caliber=h.get("caliber"),
+            holes: list[DetectedHoleDTO] = []
+            for i, h in enumerate(holes_list):
+                if not isinstance(h, dict) or not {"x", "y", "score"}.issubset(h):
+                    raise ValueError(
+                        f"ScoringJob {job.id} result.holes[{i}] malformed: {h!r}"
                     )
-                    for h in holes_list
-                ],
+                holes.append(DetectedHoleDTO(
+                    x=int(h["x"]),
+                    y=int(h["y"]),
+                    score=int(h["score"]),
+                    confidence=float(h.get("confidence", 1.0)),
+                    caliber=h.get("caliber"),
+                ))
+            result_dto = ScoringResultDTO(
+                holes=holes,
                 target_type=result_dict.get("target_type", "air_pistol"),
                 notes=result_dict.get("notes"),
                 detector_name=result_dict.get("detector", ""),

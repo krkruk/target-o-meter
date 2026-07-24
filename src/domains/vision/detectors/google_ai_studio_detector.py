@@ -1,53 +1,23 @@
-"""Google AI Studio VLM client + ``GoogleAIStudioDetector`` strategy.
+"""Google AI Studio ``GoogleAIStudioDetector`` strategy.
 
-Ported verbatim from ``cv/langchain_detector/client.py`` (spike side) +
-``cv/langchain_detector/detector.py`` (91 LOC at commit 76f6fc4). Backed by
-``langchain_google_genai.ChatGoogleGenerativeAI``; locked model
-``gemini-3.5-flash-lite`` (the Step-1 result that hit mean Jaccard 0.799).
+Ported verbatim from ``cv/langchain_detector/detector.py`` (91 LOC at commit
+76f6fc4). Backed by ``langchain_google_genai.ChatGoogleGenerativeAI``; locked
+model ``gemini-3.5-flash-lite`` (the Step-1 result that hit mean Jaccard
+0.799).
+
+The VLM client binding lives in ``google_studio_vlm_client.py`` per the
+one-class-per-file rule (``lessons.md``).
 """
 from __future__ import annotations
 
-import os
-
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-from src.domains.vision.detectors.detected_hole import DetectedHole
 from src.domains.vision.detectors.detection_result import DetectionResult
+from src.domains.vision.detectors.detected_hole import DetectedHole
+from src.domains.vision.detectors.google_studio_vlm_client import (
+    DEFAULT_MODEL,
+    GoogleStudioVLMClient,
+)
 from src.domains.vision.detectors.schema import TargetAnalysis
-from src.domains.vision.detectors.vlm_client import VLMClient
 from src.domains.vision.ports import HoleDetector, TargetType
-
-# Locked in Step 1 (mean Jaccard 0.799). cv/langchain_detector/detector.py:26.
-_DEFAULT_MODEL = "gemini-3.5-flash-lite"
-
-
-class GoogleStudioVLMClient(VLMClient):
-    """Google AI Studio binding for ``VLMClient``.
-
-    Reads ``GOOGLE_API_KEY`` from the environment (the user exports it via
-    ``~/.bashrc``; ``.env`` loaded by the CLI is also fine). Raises a clear
-    ``RuntimeError`` if absent.
-    """
-
-    def __init__(
-        self,
-        model: str = _DEFAULT_MODEL,
-        temperature: float = 1.0,
-    ) -> None:
-        if not os.environ.get("GOOGLE_API_KEY"):
-            raise RuntimeError(
-                "GOOGLE_API_KEY is not set in the environment. "
-                "Export it (e.g. via `export GOOGLE_API_KEY=...` or a .env file) "
-                "before constructing GoogleAIStudioDetector."
-            )
-        self.model = model
-        self.temperature = temperature
-        self._llm = ChatGoogleGenerativeAI(
-            model=model,
-            temperature=temperature,
-            max_output_tokens=4096,
-        )
-        self._structured = self._llm.with_structured_output(TargetAnalysis)
 
 
 class GoogleAIStudioDetector(HoleDetector):
@@ -60,7 +30,7 @@ class GoogleAIStudioDetector(HoleDetector):
     ``LangChainDetector`` to reflect the binding).
     """
 
-    def __init__(self, model: str = _DEFAULT_MODEL, temperature: float = 1.0) -> None:
+    def __init__(self, model: str = DEFAULT_MODEL, temperature: float = 1.0) -> None:
         self._client = GoogleStudioVLMClient(model=model, temperature=temperature)
         self._model = model
 
@@ -90,7 +60,7 @@ class GoogleAIStudioDetector(HoleDetector):
             primary_caliber=caliber_hint,
         )
 
-        return _analysis_to_detection_result(
+        return analysis_to_detection_result(
             analysis=analysis,
             detector_name=self.name,
             target_ring1_px=target_ring1_px,
@@ -100,7 +70,7 @@ class GoogleAIStudioDetector(HoleDetector):
         )
 
 
-def _analysis_to_detection_result(
+def analysis_to_detection_result(
     *,
     analysis: TargetAnalysis,
     detector_name: str,
@@ -112,7 +82,9 @@ def _analysis_to_detection_result(
     """``TargetAnalysis`` → ``DetectionResult`` mapping — identical for the
     Google and Ollama detectors (true peers share the schema + mapping).
 
-    Ported verbatim from cv/langchain_detector/detector.py:67-91.
+    Ported verbatim from cv/langchain_detector/detector.py:67-91. Public
+    module function so the peer detector (``ollama_detector``) imports it
+    without reaching for a ``_``-prefixed symbol across subpackages.
     """
     holes = [
         DetectedHole(

@@ -1,14 +1,15 @@
 """Numerical-identity regression gate for the geometry port.
 
-Runs ``GeometryPipeline`` on all 10 train images and asserts the frozen
-metrics from cv/ (commit 76f6fc4, ``resources/train/intermediate_fused_all10/``).
-The rewrite must copy the cv/ math verbatim — drift here means the port is
-wrong, not the gate.
+Runs ``GeometryPipeline`` against the frozen metrics from cv/ (commit
+76f6fc4, ``resources/train/intermediate_fused_all10/``). The rewrite must
+copy the cv/ math verbatim — drift here means the port is wrong, not the
+gate.
 
-**Local-only**: requires the unversioned ``resources/train/`` set (10 images
-+ their ``_marked.jpg`` siblings, per project policy ``resources/`` is not in
-git). The test skips gracefully when the local set is absent — CI runs the
-4-image versioned fixture tests under ``tests/fixtures/`` instead.
+**Always runs on the 4 versioned fixtures** (ids 12, 46, 29, 21 —
+byte-identical to ``resources/train/`` per the plan §57 default set, shipped
+under ``tests/fixtures/``), so CI enforces the gate on every clone. When the
+local 10-image train set (``resources/train/``) is also present, the
+remaining 6 ids (1, 4, 6, 10, 19, 31) are appended for the full gate.
 
 Run: ``uv run --group test pytest src/domains/vision/tests/test_geometry_regression.py``.
 """
@@ -19,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from src.domains.vision.geometry.geometry_pipeline import GeometryPipeline
-from src.domains.vision.tests.conftest import has_local_train_set, TRAIN_IDS
+from src.domains.vision.tests.conftest import regression_image_set
 
 
 # Frozen floats extracted from cv/approaches/full_pipeline/pipeline.py output
@@ -39,29 +40,26 @@ FROZEN: dict[int, tuple[float, float, str]] = {
 }
 
 
-_LOCAL_TRAIN_AVAILABLE = has_local_train_set()
-_SKIP_REASON = (
-    "requires the local 10-image train set at resources/train/ (not in git; "
-    "ship the images manually before running this gate). The 4-image versioned "
-    "fixture tests under tests/fixtures/ run regardless."
+# Resolve at collection time so pytest can parametrize on whatever is
+# available — 4 ids in CI, 10 ids on a developer machine with resources/train/.
+_REGRESSION_CASES: list[tuple[int, Path, Path]] = regression_image_set()
+
+
+@pytest.mark.parametrize(
+    "img_id, image_path, marked_path",
+    _REGRESSION_CASES,
+    ids=[str(cid) for cid, _, _ in _REGRESSION_CASES],
 )
-
-
-@pytest.mark.skipif(not _LOCAL_TRAIN_AVAILABLE, reason=_SKIP_REASON)
-@pytest.mark.parametrize("img_id", TRAIN_IDS)
 def test_geometry_pipeline_preserves_frozen_numerics(
     img_id: int,
-    train_images: list[Path],
-    marked_paths: dict[int, Path],
+    image_path: Path,
+    marked_path: Path,
 ) -> None:
-    image_path = next(p for p in train_images if p.stem == str(img_id))
-    marked = marked_paths[img_id]
-
     pipeline = GeometryPipeline()
     result = pipeline.run(
         image_path,
         target_type="air_pistol",
-        gt_marked_path=marked,
+        gt_marked_path=marked_path,
     )
 
     frozen_ring1, frozen_ecc, frozen_defense = FROZEN[img_id]

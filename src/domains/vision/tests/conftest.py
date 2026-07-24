@@ -74,6 +74,30 @@ def has_local_train_set() -> bool:
     return True
 
 
+def regression_image_set() -> list[tuple[int, Path, Path]]:
+    """Return ``(img_id, image_path, marked_path)`` tuples for the gate.
+
+    Always includes the 4 versioned fixtures (12, 46, 29, 21 — byte-identical
+    to ``resources/train/`` per the plan §57 default set), so the regression
+    gate runs in CI without skipping. When the local 10-image train set is
+    also present, the remaining 6 ids (1, 4, 6, 10, 19, 31) are appended so
+    the full gate re-proves byte-identity with cv/'s frozen output.
+    """
+    # Always include the 4 versioned fixtures.
+    pairs: list[tuple[int, Path, Path]] = [
+        (i, FIXTURES_DIR / f"{i}.jpg", FIXTURES_DIR / f"{i}_marked.jpg")
+        for i in FIXTURE_IDS
+    ]
+    # Append the 6 non-fixture ids if the local train set is complete.
+    if has_local_train_set():
+        non_fixture_ids = [i for i in TRAIN_IDS if i not in FIXTURE_IDS]
+        pairs.extend(
+            (i, TRAIN_DIR / f"{i}.jpg", TRAIN_DIR / f"{i}_marked.jpg")
+            for i in non_fixture_ids
+        )
+    return pairs
+
+
 @pytest.fixture(scope="session")
 def train_dir() -> Path:
     """Directory holding the local 10-image train set (``resources/train/``)."""

@@ -18,16 +18,20 @@ inside ``GeometryPipeline.run(debug=True)``).
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
 
-from src.domains.vision.geometry.classical_stages import IssfScorer
+from src.domains.vision.geometry.issf_scorer import IssfScorer
 from src.domains.vision.geometry.geometry_pipeline import GeometryPipeline
 from src.domains.vision.pipeline.deliverable_renderer import DeliverableRenderer
 from src.domains.vision.ports import HoleDetector, TargetType
+
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineRunner:
@@ -99,9 +103,16 @@ class PipelineRunner:
 
         synthetic_r = max(3.0, 0.15 * float(cal.s_px))
         holes_crop_with_r = [(xy[0], xy[1], synthetic_r) for xy in holes_crop]
+        classical_score_fallback = False
         try:
             classical_scores = IssfScorer.score_holes(holes_crop_with_r, cal)
         except Exception:
+            logger.warning(
+                "IssfScorer.score_holes failed; substituting LLM scores for "
+                "classical scores (diff_total will be 0 for this image)",
+                exc_info=True,
+            )
+            classical_score_fallback = True
             classical_scores = [h.score for h in result.holes]
         llm_scores = [int(h.score) for h in result.holes]
 
@@ -168,6 +179,7 @@ class PipelineRunner:
             "holes_src": [{"x": float(xy[0]), "y": float(xy[1])} for xy in holes_src],
             "scores_llm": llm_scores,
             "scores_classical": [int(s) for s in classical_scores],
+            "classical_score_fallback": classical_score_fallback,
             "count": len(result.holes),
             "total_llm": int(sum(llm_scores)),
             "total_classical": int(sum(classical_scores)),
@@ -178,13 +190,13 @@ class PipelineRunner:
         # ---- WRITE DELIVERABLE (c): _result.json ----
         if out_path:
             (out_path / f"{stem}_result.json").write_text(
-                json.dumps(result_dict, indent=2, default=_json_default),
+                json.dumps(result_dict, indent=2, default=json_default),
             )
 
         return result_dict
 
 
-def _json_default(obj):
+def json_default(obj):
     """Pydantic/numpy-aware JSON fallback for the result_dict writer."""
     if isinstance(obj, (np.integer,)):
         return int(obj)

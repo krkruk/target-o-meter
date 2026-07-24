@@ -12,11 +12,13 @@ ALL load-bearing constants travel here per plan §Critical Implementation Detail
 
 Math is lifted as-is into class methods and module private helpers; only
 structure changes.
+
+``RefinementResult`` (the return shape) lives in ``results.py`` — the geometry
+subpackage's contract collection (sanctioned exception in ``lessons.md``).
 """
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
@@ -25,6 +27,7 @@ from scipy.optimize import least_squares
 from src.domains.vision.geometry.calibration import Calibration
 from src.domains.vision.geometry.edge_potential import EdgePotential
 from src.domains.vision.geometry.homography_model import HomographyModel
+from src.domains.vision.geometry.results import RefinementResult
 
 
 # Schedule (sigma_factor, reg_p, reg_a, reg_d, max_iters, potential_kind, data_weight).
@@ -56,31 +59,6 @@ SV_RATIO_WEIGHT = 1e3
 CORNER_RATIO_ABS_THRESHOLD = 3.0
 CORNER_RATIO_RELATIVE_FACTOR = 2.0
 M2_ANISO_GATE_THRESHOLD = 1.10
-
-
-@dataclass
-class RefinementResult:
-    """Shape returned by ``FusedHomographyRefiner.refine``. Fields mirror the
-    cv/ return dict verbatim so the pipeline reads them unchanged."""
-
-    final_params: np.ndarray
-    final_H: np.ndarray
-    final_cost: float
-    n_iterations: int
-    converged: bool
-    stages: list[dict]
-    reverted_to_init: bool
-    revert_reason: str | None
-    init_data_score: float
-    opt_data_score: float
-    corner_ratio_init: float | None
-    corner_ratio_final: float | None
-    corner_ratio_gate: float | None
-    m2_aniso_init: float | None
-    m2_aniso_final: float | None
-    m2_aniso_gate: float | None
-    mean_ring_eccentricity: float
-    defense_layer: str
 
 
 StageCallback = Callable[[int, np.ndarray, np.ndarray, np.ndarray | None, dict], None]

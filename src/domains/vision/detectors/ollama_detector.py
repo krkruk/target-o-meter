@@ -1,5 +1,4 @@
-"""Ollama VLM client + ``OllamaDetector`` strategy (NEW — the never-before-built
-peer strategy).
+"""Ollama ``OllamaDetector`` strategy (NEW — the never-before-built peer strategy).
 
 Backed by ``langchain_ollama.ChatOllama``; default model ``gemma4:latest``
 (env-configurable via ``OLLAMA_MODEL``). Same schema + same prompt + same
@@ -7,7 +6,8 @@ Backed by ``langchain_ollama.ChatOllama``; default model ``gemma4:latest``
 fallback.
 
 Reads ``OLLAMA_HOST`` (default ``http://localhost:11434``) and ``OLLAMA_MODEL``
-(default ``gemma4:latest``) from env.
+(default ``gemma4:latest``) from env. The VLM client binding lives in
+``ollama_vlm_client.py`` per the one-class-per-file rule (``lessons.md``).
 """
 from __future__ import annotations
 
@@ -16,46 +16,16 @@ from typing import Optional
 
 import numpy as np
 
-from langchain_ollama import ChatOllama
-
 from src.domains.vision.detectors.detection_result import DetectionResult
 from src.domains.vision.detectors.google_ai_studio_detector import (
-    _analysis_to_detection_result,
+    analysis_to_detection_result,
 )
-from src.domains.vision.detectors.schema import TargetAnalysis
-from src.domains.vision.detectors.vlm_client import VLMClient
+from src.domains.vision.detectors.ollama_vlm_client import (
+    DEFAULT_HOST,
+    DEFAULT_MODEL,
+    OllamaVLMClient,
+)
 from src.domains.vision.ports import HoleDetector, TargetType
-
-
-_DEFAULT_HOST = "http://localhost:11434"
-_DEFAULT_MODEL = "gemma4:latest"
-
-
-class OllamaVLMClient(VLMClient):
-    """Ollama binding for ``VLMClient``.
-
-    Constructs ``ChatOllama(model=..., base_url=...).with_structured_output(
-    TargetAnalysis)``. If ``ChatOllama.with_structured_output`` behaves
-    differently for the local model, surface the discrepancy in
-    ``raw["served_by"]`` (set by the detector) but do not silently change the
-    schema.
-    """
-
-    def __init__(
-        self,
-        model: str = _DEFAULT_MODEL,
-        host: str = _DEFAULT_HOST,
-        temperature: float = 1.0,
-    ) -> None:
-        self.model = model
-        self.temperature = temperature
-        self._host = host
-        self._llm = ChatOllama(
-            model=model,
-            base_url=host,
-            temperature=temperature,
-        )
-        self._structured = self._llm.with_structured_output(TargetAnalysis)
 
 
 class OllamaDetector(HoleDetector):
@@ -63,7 +33,7 @@ class OllamaDetector(HoleDetector):
 
     Defaults model + host from env (``OLLAMA_MODEL`` / ``OLLAMA_HOST``), falling
     back to documented defaults. The ``detect()`` mapping is identical to the
-    Google detector's — both share ``_analysis_to_detection_result``.
+    Google detector's — both share ``analysis_to_detection_result``.
     """
 
     def __init__(
@@ -73,8 +43,8 @@ class OllamaDetector(HoleDetector):
         temperature: float = 1.0,
     ) -> None:
         # Read env at construction time (the CLI loads .env before this runs).
-        model = model or os.environ.get("OLLAMA_MODEL", _DEFAULT_MODEL)
-        host = host or os.environ.get("OLLAMA_HOST", _DEFAULT_HOST)
+        model = model or os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL)
+        host = host or os.environ.get("OLLAMA_HOST", DEFAULT_HOST)
         self._client = OllamaVLMClient(model=model, host=host, temperature=temperature)
         self._model = model
         self._host = host
@@ -102,7 +72,7 @@ class OllamaDetector(HoleDetector):
             primary_caliber=caliber_hint,
         )
 
-        result = _analysis_to_detection_result(
+        result = analysis_to_detection_result(
             analysis=analysis,
             detector_name=self.name,
             target_ring1_px=target_ring1_px,

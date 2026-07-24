@@ -13,7 +13,7 @@ import math
 import cv2
 import numpy as np
 
-from src.domains.vision.geometry.classical_stages import _sobel_mag
+from src.domains.vision.geometry.image_grayscaler import _sobel_mag
 
 
 def _blob_centroids(
@@ -219,8 +219,8 @@ class TargetLocalizer:
         Ported verbatim from cv/approaches/multiring/localize.py:248-372.
         """
         # Local import to avoid a hard dependency cycle at module load time —
-        # ``classical_stages`` imports ``calibration`` but not us.
-        from src.domains.vision.geometry.classical_stages import _blackdisc_center
+        # ``black_disc_calibrator`` imports ``calibration`` but not us.
+        from src.domains.vision.geometry.black_disc_calibrator import _blackdisc_center
 
         h, w = gray.shape
         sw, sh = max(64, w // 6), max(64, h // 6)

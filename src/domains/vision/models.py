@@ -51,6 +51,10 @@ class ScoringJob(models.Model):
     # Lifecycle timestamps.
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Set when process_image flips status to RUNNING. Used by reap_stuck_jobs
+    # to detect rows orphaned by a SIGKILLed worker (no chance to write a
+    # terminal state). Null until the task is first picked up.
+    started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
