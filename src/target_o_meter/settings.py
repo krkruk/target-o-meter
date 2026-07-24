@@ -93,6 +93,11 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Dev-only auth bypass (Phase 4). MUST sit immediately after
+    # AuthenticationMiddleware so it overwrites the AnonymousUser it set.
+    # Self-gates on DEBUG=False (plan-review F2 serving-layer guard); E001 is
+    # the boot-layer guard.
+    'src.target_o_meter.dev_auth_bypass.DevAuthBypassMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

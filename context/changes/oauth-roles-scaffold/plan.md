@@ -608,28 +608,28 @@ Stand up the pytest marker system, the autouse UAT-skip, the acceptance-test fix
 
 #### Automated
 
-- [x] 3.1 System test passes (`uv run pytest tests/system/test_auth_flow.py`)
-- [x] 3.2 System check passes (`uv run python src/manage.py check`)
-- [x] 3.3 Import-linter passes (contract:1 + contract:2)
-- [x] 3.4 `uv run ruff check .` passes
+- [x] 3.1 System test passes (`uv run pytest tests/system/test_auth_flow.py`) — fc308ac
+- [x] 3.2 System check passes (`uv run python src/manage.py check`) — fc308ac
+- [x] 3.3 Import-linter passes (contract:1 + contract:2) — fc308ac
+- [x] 3.4 `uv run ruff check .` passes — fc308ac
 
 #### Manual
 
-- [x] 3.5 `curl /api/me` returns 401 unauthenticated
-- [x] 3.6 `/api/users` returns 403 as User, 200 as Owner (via bypass)
+- [x] 3.5 `curl /api/me` returns 401 unauthenticated — fc308ac
+- [x] 3.6 `/api/users` returns 403 as User, 200 as Owner (via bypass) — fc308ac
 
 ### Phase 4: Dev Experience
 
 #### Automated
 
-- [ ] 4.1 System check passes (`uv run python src/manage.py check`)
-- [ ] 4.2 Existing tests still pass (`uv run pytest`)
-- [ ] 4.3 `uv run ruff check .` passes
+- [x] 4.1 System check passes (`uv run python src/manage.py check`)
+- [x] 4.2 Existing tests still pass (`uv run pytest`)
+- [x] 4.3 `uv run ruff check .` passes
 
 #### Manual
 
-- [ ] 4.4 Bypass auto-authenticates (curl /api/me → 200 with DEV_AUTH_BYPASS_SUB set)
-- [ ] 4.5 Django admin login as seeded dev admin; identity_user visible, role/is_owner read-only
+- [x] 4.4 Bypass auto-authenticates (curl /api/me → 200 with DEV_AUTH_BYPASS_SUB set)
+- [x] 4.5 Django admin login as seeded dev admin; identity_user visible, role/is_owner read-only
 
 ### Phase 5: Templates (Welcome / Login / Main)
 
