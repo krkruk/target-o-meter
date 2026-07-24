@@ -594,29 +594,29 @@ Stand up the pytest marker system, the autouse UAT-skip, the acceptance-test fix
 
 #### Automated
 
-- [x] 2.1 `uv run python src/manage.py check` passes (dev, env unset)
-- [x] 2.2 `E001` fires (DEBUG=False + DEV_AUTH_BYPASS_SUB set)
-- [x] 2.3 `W001` fires (DEBUG=False + empty OWNER_SUB_ID)
-- [x] 2.4 `uv run ruff check .` passes
+- [x] 2.1 `uv run python src/manage.py check` passes (dev, env unset) — fe82ff3
+- [x] 2.2 `E001` fires (DEBUG=False + DEV_AUTH_BYPASS_SUB set) — fe82ff3
+- [x] 2.3 `W001` fires (DEBUG=False + empty OWNER_SUB_ID) — fe82ff3
+- [x] 2.4 `uv run ruff check .` passes — fe82ff3
 
 #### Manual
 
-- [x] 2.5 `check --deploy` runs the new checks (not silently no-op'd)
-- [x] 2.6 `.env.example` documents every new var
+- [x] 2.5 `check --deploy` runs the new checks (not silently no-op'd) — fe82ff3
+- [x] 2.6 `.env.example` documents every new var — fe82ff3
 
 ### Phase 3: BFF OAuth + RBAC Plumbing
 
 #### Automated
 
-- [ ] 3.1 System test passes (`uv run pytest tests/system/test_auth_flow.py`)
-- [ ] 3.2 System check passes (`uv run python src/manage.py check`)
-- [ ] 3.3 Import-linter passes (contract:1 + contract:2)
-- [ ] 3.4 `uv run ruff check .` passes
+- [x] 3.1 System test passes (`uv run pytest tests/system/test_auth_flow.py`)
+- [x] 3.2 System check passes (`uv run python src/manage.py check`)
+- [x] 3.3 Import-linter passes (contract:1 + contract:2)
+- [x] 3.4 `uv run ruff check .` passes
 
 #### Manual
 
-- [ ] 3.5 `curl /api/me` returns 401 unauthenticated
-- [ ] 3.6 `/api/users` returns 403 as User, 200 as Owner (via bypass)
+- [x] 3.5 `curl /api/me` returns 401 unauthenticated
+- [x] 3.6 `/api/users` returns 403 as User, 200 as Owner (via bypass)
 
 ### Phase 4: Dev Experience
 
