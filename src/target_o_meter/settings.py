@@ -78,6 +78,11 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'src.target_o_meter.wsgi.application'
 
+# Custom user model — identity domain owns the zero-email anchor (research §7).
+# Must be set BEFORE the first identity migration runs (Critical Implementation
+# Details). App **label** (not dotted path) — matches apps.py:5.
+AUTH_USER_MODEL = "identity.User"
+
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases

@@ -579,16 +579,16 @@ Stand up the pytest marker system, the autouse UAT-skip, the acceptance-test fix
 
 #### Automated
 
-- [ ] 1.1 Migration applies cleanly (`rm -f db.sqlite3 && uv run python src/manage.py migrate`)
-- [ ] 1.2 Identity unit tests pass (`uv run pytest src/domains/identity/tests/`)
-- [ ] 1.3 System check passes (`uv run python src/manage.py check`)
-- [ ] 1.4 Lint passes (`uv run ruff check .`)
-- [ ] 1.5 Import-linter contract:1 passes (`uv run lint-imports`)
+- [x] 1.1 Migration applies cleanly (`rm -f db.sqlite3 && uv run python src/manage.py migrate`)
+- [x] 1.2 Identity unit tests pass (`uv run pytest src/domains/identity/tests/`)
+- [x] 1.3 System check passes (`uv run python src/manage.py check`)
+- [x] 1.4 Lint passes (`uv run ruff check .`)
+- [x] 1.5 Import-linter contract:1 passes (`uv run lint-imports`)
 
 #### Manual
 
-- [ ] 1.6 `get_user_model()` prints the identity User
-- [ ] 1.7 `showmigrations identity` shows 0001_initial applied
+- [x] 1.6 `get_user_model()` prints the identity User
+- [x] 1.7 `showmigrations identity` shows 0001_initial applied
 
 ### Phase 2: Configuration & Hardening
 
