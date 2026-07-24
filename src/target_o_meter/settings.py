@@ -107,7 +107,11 @@ ROOT_URLCONF = 'src.target_o_meter.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Phase 5: project-level templates dir (F-01 uses Django templates;
+        # React lands in S-01). BASE_DIR is ``src/`` (manage.py lives there),
+        # so the repo root is BASE_DIR.parent — matches the plan's
+        # ``templates/base.html`` path. APP_DIRS stays True for admin.
+        'DIRS': [BASE_DIR.parent / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

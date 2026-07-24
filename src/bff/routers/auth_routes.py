@@ -109,7 +109,7 @@ def logout(request: HttpRequest) -> HttpResponse:
     request.session.clear()
     from urllib.parse import quote_plus, urlencode
 
-    return_url = request.build_absolute_uri(reverse("index"))
+    return_url = request.build_absolute_uri(reverse("bff:index"))
     params = urlencode(
         {"returnTo": return_url, "client_id": settings.AUTH0_CLIENT_ID},
         quote_via=quote_plus,

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome — Target-o-meter{% endblock %}
+
+{% block content %}
+<section class="welcome">
+    <h1>Target-o-meter</h1>
+    <p>Sign in to score your targets.</p>
+    {# GET-based login link (F-01). S-01's SPA keeps the same /bff/login target. #}
+    <a class="button" href="{% url 'bff:login' %}">Login</a>
+</section>
+{% endblock %}

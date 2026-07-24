@@ -622,28 +622,28 @@ Stand up the pytest marker system, the autouse UAT-skip, the acceptance-test fix
 
 #### Automated
 
-- [x] 4.1 System check passes (`uv run python src/manage.py check`)
-- [x] 4.2 Existing tests still pass (`uv run pytest`)
-- [x] 4.3 `uv run ruff check .` passes
+- [x] 4.1 System check passes (`uv run python src/manage.py check`) — e2ffa87
+- [x] 4.2 Existing tests still pass (`uv run pytest`) — e2ffa87
+- [x] 4.3 `uv run ruff check .` passes — e2ffa87
 
 #### Manual
 
-- [x] 4.4 Bypass auto-authenticates (curl /api/me → 200 with DEV_AUTH_BYPASS_SUB set)
-- [x] 4.5 Django admin login as seeded dev admin; identity_user visible, role/is_owner read-only
+- [x] 4.4 Bypass auto-authenticates (curl /api/me → 200 with DEV_AUTH_BYPASS_SUB set) — e2ffa87
+- [x] 4.5 Django admin login as seeded dev admin; identity_user visible, role/is_owner read-only — e2ffa87
 
 ### Phase 5: Templates (Welcome / Login / Main)
 
 #### Automated
 
-- [ ] 5.1 System check passes (`uv run python src/manage.py check`)
-- [ ] 5.2 `uv run ruff check .` passes
-- [ ] 5.3 Existing tests still pass (`uv run pytest`)
+- [x] 5.1 System check passes (`uv run python src/manage.py check`)
+- [x] 5.2 `uv run ruff check .` passes
+- [x] 5.3 Existing tests still pass (`uv run pytest`)
 
 #### Manual
 
-- [ ] 5.4 `/` unauthenticated → welcome with Login button
-- [ ] 5.5 Login → main page shows "logged in as {nick} ({role})"
-- [ ] 5.6 Logout → returns to welcome
+- [x] 5.4 `/` unauthenticated → welcome with Login button
+- [x] 5.5 Login → main page shows "logged in as {nick} ({role})"
+- [x] 5.6 Logout → returns to welcome
 
 ### Phase 6: Test Infrastructure (DEV/UAT Scaffolding)
 
