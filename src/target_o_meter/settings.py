@@ -17,6 +17,11 @@ import os
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Read a boolean env var (``"True"``/``"1"``/``"false"``/…)."""
+    return os.environ.get(name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -27,6 +32,39 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-0n%b*1&a_*5va-)s1tv8e
 DEBUG = os.environ.get("DEBUG", "True").lower() == "true"
 
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",") if os.environ.get("ALLOWED_HOSTS") else []
+
+
+# ---------------------------------------------------------------------------
+# Identity & auth env vars (F-01). UPPER_SNAKE + os.environ.get convention.
+# All secrets default to empty string so an unset prod env fails closed.
+# ---------------------------------------------------------------------------
+
+# Auth0 OIDC client (BFF / Authorization Code + PKCE). Empty in dev — the
+# dev-bypass middleware (Phase 4) makes Auth0 optional locally.
+AUTH0_CLIENT_ID = os.environ.get("AUTH0_CLIENT_ID", "")
+AUTH0_CLIENT_SECRET = os.environ.get("AUTH0_CLIENT_SECRET", "")
+AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "")
+
+# The single source of truth for the Owner role. ``User.role`` derives Owner
+# by comparing ``self.sub == OWNER_SUB_ID`` (research §7 — never persisted).
+# Empty → fails closed (no one is Owner; W001 warns in prod).
+OWNER_SUB_ID = os.environ.get("OWNER_SUB_ID", "")
+
+# Dev-only auth bypass: when set AND DEBUG=True, every request is authenticated
+# as this sub's user (Phase 4 middleware). Setting it equal to OWNER_SUB_ID
+# impersonates Owner locally. target_o_meter.E001 refuses to boot if this is
+# set while DEBUG=False (Phase 2.4 production guard).
+DEV_AUTH_BYPASS_SUB = os.environ.get("DEV_AUTH_BYPASS_SUB", "")
+
+# Seeded dev admin (Django admin login). Dev-only — never set in prod.
+# ``create_superuser`` (Phase 1.2) requires a usable password here.
+DEV_ADMIN_SUB = os.environ.get("DEV_ADMIN_SUB", "")
+DEV_ADMIN_NICK = os.environ.get("DEV_ADMIN_NICK", "dev-admin")
+DEV_ADMIN_PASSWORD = os.environ.get("DEV_ADMIN_PASSWORD", "")
+
+# Cookie hardening toggle. False in dev (no HTTPS on localhost); True in prod.
+# Session + CSRF cookie SECURE flags both follow this single switch.
+SECURE_COOKIES = _env_bool("SECURE_COOKIES", False)
 
 
 # Application definition
@@ -55,6 +93,11 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # Dev-only auth bypass (Phase 4). MUST sit immediately after
+    # AuthenticationMiddleware so it overwrites the AnonymousUser it set.
+    # Self-gates on DEBUG=False (plan-review F2 serving-layer guard); E001 is
+    # the boot-layer guard.
+    'src.target_o_meter.dev_auth_bypass.DevAuthBypassMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -64,7 +107,11 @@ ROOT_URLCONF = 'src.target_o_meter.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Phase 5: project-level templates dir (F-01 uses Django templates;
+        # React lands in S-01). BASE_DIR is ``src/`` (manage.py lives there),
+        # so the repo root is BASE_DIR.parent — matches the plan's
+        # ``templates/base.html`` path. APP_DIRS stays True for admin.
+        'DIRS': [BASE_DIR.parent / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -77,6 +124,40 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'src.target_o_meter.wsgi.application'
+
+# Custom user model — identity domain owns the zero-email anchor (research §7).
+# Must be set BEFORE the first identity migration runs (Critical Implementation
+# Details). App **label** (not dotted path) — matches apps.py:5.
+AUTH_USER_MODEL = "identity.User"
+
+
+# ---------------------------------------------------------------------------
+# Session & CSRF cookie hardening (research §5 — BFF pattern).
+# ---------------------------------------------------------------------------
+
+SESSION_COOKIE_HTTPONLY = True
+# SECURE follows the single SECURE_COOKIES toggle (False in dev — no HTTPS on
+# localhost; True in prod).
+SESSION_COOKIE_SECURE = SECURE_COOKIES
+# SameSite=Lax is LOAD-BEARING for the OIDC callback (research §5, Key
+# Discoveries): the callback is a cross-site top-level GET navigation. Strict
+# would suppress the sessionid cookie on that redirect → Authlib finds no
+# nonce in the session → validation fails silently. Do NOT change to Strict.
+SESSION_COOKIE_SAMESITE = "Lax"
+# 8h bounds token exposure (research §5 — the session is the token store).
+SESSION_COOKIE_AGE = 60 * 60 * 8
+
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = SECURE_COOKIES
+# HttpOnly=False on the CSRF cookie: a future SPA (S-01) must read ``csrftoken``
+# to send it on POSTs. django-ninja's NinjaAPI(csrf=True) reads it server-side.
+CSRF_COOKIE_HTTPONLY = False
+
+
+# Register the production-safety system checks (Phase 2.4). Importing this
+# module is what makes ``target_o_meter.E001`` / ``W001`` fire at
+# ``manage.py check`` time.
+from . import checks  # noqa: E402,F401
 
 
 # Database
