@@ -22,7 +22,7 @@ A developer runs `docker compose -f docker-compose.dev.yml up` and gets a live-r
 | Auth flow / tokens | Auth0 OIDC Auth Code + PKCE; server-side Django session; `sessionid` HttpOnly cookie | BFF pattern mandated by AGENTS.md §2; PKCE is defense-in-depth | Research |
 | IdP | Auth0 (not Google) | User mandate; federates Google/MS/GitHub + passwordless | Research |
 | Login methods | Passwordless only (social + magic-link); Auth0 Database disabled | Minimizes data-leakage surface | Research |
-| Identity model | `AbstractBaseUser`, fields `sub` + `nick` + `is_staff`; no `PermissionsMixin` | Minimal base that still plugs into Django auth; Zero Email Storage | Research + Q2(admin) |
+| Identity model | `AbstractBaseUser` + `PermissionsMixin`, fields `sub` + `nick` + `is_staff` | Minimal base that plugs into Django auth AND admin (`has_perm`/`has_module_perms`); Zero Email Storage (plan-review F1) | Research + Q2(admin) |
 | Owner role | Derived `@property` (`sub == OWNER_SUB_ID`), never persisted | Env var = single source of truth; no split-brain | Research |
 | Account linking | Auth0 user-initiated linking (NOT auto-by-email) | Stable canonical `sub`; auto-by-email is an ATO vector | Research Q1 |
 | `/api/me` payload | `nick` + `role` only (no `sub`) | Tightest leakage surface; SPA only needs nick+role | Plan (Q round 1) |
@@ -36,13 +36,13 @@ A developer runs `docker compose -f docker-compose.dev.yml up` and gets a live-r
 
 ## Scope
 
-**In scope:** Custom `User` model + migration + `AUTH_USER_MODEL` swap; identity DTOs + pure services; `authlib` dep; env var surface; session/CSRF cookie hardening; `E001`/`W001` system checks; Authlib OAuth registry; `NinjaAPI(csrf=True)`; login/callback/logout + `/api/me` + demo `/api/users`; dev-bypass middleware; Django admin; welcome/login/main templates; pytest DEV/UAT markers + conftest + acceptance fixtures + conditional CI job; `Dockerfile` + `docker-compose.dev.yml` + dev seed + `.dockerignore`; import-linter contract:2.
+**In scope:** Custom `User` model + migration + `AUTH_USER_MODEL` swap; identity DTOs + pure services; `authlib` dep; env var surface; session/CSRF cookie hardening; `E001`/`W001` system checks; Authlib OAuth registry; `NinjaAPI(csrf=True)`; login/callback/logout + `/api/me` + demo `/api/users`; dev-bypass middleware; Django admin; welcome/login/main templates; pytest DEV/UAT markers + conftest + acceptance fixtures + conditional CI job; import-linter contract:2.
 
-**Out of scope:** React/Vite/SPA (S-01); dashboard content + nick-on-first-login UX (S-01); real owner actions — list/remove/invite-only bodies (S-04); the UAT Playwright test itself (later slice); account-linking code (Auth0 tenant gate, not Django); containerized test/UAT runners; audit logging; reconciling deploy-plan/infrastructure docs to Render.
+**Out of scope:** React/Vite/SPA (S-01); dashboard content + nick-on-first-login UX (S-01); real owner actions — list/remove/invite-only bodies (S-04); the UAT Playwright test itself (later slice); account-linking code (Auth0 tenant gate, not Django); containerized test/UAT runners; audit logging; reconciling deploy-plan/infrastructure docs to Render; **Docker dev environment** (deferred to its own change by plan-review F6 — the dev-bypass already enables Auth0-free local dev).
 
 ## Architecture / Approach
 
-Seven phases, each independently testable, mirroring the `vision/` domain's house style (pure `services.py`, Pydantic DTOs, `TextChoices`, `db_table` naming):
+Six phases, each independently testable, mirroring the `vision/` domain's house style (pure `services.py`, Pydantic DTOs, `TextChoices`, `db_table` naming):
 
 ```
 Phase 1  Identity domain (model, migration, DTOs, services, unit tests)
@@ -51,7 +51,7 @@ Phase 3  BFF OAuth + RBAC (oauth.py, NinjaAPI, auth routes, /api/me, demo route,
 Phase 4  Dev experience (bypass middleware, Django admin)
 Phase 5  Templates (welcome/login/main shells)
 Phase 6  Test infra (DEV/UAT markers, conftest, acceptance fixtures, CI shell)
-Phase 7  Docker dev env (Dockerfile, compose, seed, .dockerignore)
+(Docker dev env deferred to its own change — plan-review F6)
 ```
 
 Boundary rule: `bff → domain` is the only allowed import direction (enforced by the new contract:2). Domains stay pure Python — no django-ninja, no HTTP.
@@ -66,17 +66,16 @@ Boundary rule: `bff → domain` is the only allowed import direction (enforced b
 | 4. Dev Experience | Dev-bypass middleware, Django admin | Bypass must defer to real OAuth; admin needs usable password |
 | 5. Templates | welcome/login/main shells | Dispatch view routing anonymous vs authed |
 | 6. Test Infrastructure | pytest markers, autouse UAT skip, acceptance fixtures, CI shell | UAT-skip must be belt-and-suspenders |
-| 7. Docker Dev Environment | Dockerfile, compose (runserver+qcluster+seed), .dockerignore | Live-reload bind mounts; idempotent seed |
 
-**Prerequisites:** Auth0 tenant with an Application (client ID/secret/domain), Allowed Callback/Logout URLs configured, Database connection disabled, user-initiated account linking enabled. Local `.env` with `OWNER_SUB_ID`, Auth0 vars, and dev seed vars.
+**Prerequisites:** Auth0 tenant with an Application (client ID/secret/domain), Allowed Callback/Logout URLs configured, Database connection disabled, user-initiated account linking enabled. Local `.env` with `OWNER_SUB_ID`, Auth0 vars, and dev seed vars. (Note: F-01 no longer ships the Docker dev env; devs run `uv run python src/manage.py runserver` + `qcluster` on the host with the dev-bypass active. A future change adds the Dockerfile/compose.)
 
-**Estimated effort:** ~7 sessions, one per phase; Phases 1–3 are the load-bearing core (model swap, security, OAuth), 4–7 are enabling.
+**Estimated effort:** ~6 sessions, one per phase; Phases 1–3 are the load-bearing core (model swap, security, OAuth), 4–6 are enabling.
 
 ## Open Risks & Assumptions
 
 - **Auth0 `SameSite=Lax` dependency**: the OIDC callback *requires* `Lax` (not `Strict`) or the nonce is lost silently. Mitigated by a code comment + smoke test, but it's a documented real-world failure mode.
 - **Account-linking setup is a manual tenant gate**: if the owner doesn't enable user-initiated linking in Auth0, the same human logging in via two connections gets two rows. Documented in the success checklist; no code can enforce it.
-- **Dev-bypass residual gap**: the `E001` check runs before commands, not inside the WSGI/ASGI serving loop. Render sets `DEBUG=False` (mitigating), and the middleware's own DEBUG gate protects serving-time, but CI must run `manage.py check` as a gate.
+- **Dev-bypass residual gap (F2 — mitigated)**: the `E001` check runs at `manage.py check` time, not inside the WSGI/ASGI serving loop, and Render runs gunicorn (no auto `check`). Mitigations now in the plan: (1) DevAuthBypassMiddleware self-gates on `if not settings.DEBUG: return` (serving-layer guard); (2) the deploy/release pipeline must run `manage.py check` as a gate — flagged for the first change that touches deploy/CI (out of scope for F-01).
 - **Stale foundation docs**: `deploy-plan.md`/`infrastructure.md` reference Railway, not Render. Out of scope to fix here; flagged only.
 - **UAT automation approach undecided**: whether the deferred UAT test uses a dedicated Auth0 Database connection or Mailtrap-backed magic link is deferred to the slice that writes it (research preserved as the starting point).
 

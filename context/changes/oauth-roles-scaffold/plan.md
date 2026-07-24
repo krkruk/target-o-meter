@@ -51,14 +51,29 @@ After this plan, a developer can:
 - **Audit logging** — `core.services.log_action` (referenced in AGENTS.md §6.2) does not exist; out of scope.
 - **Reconciling `deploy-plan.md`/`infrastructure.md` to Render** — out of scope; those are foundation contracts and F-01 doesn't deploy. Flagged only.
 - **Email scope on Auth0** — permanently disabled; `scope="openid profile"` (no `email`) is the defense-in-depth enforcement of Zero Email Storage.
+- **POST-based logout** (plan-review F5) — F-01 ships logout as a GET link (template simplicity). S-01's SPA should re-implement logout as a POST with a CSRF token to close the GET-logout CSRF-soft vector (cross-site GET logout, stale-back-button). Recorded as an S-01 intent, not an F-01 code change.
+- **Docker dev environment** (plan-review F6) — deferred to a dedicated change. F-01's dev-bypass middleware (Phase 4) already enables Auth0-free local development, so Docker is convenience, not a prerequisite for proving the auth/RBAC contract. See the (now-removed) former Phase 7 in git history for the intended shape.
 
 ## Implementation Approach
 
-Seven phases, each independently testable. Phase 1 (identity domain) is foundational — nothing else compiles without it. Phases 2–3 carry the load-bearing security work (cookie hardening, OAuth callback, production guard). Phase 4–5 make it usable (dev bypass, admin, templates). Phase 6 is test scaffolding. Phase 7 is the Docker dev environment (deliberately last — it composes over everything).
+Six phases, each independently testable. Phase 1 (identity domain) is foundational — nothing else compiles without it. Phases 2–3 carry the load-bearing security work (cookie hardening, OAuth callback, production guard). Phases 4–5 make it usable (dev bypass, admin, templates). Phase 6 is test scaffolding. (A former Phase 7 — the Docker dev environment — was deferred to a dedicated change by plan-review F6; the dev-bypass middleware in Phase 4 already enables Auth0-free local dev, so Docker is convenience, not a prerequisite.)
 
 **House style**: mirror `src/domains/vision/` for the identity domain (pure `services.py`, Pydantic DTOs, UUID PKs, `TextChoices`, `db_table` naming, module docstring citing AGENTS.md §5). One class per file with the `ports.py`/`dtos.py`/`UserManager`+`Role` carve-outs from `lessons.md`.
 
-**Architecture enforcement**: the new `layers` import-linter contract (contract:2) makes `domain → bff` a CI failure. `bff → domain` is the only allowed direction (AGENTS.md §5/§6.2).
+**Architecture enforcement**: the new `layers` import-linter contract (contract:2) makes `domain → bff` a CI failure. `bff → domain` is the only allowed direction (AGENTS.md §5/§6.2). Plan-review F3 — the exact contract body to add to `.importlinter` alongside the existing `contract:1` (`type=independence`):
+
+```ini
+[importlinter:contract:2]
+name = BFF Above Domains
+type = layers
+layers =
+    src.bff
+    src.domains.core
+    src.domains.identity
+    src.domains.vision
+```
+
+`type = layers` REQUIRES the `layers =` key (mapping layer names to package globs) or import-linter fails to load the contract. The higher layer (`src.bff`) may import lower layers; the reverse is a violation. **Ordering note**: contract:2 can only PASS once `src.bff` is importable — i.e. at the end of Phase 3 (when `bff/api.py`, `bff/oauth.py`, and the routers exist). Phases 1–2 `uv run lint-imports` runs therefore assert contract:1 only; contract:2 is first asserted in Phase 3.4's success criteria.
 
 ## Critical Implementation Details
 
@@ -84,7 +99,7 @@ Build the pure-Python identity domain: the swappable `User` model with a derived
 
 **Intent**: Replace the docstring-only stub with the swappable user model keyed by Auth0's canonical `sub`. This is the zero-email identity anchor the whole auth vertical depends on.
 
-**Contract**: `AbstractBaseUser` subclass named `User` (no `PermissionsMixin`). Fields: `id` (UUID PK, `default=uuid.uuid4`), `sub` (`CharField(max_length=255, unique=True)` — the OIDC `sub`, opaque), `nick` (`CharField(max_length=64)`, case-insensitive unique via `UniqueConstraint(Lower("nick"))` with explicit `violation_error_message`), `is_staff` (`BooleanField(default=False)` — always False for OAuth users; True only for the seeded dev admin). `last_login` inherited from `AbstractBaseUser` (kept — Q3). `USERNAME_FIELD = "sub"`, `REQUIRED_FIELDS = []`. Inner `class Role(models.TextChoices): OWNER="owner"; USER="user"`. Derived `@property role` compares `self.sub == os.environ.get("OWNER_SUB_ID", "")` (fails closed: empty env → never Owner). Derived `@property is_owner`. `class Meta: app_label="identity"; db_table="identity_user"` plus the nick CI-unique constraint. Module-level `Role` and a private `_generated_nick()` (`f"shooter-{uuid.uuid4().hex[:8]}"`) are the F-01 fallback before S-01's nick-prompt UX. One-class-per-file carve-out from `lessons.md` covers `UserManager` + `Role` living alongside `User`.
+**Contract**: `AbstractBaseUser` subclass named `User`, **with `PermissionsMixin`** (plan-review F1: `AbstractBaseUser` alone lacks `has_perm`/`has_module_perms`, so Phase 4.2's registered `identity_user` ModelAdmin would raise `AttributeError` or silently disappear from the admin index — `ModelAdmin.has_view_permission`/`has_module_permission` call those methods, which exist only on `PermissionsMixin`). Fields: `id` (UUID PK, `default=uuid.uuid4`), `sub` (`CharField(max_length=255, unique=True)` — the OIDC `sub`, opaque), `nick` (`CharField(max_length=64)`, case-insensitive unique via `UniqueConstraint(Lower("nick"))` with explicit `violation_error_message`), `is_staff` (`BooleanField(default=False)` — always False for OAuth users; True only for the seeded dev admin). `last_login` + `is_superuser` (from `PermissionsMixin`) inherited (kept — Q3). `USERNAME_FIELD = "sub"`, `REQUIRED_FIELDS = []`. Inner `class Role(models.TextChoices): OWNER="owner"; USER="user"`. Derived `@property role` compares `self.sub == os.environ.get("OWNER_SUB_ID", "")` (fails closed: empty env → never Owner). Derived `@property is_owner`. `class Meta: app_label="identity"; db_table="identity_user"` plus the nick CI-unique constraint. Module-level `Role` and a private `_generated_nick()` (`f"shooter-{uuid.uuid4().hex[:8]}"`) are the F-01 fallback before S-01's nick-prompt UX. One-class-per-file carve-out from `lessons.md` covers `UserManager` + `Role` living alongside `User`.
 
 #### 1.2 UserManager
 
@@ -257,7 +272,7 @@ Birth the entire BFF layer: the Authlib OAuth registry, the django-ninja API wit
 
 **Intent**: The SPA auth-state bootstrap — returns the logged-in user's nick+role (no sub) or 401.
 
-**Contract**: `@router.get("/me", auth=session_auth, response={200: MeOut, 401: MeOut})`. Resolves `get_user_context(str(request.user.sub))`, returns `200, MeOut(authenticated=True, user=UserOut(nick=dto.nick, role=dto.role))`. GET needs no CSRF token. `UserOut` has no `sub` field (Q round 1).
+**Contract**: `@router.get("/me", auth=session_auth, response={200: MeOut})` (plan-review F4: do NOT declare `401: MeOut` — a failed `auth` callable raises `AuthenticationError`, routed through django-ninja's default handler → returns `{"detail": "Unauthorized"}`, never a serialized `MeOut`. Declaring `401: MeOut` would mislead clients. Desired End State #3 only requires "401 otherwise," no body shape). Resolves `get_user_context(str(request.user.sub))`, returns `200, MeOut(authenticated=True, user=UserOut(nick=dto.nick, role=dto.role))`. GET needs no CSRF token. `UserOut` has no `sub` field (Q round 1).
 
 #### 3.5 Demo owner route
 
@@ -315,7 +330,7 @@ Make local development fast (auth bypass) and give the Owner a Django admin view
 
 **Intent**: Skip the Auth0 dance locally by auto-authenticating as a `sub` from the env (Q6 synthesis: reuses `OWNER_SUB_ID` as the single role source — set the two equal to impersonate Owner).
 
-**Contract**: `DevAuthBypassMiddleware(MiddlewareMixin)`. `process_request`: if `DEV_AUTH_BYPASS_SUB` unset → return; if `request.user.is_authenticated` → return (real OAuth login wins); else set `request.user = _get_dev_user()`. `_get_dev_user()` is a module-level-cached `User.objects.get_or_create(sub=DEV_AUTH_BYPASS_SUB, defaults={"nick": "dev-"+sub[:8]})`. Stateless — never touches the session, never calls `login()`. Register in `MIDDLEWARE` immediately after `AuthenticationMiddleware`. See Key Discoveries for why `SessionAuth` makes this work.
+**Contract**: `DevAuthBypassMiddleware(MiddlewareMixin)`. `process_request`: **first line must be `if not settings.DEBUG: return`** (plan-review F2: the E001 system check only runs at `manage.py check`/`runserver`, NOT in the gunicorn serving loop on Render, so the middleware must self-gate on `DEBUG=False` — otherwise a misconfigured prod env with `DEV_AUTH_BYPASS_SUB` set serves with the bypass live, and setting it equal to `OWNER_SUB_ID` impersonates Owner); then if `DEV_AUTH_BYPASS_SUB` unset → return; if `request.user.is_authenticated` → return (real OAuth login wins); else set `request.user = _get_dev_user()`. `_get_dev_user()` is a module-level-cached `User.objects.get_or_create(sub=DEV_AUTH_BYPASS_SUB, defaults={"nick": "dev-"+sub[:8]})`. Stateless — never touches the session, never calls `login()`. Register in `MIDDLEWARE` immediately after `AuthenticationMiddleware`. See Key Discoveries for why `SessionAuth` makes this work.
 
 #### 4.2 Django admin integration
 
@@ -446,15 +461,15 @@ Stand up the pytest marker system, the autouse UAT-skip, the acceptance-test fix
 - Confirm `.env.uat` is gitignored: `git status` ignores a created `.env.uat`
 - Confirm the CI YAML is valid: `python -c "import yaml; yaml.safe_load(open('.github/workflows/uat.yml'))"`
 
-**Implementation Note**: Pause for manual confirmation that the UAT-skip mechanism works before proceeding.
+**Implementation Note**: Pause for manual confirmation that the UAT-skip mechanism works before proceeding. Phases 1–6 complete the F-01 scope (auth vertical + RBAC proof + dev bypass + test scaffolding).
 
 ---
 
-## Phase 7: Docker Dev Environment
+## Deferred: Docker Dev Environment (moved out by plan-review F6)
+
+> **Status**: NOT part of F-01. Deferred to a dedicated change. F-01's dev-bypass middleware (Phase 4) already enables Auth0-free local development (`DEV_AUTH_BYPASS_SUB` + `DEBUG=True`), so Docker is convenience, not a prerequisite for proving the auth/RBAC contract. The content below is preserved as the starting point for that future change — it is out of scope here and not tracked in the Progress section.
 
 ### Overview
-
-A single `docker-compose.dev.yml` that brings the whole dev story together: live-reloading Django, a qcluster worker, a persistent SQLite volume, and a startup seed (dev admin + Owner + User). Deliberately last — it composes over everything above.
 
 ### Changes Required:
 
@@ -531,7 +546,7 @@ A single `docker-compose.dev.yml` that brings the whole dev story together: live
 3. Phase 3: curl `/api/me` and `/api/users` to observe 401/403/200.
 4. Phase 4: log into `/admin/` as the seeded dev admin.
 5. Phase 5: click through welcome → login → main → logout.
-6. Phase 7: full Docker loop — live-reload, admin login, role impersonation, and (with real Auth0 creds) the end-to-end OAuth chain.
+6. (Phase 7 / Docker deferred — see "Deferred" section; its manual loop is tracked by the future change that picks it up.)
 
 ## Performance Considerations
 
@@ -545,6 +560,7 @@ A single `docker-compose.dev.yml` that brings the whole dev story together: live
 - **`AUTH_USER_MODEL` swap is clean-slate**: the existing `db.sqlite3` holds only `django_q`/admin/internal rows (no real user data). `rm -f db.sqlite3 && migrate` is the documented path (research §7, Django #25313). Do NOT use the two-stage data-preserving swap.
 - **No data migration** — there is no prior user data to migrate.
 - **Rollback**: revert the `AUTH_USER_MODEL` setting, restore the old `db.sqlite3` from git/VCS (it's gitignored, so only if a backup exists). In practice the swap is one-way for this project.
+- **Release-gate requirement (plan-review F2)**: `E001` fires at `manage.py check` time, not in the gunicorn serving loop. Render runs gunicorn, so `manage.py check` is NOT automatically part of prod boot. The DevAuthBypassMiddleware DEBUG gate (Phase 4.1) is the serving-layer guard, but the deploy/release pipeline MUST also run `uv run python src/manage.py check` as a gate (exit-non-zero on `E001`/`W001`) before promoting a release. Wiring that CI/release step is out of scope for F-01 (Phase 6 ships only a UAT CI shell) — flag it for the first change that touches deploy/CI.
 
 ## References
 
@@ -643,18 +659,4 @@ A single `docker-compose.dev.yml` that brings the whole dev story together: live
 - [ ] 6.5 `.env.uat` gitignored
 - [ ] 6.6 `.github/workflows/uat.yml` is valid YAML
 
-### Phase 7: Docker Dev Environment
-
-#### Automated
-
-- [ ] 7.1 `docker compose -f docker-compose.dev.yml config` validates
-- [ ] 7.2 `docker build -t target-o-meter-dev .` succeeds
-- [ ] 7.3 `uv run ruff check .` passes
-
-#### Manual
-
-- [ ] 7.4 `docker compose up` brings up web + worker cleanly
-- [ ] 7.5 Editing src/ triggers runserver reload (live-reload)
-- [ ] 7.6 `/admin/` reachable; dev admin login works; seeded Owner+User visible
-- [ ] 7.7 `/api/me` 200 as dev user; `/api/users` 403 User / 200 Owner
-- [ ] 7.8 Full Login → Auth0 → callback → main chain works with real creds
+<!-- Phase 7 (Docker Dev Environment) deferred by plan-review F6 — not tracked here. See the "Deferred: Docker Dev Environment" section above. -->
