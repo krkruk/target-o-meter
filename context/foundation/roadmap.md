@@ -3,7 +3,7 @@ project: Target-o-meter
 version: 1
 status: draft
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-07-24
 prd_version: 1
 main_goal: market-feedback
 top_blocker: skills
@@ -30,7 +30,7 @@ Shooting results are trapped on paper targets; ISSF hobbyist shooters have no ea
 | ID | Change ID | Outcome (user can …) | Prerequisites | PRD refs | Status |
 |---|---|---|---|---|---|
 | F-01 | `oauth-roles-scaffold` | (foundation) third-party OAuth sign-in wired, user model carries a role flag, owner determinable via configured email — no username flow, no admin UI | — | FR-001, §Access Control | ready |
-| F-02 | `cv-service-boundary` | (foundation) CV detection service exists alongside Django with a callable I/O contract — photo in, per-hole scores + marked image out; fidelity is downstream | — | NFR (≥90%), FR-007, FR-008 | ready |
+| F-02 | `cv-service-boundary` | (foundation) CV detection service exists alongside Django with a callable I/O contract — photo in, per-hole scores + marked image out; fidelity is downstream | — | NFR (≥90%), FR-007, FR-008 | done |
 | S-01 | `sign-in-empty-dashboard` | sign in via OAuth, set a username on first login, and land on an empty dashboard | F-01 | US-01, FR-001, FR-002, FR-012 | proposed |
 | S-04 | `owner-user-management` | (as owner) list registered users, remove a user, and toggle registration to invite-only | F-01 | FR-003, FR-004, FR-005 | proposed |
 | S-02 | `photo-detection-review` | photograph an ISSF target, upload it, and see the detected score with holes marked for review | F-02, S-01 | US-01, FR-006, FR-007, FR-008 | proposed |
@@ -84,7 +84,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Unknowns:**
   - Which CV approach (classical OpenCV pipeline vs. pretrained DL model vs. hybrid) should sit behind the contract? — Owner: user. Block: no (the foundation establishes the boundary; the approach is chosen inside `S-02`).
 - **Risk:** Sequenced as a foundation (not folded into `S-02`) because the top blocker is `skills` (CV novel) — establishing the service seam first lets the agent/user iterate on fidelity behind a stable contract instead of conflating "what does the service expect" with "does it work". The dominant unvalidated belief — that ≥90% fidelity is achievable — remains inside `S-02`; this foundation does not pre-resolve it.
-- **Status:** ready
+- **Status:** done
 
 ## Slices
 
@@ -174,4 +174,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 
 ## Done
 
-(Empty on first generation. `/10x-archive` appends entries here — and flips the matching item's `Status` to `done` — when a change whose `Change ID` matches the item archives.)
+- **F-02: (foundation) a callable CV detection service exists alongside Django with a documented I/O contract — accepts a target photo, returns per-hole point values (0–10 or X), a total score, and a marked-up image; the underlying detection fidelity is downstream (this foundation establishes the seam, not the accuracy).** — Archived 2026-07-24 → `context/archive/2026-07-19-cv-service-boundary/`. Lesson: —.
