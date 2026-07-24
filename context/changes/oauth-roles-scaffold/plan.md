@@ -635,28 +635,28 @@ Stand up the pytest marker system, the autouse UAT-skip, the acceptance-test fix
 
 #### Automated
 
-- [x] 5.1 System check passes (`uv run python src/manage.py check`)
-- [x] 5.2 `uv run ruff check .` passes
-- [x] 5.3 Existing tests still pass (`uv run pytest`)
+- [x] 5.1 System check passes (`uv run python src/manage.py check`) — 5712710
+- [x] 5.2 `uv run ruff check .` passes — 5712710
+- [x] 5.3 Existing tests still pass (`uv run pytest`) — 5712710
 
 #### Manual
 
-- [x] 5.4 `/` unauthenticated → welcome with Login button
-- [x] 5.5 Login → main page shows "logged in as {nick} ({role})"
-- [x] 5.6 Logout → returns to welcome
+- [x] 5.4 `/` unauthenticated → welcome with Login button — 5712710
+- [x] 5.5 Login → main page shows "logged in as {nick} ({role})" — 5712710
+- [x] 5.6 Logout → returns to welcome — 5712710
 
 ### Phase 6: Test Infrastructure (DEV/UAT Scaffolding)
 
 #### Automated
 
-- [ ] 6.1 `uv run pytest` runs DEV suite, skips uat
-- [ ] 6.2 `uv run pytest -m uat` skips without RUN_UAT=1
-- [ ] 6.3 `uv run ruff check .` passes
-- [ ] 6.4 `uv run lint-imports` passes
+- [x] 6.1 `uv run pytest` runs DEV suite, skips uat
+- [x] 6.2 `uv run pytest -m uat` skips without RUN_UAT=1
+- [x] 6.3 `uv run ruff check .` passes
+- [x] 6.4 `uv run lint-imports` passes
 
 #### Manual
 
-- [ ] 6.5 `.env.uat` gitignored
-- [ ] 6.6 `.github/workflows/uat.yml` is valid YAML
+- [x] 6.5 `.env.uat` gitignored
+- [x] 6.6 `.github/workflows/uat.yml` is valid YAML
 
 <!-- Phase 7 (Docker Dev Environment) deferred by plan-review F6 — not tracked here. See the "Deferred: Docker Dev Environment" section above. -->

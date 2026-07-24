@@ -46,13 +46,18 @@ test = [
 system-test = [
     "httpx>=0.28.0",
     "playwright>=1.40.0",
+    "pytest-playwright>=0.5.0",
 ]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "src.target_o_meter.settings"
 pythonpath = ["."]
+# 6.1: DEV suite runs by default (Auth0 bypassed); UAT is opt-in via -m uat +
+# RUN_UAT=1. --strict-markers makes a typo'd marker a hard error.
+addopts = ["--strict-markers", "--strict-config", "-m", "not uat"]
 markers = [
     "dev: fast, Auth0-bypassed tests (default).",
+    "uat: slow acceptance tests hitting REAL Auth0; skipped unless RUN_UAT=1.",
 ]
 
 [tool.ruff]
