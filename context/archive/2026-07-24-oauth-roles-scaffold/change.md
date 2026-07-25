@@ -1,10 +1,10 @@
 ---
 change_id: oauth-roles-scaffold
 title: OAuth + roles scaffold (F-01)
-status: impl_reviewed
+status: archived
 created: 2026-07-24
 updated: 2026-07-25
-archived_at: null
+archived_at: 2026-07-25T12:53:41Z
 ---
 
 ## Notes
