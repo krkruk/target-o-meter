@@ -469,7 +469,14 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 ### Phase 4: Real Auth0 smoke test (manual gate)
 
+> **Reserved as the owner's out-of-session gate (2026-07-25).** Phases 1–3 are
+> committed and system-tested; Phase 4 is a manual external-credentials round-trip
+> (no code) that the owner will run with their own Auth0 tenant. The two rows
+> below stay `[ ]` deliberately — they are NOT pending implementation, they are
+> pending the owner's real Auth0 dashboard + `.env` setup. The code verified by
+> Phases 1–3 is what Phase 4 exercises end-to-end.
+
 #### Manual
 
-- [ ] 4.1 Create Auth0 tenant + app; set Allowed Callback (`/v1/callback`), Allowed Logout (`/`), Web Origins in dashboard
-- [ ] 4.2 Populate `.env` (`AUTH0_*`, `OWNER_SUB_ID`, unset `DEV_AUTH_BYPASS_SUB`) and run the real login → callback → set-nick → logout round-trip
+- [ ] 4.1 Create Auth0 tenant + app; set Allowed Callback (`/v1/callback`), Allowed Logout (`/`), Web Origins in dashboard  *(owner's out-of-session gate)*
+- [ ] 4.2 Populate `.env` (`AUTH0_*`, `OWNER_SUB_ID`, unset `DEV_AUTH_BYPASS_SUB`) and run the real login → callback → set-nick → logout round-trip  *(owner's out-of-session gate)*
