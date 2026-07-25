@@ -53,6 +53,22 @@ describe('AppShell', () => {
     expect(after).not.toBe(before);
   });
 
+  // Regression: the sidebar's <nav> must carry data-collapsed so the CSS width
+  // rule (.sidebar[data-collapsed="true"] → 56px) actually matches. The shell
+  // signal alone isn't enough — the grey box stayed 200px when collapsed because
+  // the attribute lived only on the parent .shell, never on the <nav> itself.
+  // jsdom can't compute layout, so this pins the DOM signal the CSS keys off.
+  it('reflects the collapsed state on the sidebar nav element', async () => {
+    render(<AppShell me={makeMe()} onLogout={() => {}} />);
+    const nav = screen.getByRole('navigation', { name: /main navigation/i });
+    // Expanded first.
+    expect(nav.getAttribute('data-collapsed')).toBe('false');
+    await userEvent.click(screen.getByRole('button', { name: /collapse sidebar/i }));
+    expect(nav.getAttribute('data-collapsed')).toBe('true');
+    await userEvent.click(screen.getByRole('button', { name: /expand sidebar/i }));
+    expect(nav.getAttribute('data-collapsed')).toBe('false');
+  });
+
   it('fires onLogout when the Logout entry is activated', async () => {
     const onLogout = vi.fn();
     render(<AppShell me={makeMe()} onLogout={onLogout} />);

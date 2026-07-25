@@ -13,7 +13,12 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle, onLogout, onHome, isOwner }: SidebarProps) {
   return (
-    <nav className={styles.sidebar} role="navigation" aria-label="Main navigation">
+    <nav
+      className={styles.sidebar}
+      data-collapsed={collapsed}
+      role="navigation"
+      aria-label="Main navigation"
+    >
       <button
         className={styles.toggle}
         onClick={onToggle}

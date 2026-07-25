@@ -7,7 +7,7 @@
   width: 200px;
 }
 
-.sidebar:global([data-collapsed="true"]) {
+.sidebar[data-collapsed="true"] {
   width: 56px;
 }
 
