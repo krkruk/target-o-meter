@@ -8,7 +8,7 @@
 # Commands are written to be copy-pasteable; `.PHONY` keeps them from being
 # shadowed by same-named files.
 
-.PHONY: help run migrate check be-test fe-test system-test acceptance-test
+.PHONY: help run dev migrate check be-test fe-test system-test acceptance-test
 
 # Frontend presence guard. Exported so sub-makes / shell snippets can read it.
 FE_DIR := src/frontend
@@ -17,7 +17,33 @@ FE_PKG := $(FE_DIR)/package.json
 # --- Backend ---------------------------------------------------------------
 
 run: migrate  ## Start Django dev server (:8000) in DEBUG mode (migrate first)
+	@echo "NOTE: \`make run\` starts Django ONLY. The SPA's JS comes from the"
+	@echo "Vite dev server (:5173). For full HMR dev use \`make dev\` instead —"
+	@echo "it runs both. Without Vite, the page HTML loads but stays blank"
+	@echo "(the script tag points at :5173 and nothing answers)."
 	uv run python src/manage.py runserver
+
+# --- Full SPA dev (Django + Vite, both with HMR) ---------------------------
+#
+# django-vite serves the SPA's JS/CSS from the Vite dev server in DEBUG, so
+# day-to-day frontend dev needs BOTH processes: Django (:8000) for the shell
+# document + the /v1 API, and Vite (:5173) for the React bundle + HMR. This
+# target runs them concurrently; Ctrl-C tears both down.
+#
+# Passes DEBUG=true so settings flips django-vite into dev_mode regardless of
+# the shell's DEBUG env. Requires src/frontend/node_modules (run `npm install`
+# in src/frontend/ first if absent).
+
+dev: migrate  ## Start Django (:8000) + Vite (:5173) together for full SPA dev with HMR
+	@if [ ! -d "$(FE_DIR)/node_modules" ]; then \
+		echo "src/frontend/node_modules missing — run \`cd $(FE_DIR) && npm install\` first."; \
+		exit 1; \
+	fi
+	@echo "Starting Django (:8000) + Vite (:5173). Ctrl-C stops both."
+	@trap 'kill 0' INT; \
+	DEBUG=true uv run python src/manage.py runserver --noreload & \
+	( cd $(FE_DIR) && npm run dev ) & \
+	wait
 
 migrate:  ## Apply Django migrations
 	uv run python src/manage.py migrate

@@ -4,26 +4,29 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Target-o-meter{% endblock %}</title>
-    {# S-01 Phase 2: django-vite React Refresh injection (HMR in dev only;
-       empty string in prod). Must sit in <head> before any vite_asset. #}
+    {% comment %}S-01 Phase 2: django-vite React Refresh injection (HMR in dev
+       only; empty string in prod). Must sit in <head> before any vite_asset.
+       NOTE: Django's {# #} comment syntax is single-line only, so multi-line
+       comments must use {% comment %}.{% endcomment %}
     {% vite_react_refresh %}
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    {# S-01: forces the csrftoken cookie on every ``/`` render (incl. the
-       unauthed first load) so the SPA's first PATCH /v1/me and POST /v1/logout
-       have a token to send. Django only sets the cookie when get_token() runs. #}
+    {% comment %}S-01: forces the csrftoken cookie on every "/" render
+       (incl. the unauthed first load) so the SPA's first PATCH /v1/me and
+       POST /v1/logout have a token to send. Django only sets the cookie when
+       get_token() runs.{% endcomment %}
     {% csrf_token %}
     <main>
-        {# S-01 SPA shell — React mounts here. The welcome/app-shell dispatch
-           moved client-side (GET /v1/me). django-vite resolves the entry to
-           the Vite dev server (HMR) in DEBUG, or the hashed bundle from
-           dist/manifest.json in prod. #}
+        {% comment %}S-01 SPA shell — React mounts here. The welcome/app-shell
+           dispatch moved client-side (GET /v1/me). django-vite resolves the
+           entry to the Vite dev server (HMR) in DEBUG, or the hashed bundle
+           from dist/manifest.json in prod.{% endcomment %}
         <div id="root"></div>
     </main>
-    {# The SPA entry. Must come after #root so the mount point exists when
-       the module runs. `vite_asset` emits <script>/<link> in prod, a single
-       dev-server <script type="module"> in dev. #}
+    {% comment %}The SPA entry. Must come after #root so the mount point exists
+       when the module runs. vite_asset emits <script>/<link> in prod, a single
+       dev-server <script type="module"> in dev.{% endcomment %}
     {% vite_asset 'src/main.tsx' %}
 </body>
 </html>
