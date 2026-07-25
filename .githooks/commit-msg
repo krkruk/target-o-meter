@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+# Uses sed to delete the line with Co-Authored-By
+sed -i.bak '/^Co-Authored-By:/d' "$1"
+rm -f "$1.bak"
