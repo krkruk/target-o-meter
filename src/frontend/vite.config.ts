@@ -36,5 +36,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
+    // CSS Modules: return class names as-is so tests can assert on them and
+    // components don't crash trying to parse real CSS in jsdom.
+    css: { modules: { classNameStrategy: 'non-scoped' } },
   },
 });

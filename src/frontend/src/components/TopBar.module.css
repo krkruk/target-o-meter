@@ -1,0 +1,18 @@
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #e3e1dc;
+  background: #fff;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.nick {
+  font-size: 0.95rem;
+  color: #4a4a4a;
+}

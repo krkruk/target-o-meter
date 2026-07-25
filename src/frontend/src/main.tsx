@@ -1,9 +1,11 @@
-// Phase 2: trivial render to prove the Django↔Vite handoff works before
-// building the real Welcome / AppShell screens (those land in Phase 3).
-// Replaced wholesale in Phase 3 — do NOT add behaviour here.
+// SPA entry point. Phase 3 replaced the Phase 2 trivial render with the real
+// App (auth seam + Welcome/AppShell/NickPrompt). django-vite resolves this
+// module via the {% vite_asset 'src/main.tsx' %} tag in templates/base.html.
 import { createRoot } from 'react-dom/client';
+import { App } from './App';
+import './styles.css';
 
 const rootEl = document.getElementById('root');
 if (rootEl) {
-  createRoot(rootEl).render(<h1>Hello from React</h1>);
+  createRoot(rootEl).render(<App />);
 }

@@ -1,0 +1,41 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f7f7f5;
+  color: #1a1a1a;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.main {
+  flex: 1;
+  padding: 2rem;
+  overflow: auto;
+}
+
+.placeholder {
+  max-width: 640px;
+  margin: 2rem auto;
+  text-align: center;
+  color: #6a6a6a;
+  padding: 3rem 1rem;
+  border: 1px dashed #d0cec8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.placeholder h2 {
+  margin: 0 0 0.5rem;
+  color: #4a4a4a;
+  font-size: 1.2rem;
+}
+
+.placeholder p {
+  margin: 0;
+  font-size: 0.95rem;
+}

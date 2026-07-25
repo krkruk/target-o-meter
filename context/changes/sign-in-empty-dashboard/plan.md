@@ -440,28 +440,28 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 #### Automated
 
-- [x] 2.1 `src/frontend/` package + Vite config (`package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `main.tsx`)
-- [x] 2.2 django-vite wired in `settings.py` (`INSTALLED_APPS`, `DJANGO_VITE`, `STATICFILES_DIRS`) + `templates/base.html` (Vite tags + `<div id="root">`)
-- [x] 2.3 Trivial render in `main.tsx` + trivial Vitest test
-- [x] 2.4 `npm install` + `npm run build` + `npm run test` + `tsc --noEmit` clean; `manage.py check` clean
+- [x] 2.1 `src/frontend/` package + Vite config (`package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `main.tsx`) — 127ff39
+- [x] 2.2 django-vite wired in `settings.py` (`INSTALLED_APPS`, `DJANGO_VITE`, `STATICFILES_DIRS`) + `templates/base.html` (Vite tags + `<div id="root">`) — 127ff39
+- [x] 2.3 Trivial render in `main.tsx` + trivial Vitest test — 127ff39
+- [x] 2.4 `npm install` + `npm run build` + `npm run test` + `tsc --noEmit` clean; `manage.py check` clean — 127ff39
 
 #### Manual
 
-- [ ] 2.5 `runserver` + `npm run dev` → "Hello from React" at `/` with HMR; prod build renders without dev server
+- [x] 2.5 `runserver` + `npm run dev` → "Hello from React" at `/` with HMR; prod build renders without dev server — 127ff39
 
 ### Phase 3: Welcome page, app shell, nick-on-first-login
 
 #### Automated
 
-- [ ] 3.1 API client `src/frontend/src/api.ts` (typed `getMe`/`patchMe`/`postLogout`/`login` + CSRF)
-- [ ] 3.2 ISSF-target SVG at `src/frontend/assets/target.svg`
-- [ ] 3.3 `App.tsx` auth seam + conditional render
-- [ ] 3.4 `Welcome` component (+ CSS Module) + test
-- [ ] 3.5 `AppShell` + `Sidebar` + `TopBar` (+ CSS Modules) + tests (collapse, Home-top, Logout-bottom, nick)
-- [ ] 3.6 `NickPrompt` component (+ CSS Module) + test (409, empty-disabled, success)
-- [ ] 3.7 Global `styles.css` + per-component CSS Modules
-- [ ] 3.8 `tests/system/test_spa_shell.py` (new) + retire `tests/system/test_templates.py`
-- [ ] 3.9 `npm run test` + `tsc --noEmit` + `npm run build` clean; `uv run pytest` + `ruff` + `lint-imports` green
+- [x] 3.1 API client `src/frontend/src/api.ts` (typed `getMe`/`patchMe`/`postLogout`/`login` + CSRF)
+- [x] 3.2 ISSF-target SVG at `src/frontend/assets/target.svg`
+- [x] 3.3 `App.tsx` auth seam + conditional render
+- [x] 3.4 `Welcome` component (+ CSS Module) + test
+- [x] 3.5 `AppShell` + `Sidebar` + `TopBar` (+ CSS Modules) + tests (collapse, Home-top, Logout-bottom, nick)
+- [x] 3.6 `NickPrompt` component (+ CSS Module) + test (409, empty-disabled, success)
+- [x] 3.7 Global `styles.css` + per-component CSS Modules
+- [x] 3.8 `tests/system/test_spa_shell.py` (new) + retire `tests/system/test_templates.py`
+- [x] 3.9 `npm run test` + `tsc --noEmit` + `npm run build` clean; `uv run pytest` + `ruff` + `lint-imports` green
 
 #### Manual
 

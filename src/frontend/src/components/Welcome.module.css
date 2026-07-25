@@ -1,0 +1,92 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg, #f7f7f5);
+  color: var(--color-fg, #1a1a1a);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #e3e1dc;
+  background: #fff;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.loginBtn {
+  padding: 0.4rem 1rem;
+  border: 1px solid #1a1a1a;
+  background: transparent;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.loginBtn:hover {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.hero {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  align-items: center;
+  gap: 3rem;
+  padding: 4rem 3rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.heroCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.heroTitle {
+  font-size: 2.4rem;
+  line-height: 1.15;
+  margin: 0;
+}
+
+.heroBody {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  color: #4a4a4a;
+  margin: 0;
+}
+
+.cta {
+  align-self: flex-start;
+  padding: 0.7rem 1.4rem;
+  background: var(--color-primary, #1a1a1a);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.targetImg {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  justify-self: center;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 2rem 1.25rem;
+  }
+}
