@@ -78,7 +78,7 @@ The phase ordering exists so that **the URL rename + `set_nick` service + POST l
 - **Renaming routes is not purely code-local.** `src/bff/routers/auth_routes.py:67` (`reverse("bff:callback")`) and `:112` (`reverse("bff:index")`) produce URLs registered in the Auth0 dashboard. The `app_name = "bff"` (`src/bff/urls.py:19`) and the `name="callback"` / `name="index"` can stay (they're internal Django URL names, not path segments) — what changes is the **path prefix** (`"bff/login"` → `"v1/login"`) and the `api/` mount (`path("api/", api.urls)` → `path("v1/", api.urls)`). Auth0's Allowed Callback / Allowed Logout URLs are updated in Phase 4.
 - **`PATCH /v1/me` must be CSRF-protected.** django-ninja auto-enforces CSRF for non-GET methods under `SessionAuth`; the SPA reads the `csrftoken` cookie (`CSRF_COOKIE_HTTPONLY = False`) and sends `X-CSRFToken`. No new middleware needed — verify with a test.
 - **`SameSite=Lax` is load-bearing.** Do not "harden" the session cookie to `Strict` — it breaks the Auth0 callback (the cross-site redirect arrives without `sessionid`, Authlib finds no nonce, login fails silently). `settings.py:146` stays as-is.
-- **`has_set_nick` default + backfill.** The new `BooleanField(default=False)` migration must also set existing rows (the dev-admin seed, any locally-created users) — `RunPython` to `UPDATE identity_user SET has_set_nick = (nick NOT LIKE 'shooter-%')` OR leave existing rows as `False` (they'll be prompted on next login, which is harmless). Decision: backfill to `True` for rows whose nick doesn't start with `shooter-` (so the seeded dev-admin isn't prompted); new OAuth users are `False` by default and prompt on first login.
+- **`has_set_nick` default — schema-only, no backfill.** The new `BooleanField(default=False)` migration is schema-only with `default=False` and runs **no `RunPython` backfill**. The originally-considered backfill (`True` for non-`shooter-*` nicks) was dropped because (a) `create_superuser` produces a `shooter-*` nick via `_generated_nick()`, so the predicate would not spare the dev-admin anyway, and (b) there is no seeding migration, so the backfill is a no-op on every real DB. New OAuth users default to `False` and prompt on first login; a `createsuperuser`-created dev-admin will be prompted once (set `has_set_nick=True` via `shell` to skip).
 - **django-vite dev vs prod paths.** In dev (`DEBUG=True`), django-vite serves from the Vite dev server (HMR); in prod, from the built manifest in `STATICFILES_DIRS`. The `STATICFILES_DIRS` entry pointing at `src/frontend/dist` is **only needed for prod** (`collectstatic`), but adding it unconditionally is harmless and avoids a dev/prod settings split for S-01's scope.
 - **SPA catch-all ordering.** `/v1/*` and `/admin/` must win over the SPA's `/`. The index view at `""` is the SPA mount; Django's URLconf matches in order, so the versioned routes stay **above** the catch-all (they already do — `urls.py:25-33`). No SPA client-side router means no need for a `path("", ...)` catch-all beyond the index view.
 
@@ -96,7 +96,7 @@ All backend changes land first: rename the URL surface to `/v1/...`, add the `ha
 
 **Intent**: Add an unambiguous "has the user chosen a nick" signal so the SPA can decide whether to show the first-login prompt, replacing the fragile `shooter-*` string-match.
 
-**Contract**: New `has_set_nick = models.BooleanField(default=False)` on `User` (after `nick`). Migration `0002` adds the column with `default=False`, then runs `RunPython` to backfill: set `has_set_nick=True` for existing rows whose `nick` does not match `shooter-*` (so the seeded dev-admin isn't prompted). `UserManager.create_user` sets `has_set_nick=False` for new rows. The derived `role`/`is_owner` properties are unchanged.
+**Contract**: New `has_set_nick = models.BooleanField(default=False)` on `User` (after `nick`). Migration `0002` is **schema-only** — it adds the column with `default=False` and runs **no backfill**. Rationale: `UserManager.create_superuser` → `create_user` → `_generated_nick()` (`models.py:24-30, 56-64, 66-84`) produces a `shooter-<uuid8>` nick when no nick is passed, so the obvious "backfill `True` for non-`shooter-*` nicks" predicate would leave the dev-admin at `False` anyway — contradicting the intent. And there is no `RunPython` seeding users anywhere in the migration tree (`0001_initial` is schema-only), so against any real DB the backfill would be a no-op: the app isn't deployed and Phase 4 is the first real OAuth run. New OAuth users are `False` by default and prompt on first login (the desired UX). A dev-admin created via `createsuperuser` will be prompted once on first SPA visit — either accept that or set `has_set_nick=True` via `manage.py shell`. `UserManager.create_user` sets `has_set_nick=False` for new rows. The derived `role`/`is_owner` properties are unchanged.
 
 #### 1.2 `set_nick` identity service
 
@@ -104,7 +104,7 @@ All backend changes land first: rename the URL surface to `/v1/...`, add the `ha
 
 **Intent**: Provide the pure business logic the BFF route calls to set a nick — validate, enforce the existing CI-uniqueness constraint, set `has_set_nick=True`, return a DTO. One function, one file (per `lessons.md:12-17`).
 
-**Contract**: `def set_nick(sub: str, nick: str) -> UserContextDTO:` — looks up the `User` by `sub` (raises `User.DoesNotExist` → BFF maps to 401), trims + length-validates `nick` (1–64 chars), catches `IntegrityError` on the `identity_user_nick_ci_unique` constraint and re-raises as a domain `NickTakenError` (or returns a sentinel — match the existing service style in `services.py:27-65`), otherwise sets `user.nick` + `user.has_set_nick = True`, saves, returns `get_user_context(sub)`. Add `UserContextDTO.has_set_nick: bool` to `dtos.py:18-31` so the route can expose it.
+**Contract**: `def set_nick(sub: str, nick: str) -> UserContextDTO:` — looks up the `User` by `sub` (raises `User.DoesNotExist` → BFF maps to 401), trims + length-validates `nick` (1–64 chars), catches `IntegrityError` on the `identity_user_nick_ci_unique` constraint and re-raises as a domain `NickTakenError` (or returns a sentinel — match the existing service style in `services.py:27-65`), otherwise sets `user.nick` + `user.has_set_nick = True`, saves, returns `get_user_context(sub)`. Add `UserContextDTO.has_set_nick: bool` to `dtos.py:18-31` so the route can expose it. **Also update `_user_to_context_dto()`** (`services.py:16-24`) — it is the sole construction site for `UserContextDTO`, so adding a non-optional field breaks it; populate the new field from the ORM (`has_set_nick=user.has_set_nick`). Pydantic raises at runtime if this is missed.
 
 #### 1.3 `PATCH /v1/me` route
 
@@ -128,7 +128,7 @@ All backend changes land first: rename the URL surface to `/v1/...`, add the `ha
 
 **Intent**: Close the GET-logout CSRF-soft vector F-01 flagged (plan-review F5). The SPA POSTs to `/v1/logout` with the `X-CSRFToken` header.
 
-**Contract**: Change `def logout(request)` from a GET view to a POST handler (`@router.post("/logout")` or a function decorated to require POST — match the existing view style; the route is currently a plain function in `urls.py`, so the simplest path is a `method_guard` or moving it onto a small `Router`). Keep the session-clear + Auth0 `/v2/logout` redirect logic (`auth_routes.py:103-117`). The `returnTo` URL is still `reverse("bff:index")` → `/`. Update the docstring (the "GET-based in F-01" comment is now stale). Because this is `SessionAuth` territory, ensure the route is either under the ninja API (auto-CSRF) or decorated with `@csrf_protect` if kept as a plain Django view — pick the ninja-router path for consistency with `session_routes`.
+**Contract**: Change `def logout(request)` from a GET view to a POST handler by decorating the existing plain Django view with `@require_POST` + `@csrf_protect` (from `django.views.decorators.http` and `django.views.decorators.csrf`). **Keep it as a plain Django view** — do not move it onto a ninja `Router`: `logout` is a 302-returning view in the same shape as `login_view` (`auth_routes.py:59`) and `callback` (`auth_routes.py:71`), all registered top-level in `urls.py` (not via `api.add_router`). The `router = Router()` declared at `auth_routes.py:37` is dead code (never mounted) — leave it or remove it, but do not use it. (Moving only `logout` to a ninja Router while leaving `login_view`/`callback` as Django views would split the OIDC chain across two styles — less consistent, not more. ninja's auto-CSRF does not apply to plain Django views, hence `@csrf_protect`.) Keep the session-clear + Auth0 `/v2/logout` redirect logic (`auth_routes.py:103-117`). The `returnTo` URL is still `reverse("bff:index")` → `/`. Update the docstring (the "GET-based in F-01" comment is now stale).
 
 #### 1.6 Index view serves the SPA shell
 
@@ -140,11 +140,11 @@ All backend changes land first: rename the URL surface to `/v1/...`, add the `ha
 
 #### 1.7 Backend tests for the rename + new endpoint + POST logout
 
-**File**: `tests/system/test_auth_flow.py` (extend), `src/domains/identity/tests/test_services.py` (extend)
+**File**: `tests/system/test_auth_flow.py` (extend), `tests/system/test_dev_bypass.py` (extend — `/api/me` → `/v1/me` at lines 43 and 63), `src/domains/identity/tests/test_services.py` (extend)
 
 **Intent**: Cover the renamed routes, the new `set_nick` service + `PATCH /v1/me`, the POST logout, and the `has_set_nick` backfill — using the existing `force_login` pattern, not Auth0.
 
-**Contract**: Update `test_auth_flow.py` URLs from `/api/me`, `/api/users` to `/v1/me`, `/v1/users`. Add: `PATCH /v1/me` happy path (200, nick updated, `has_set_nick=True`), 409 on duplicate nick, 401 when unauthed. Add a test that `GET /v1/logout` is no longer accepted (405) and `POST /v1/logout` clears the session (use the Django test client's `post`). In `test_services.py`, add `set_nick` tests (happy path, `NickTakenError` on CI-duplicate, trims whitespace, length validation). Add a migration test asserting `0002` backfills the seeded admin correctly. Retire `tests/system/test_templates.py` here too (it will assert on the old welcome/main templates) — replace its coverage with a single test asserting `/` returns 200 and contains `<div id="root">`.
+**Contract**: Update `test_auth_flow.py` URLs from `/api/me`, `/api/users` to `/v1/me`, `/v1/users`. Add: `PATCH /v1/me` happy path (200, nick updated, `has_set_nick=True`), 409 on duplicate nick, 401 when unauthed. Add a test that `GET /v1/logout` is no longer accepted (405) and `POST /v1/logout` clears the session (use the Django test client's `post`). **Add explicit CSRF tests** — `PATCH /v1/me` returns 403 (or 401 if CSRF fires before auth — pin down which) without an `X-CSRFToken` header, 200 with a valid token sourced from the `csrftoken` cookie; same shape for `POST /v1/logout`. This is load-bearing: the codebase has no non-GET endpoint today, so ninja's auto-CSRF-for-SessionAuth claim (asserted only in `bff/api.py:3-6`) becomes a tested invariant here, not a docstring promise. In `test_services.py`, add `set_nick` tests (happy path, `NickTakenError` on CI-duplicate, trims whitespace, length validation). No migration-backfill test (0002 is schema-only — see §1.1). Retire `tests/system/test_templates.py` here too (it will assert on the old welcome/main templates) — replace its coverage with a single test asserting `/` returns 200 and contains `<div id="root">`.
 
 ### Success Criteria:
 
@@ -189,7 +189,7 @@ Introduce the Node/Vite/React/TS toolchain and wire django-vite into Django. Thi
 
 **Intent**: Connect the Vite build/HMR to Django so `{% vite %}` tags in the template resolve correctly in both dev (HMR via Vite dev server) and prod (hashed bundle from manifest).
 
-**Contract**: `settings.py` — add `'django_vite'` to `INSTALLED_APPS`; add `DJANGO_VITE_CFG = {"default": {"dev_mode": settings.DEBUG, "nested_entry": "src/main.tsx", "manifest_path": BASE_DIR / "frontend" / "dist" / "manifest.json", "build_dev_server": "http://localhost:5173"}}` (paths relative to the actual `src/frontend/` location — verify against the chosen `VITE_APP_DIR`). Add `STATICFILES_DIRS = [BASE_DIR / "frontend" / "dist"]` so `collectstatic` picks up the built bundle in prod. `templates/base.html` — add `{% load django_vite %}` at top, `{% vite_react_refresh %}` in `<head>`, `{% vite 'src/main.tsx' %}` before `</body>`, and `<div id="root"></div>` in `<main>`. Keep `{% block %}` hooks minimal — this is now the SPA shell, not a content template.
+**Contract**: `settings.py` — add `'django_vite'` to `INSTALLED_APPS`; add `DJANGO_VITE_CFG = {"default": {"dev_mode": settings.DEBUG, "nested_entry": "src/main.tsx", "manifest_path": BASE_DIR / "frontend" / "dist" / "manifest.json", "build_dev_server": "http://localhost:5173"}}` (paths relative to the actual `src/frontend/` location — verify against the chosen `VITE_APP_DIR`). Add `STATICFILES_DIRS = [BASE_DIR / "frontend" / "dist"]` so `collectstatic` picks up the built bundle in prod. `templates/base.html` — add `{% load django_vite %}` at top, `{% vite_react_refresh %}` in `<head>`, `{% vite 'src/main.tsx' %}` before `</body>`, `<div id="root"></div>` in `<main>`, **and `{% csrf_token %}`** (the SPA's PATCH /v1/me and POST /v1/logout both read the `csrftoken` cookie; Django only sets that cookie when `get_token()` runs during the request — `{% csrf_token %}` guarantees it on every `/` render, including the unauthed first load, so the first PATCH/POST has a token to send). Keep `{% block %}` hooks minimal — this is now the SPA shell, not a content template.
 
 #### 2.3 Trivial render to verify the pipeline
 
@@ -362,12 +362,12 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 ### Unit Tests:
 
 - **`set_nick` identity service** (`src/domains/identity/tests/test_services.py`) — happy path, CI-uniqueness violation, whitespace trim, length bounds, sets `has_set_nick=True`. Uses `make_user`/`make_owner` from `test_utils.py` (no ORM factories).
-- **Migration backfill** (`0002_has_set_nick`) — seeded admin (non-`shooter-*` nick) backfilled to `True`; a `shooter-*` row stays `False`.
+- **Migration `0002`** is schema-only (no `RunPython`); no backfill test applies.
 
 ### Integration / System Tests:
 
-- **`PATCH /v1/me`** (`tests/system/test_auth_flow.py`) — 200 happy path, 409 on duplicate nick, 401 unauthed.
-- **Renamed routes** — `/v1/me`, `/v1/users`, `/v1/login` (302), `/v1/logout` (POST only, GET → 405).
+- **`PATCH /v1/me`** (`tests/system/test_auth_flow.py`) — 200 happy path, 409 on duplicate nick, 401 unauthed, 403/401 without `X-CSRFToken` (locks the ninja-auto-CSRF invariant — no non-GET endpoint exists yet to prove it).
+- **Renamed routes** — `/v1/me`, `/v1/users`, `/v1/login` (302), `/v1/logout` (POST only, GET → 405; POST 403/401 without CSRF).
 - **POST logout** — clears the session.
 - **SPA shell** (`tests/system/test_spa_shell.py`, new) — `/` returns 200 with `<div id="root">`, same response authed and unauthed.
 - **`tests/system/test_templates.py`** — retired (broken by the React swap).
@@ -399,8 +399,8 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 ## Migration Notes
 
-- **DB migration `0002_has_set_nick`** is the only schema change. Backfill: existing rows with non-`shooter-*` nicks → `has_set_nick=True`; `shooter-*` rows → `False`. New OAuth users → `False` (prompt on first login). Rollback: `migrate identity 0001` drops the column; the `nick` data is untouched. No data loss risk.
-- **URL rename is a breaking change to the URL surface** but has no DB impact. The only external dependency is the Auth0 dashboard (Phase 4). Existing F-01 tests are updated in Phase 1 to the new paths.
+- **DB migration `0002_has_set_nick`** is the only schema change — schema-only, adds the column with `default=False`, no `RunPython` backfill (see Critical Implementation Details for the rationale). New OAuth users → `False` (prompt on first login). Rollback: `migrate identity 0001` drops the column; the `nick` data is untouched. No data loss risk.
+- **URL rename is a breaking change to the URL surface** but has no DB impact. The only external dependency is the Auth0 dashboard (Phase 4). Existing F-01 tests are updated in Phase 1 to the new paths — `test_auth_flow.py`, `test_dev_bypass.py`, and `test_templates.py` (the last retired, not edited). Before merging, grep the repo (excluding `.venv`/`node_modules`/`context/`) for `"/api/` and `"/bff/` to confirm no other hardcoded literal slipped through; the only `reverse(...)` calls (`bff:callback`, `bff:index` in `auth_routes.py`) keep working because the URL *names* are unchanged — only the path prefixes move.
 - **No production data exists yet** (the app isn't deployed), so the migration runs against empty/dev DBs only. No coordinated downtime needed.
 
 ## References
@@ -421,14 +421,15 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 #### Automated
 
-- [ ] 1.1 `has_set_nick` field on `User` + migration `0002` with backfill
-- [ ] 1.2 `set_nick` service in `src/domains/identity/services.py` (+ `NickTakenError`)
+- [ ] 1.1 `has_set_nick` field on `User` + schema-only migration `0002` (no backfill)
+- [ ] 1.2 `set_nick` service in `src/domains/identity/services.py` (+ `NickTakenError`); update `_user_to_context_dto` to populate `has_set_nick`
 - [ ] 1.3 `PATCH /v1/me` route + `MeOut.has_set_nick` extension
 - [ ] 1.4 URL rename `/bff/*` + `/api/*` → `/v1/*` in `src/bff/urls.py`
-- [ ] 1.5 Logout GET → POST + CSRF in `src/bff/routers/auth_routes.py`
+- [ ] 1.5 Logout GET → POST + CSRF (`@require_POST` + `@csrf_protect`, kept as plain Django view) in `src/bff/routers/auth_routes.py`
 - [ ] 1.6 `index` view serves the SPA shell document
-- [ ] 1.7 Backend tests updated (rename + `set_nick` + POST logout + migration backfill); `test_templates.py` retired
-- [ ] 1.8 `uv run pytest` green
+- [ ] 1.7 Backend tests updated (rename incl. `test_dev_bypass.py` + `set_nick` + POST logout + explicit CSRF tests); `test_templates.py` retired
+- [ ] 1.8 `uv run python src/manage.py makemigrations identity` → verify `0002_has_set_nick` file shape; `uv run python src/manage.py migrate` applies cleanly on a fresh DB
+- [ ] 1.9 `uv run pytest` green
 - [ ] 1.9 `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
 
 #### Manual
