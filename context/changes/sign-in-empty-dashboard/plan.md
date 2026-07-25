@@ -440,10 +440,10 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 #### Automated
 
-- [ ] 2.1 `src/frontend/` package + Vite config (`package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `main.tsx`)
-- [ ] 2.2 django-vite wired in `settings.py` (`INSTALLED_APPS`, `DJANGO_VITE_CFG`, `STATICFILES_DIRS`) + `templates/base.html` (Vite tags + `<div id="root">`)
-- [ ] 2.3 Trivial render in `main.tsx` + trivial Vitest test
-- [ ] 2.4 `npm install` + `npm run build` + `npm run test` + `tsc --noEmit` clean; `manage.py check` clean
+- [x] 2.1 `src/frontend/` package + Vite config (`package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `main.tsx`)
+- [x] 2.2 django-vite wired in `settings.py` (`INSTALLED_APPS`, `DJANGO_VITE`, `STATICFILES_DIRS`) + `templates/base.html` (Vite tags + `<div id="root">`)
+- [x] 2.3 Trivial render in `main.tsx` + trivial Vitest test
+- [x] 2.4 `npm install` + `npm run build` + `npm run test` + `tsc --noEmit` clean; `manage.py check` clean
 
 #### Manual
 

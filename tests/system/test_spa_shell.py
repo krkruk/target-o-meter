@@ -6,8 +6,8 @@ the welcome/authed dispatch client-side: ``/`` serves a single shell document
 regardless of auth state, and React decides what to render based on
 ``GET /v1/me``.
 
-Phase 1 asserts the dispatch collapse + the root mount point; Phase 2 adds the
-django-vite script tag once the toolchain is wired.
+Phase 1 asserted the dispatch collapse + the root mount point; Phase 2 adds the
+django-vite entry-tag assertion (``test_index_serves_vite_entry``).
 """
 
 from __future__ import annotations
@@ -53,3 +53,17 @@ def test_index_serves_same_shell_authed_and_unauthed(client, user_sub) -> None:
     authed_body = _CSRF_TOKEN_RE.sub(b"<csrf>", client.get("/").content)
 
     assert anon_body == authed_body
+
+
+def test_index_serves_vite_entry(client) -> None:
+    """Phase 2: the shell document carries the django-vite entry tag for
+    ``src/main.tsx``.
+
+    In dev (DEBUG=True, the test default) django-vite emits a module script
+    pointing at the Vite dev server; in prod it points at the hashed bundle
+    under ``/static/assets/``. Both share the ``src/main.tsx`` path, which is
+    the stable anchor across modes — assert on that, not on the host, so the
+    test passes in either mode without a settings split.
+    """
+    response = client.get("/")
+    assert b"src/main.tsx" in response.content

@@ -84,6 +84,10 @@ INSTALLED_APPS = [
     'src.domains.core',
     'src.domains.identity',
     'src.domains.vision',
+    # Vite↔Django bridge (S-01 Phase 2). Serves the Vite dev server (HMR) in
+    # DEBUG and the hashed bundle (read from dist/manifest.json) in prod via
+    # the ``{% vite_* %}`` template tags in templates/base.html.
+    'django_vite',
 ]
 
 MIDDLEWARE = [
@@ -237,3 +241,36 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# ---------------------------------------------------------------------------
+# Vite + django-vite (S-01 Phase 2).
+# ---------------------------------------------------------------------------
+#
+# django-vite 3.1.0 bridges Vite's dev server (HMR) and its hashed production
+# build to Django's template layer. In DEBUG, ``{% vite_asset %}`` /
+# ``{% vite_react_refresh %}`` emit URLs pointing at the Vite dev server
+# (``http://localhost:5173``); in prod they resolve hashed files from
+# ``dist/manifest.json``.
+#
+# ``manifest_path`` is consulted only when ``dev_mode=False``, but pointing it
+# unconditionally is harmless and avoids a dev/prod settings split for S-01's
+# scope (plan §"Critical Implementation Details"). The path is absolute and
+# lives under ``src/frontend/dist/`` (``BASE_DIR`` == ``src/``).
+#
+# ``STATICFILES_DIRS`` adds the built bundle so ``collectstatic`` picks it up
+# for prod (WhiteNoise serves it). In dev django-vite proxies to the Vite dev
+# server instead, so the entry is unused-but-harmless in DEBUG.
+FRONTEND_DIR = BASE_DIR / "frontend"
+
+DJANGO_VITE = {
+    "default": {
+        "dev_mode": DEBUG,
+        "dev_server_host": "localhost",
+        "dev_server_port": 5173,
+        "manifest_path": FRONTEND_DIR / "dist" / "manifest.json",
+    }
+}
+
+STATICFILES_DIRS = [
+    FRONTEND_DIR / "dist",
+]

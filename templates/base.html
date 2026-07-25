@@ -1,9 +1,12 @@
-<!DOCTYPE html>
+{% load django_vite %}<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Target-o-meter{% endblock %}</title>
+    {# S-01 Phase 2: django-vite React Refresh injection (HMR in dev only;
+       empty string in prod). Must sit in <head> before any vite_asset. #}
+    {% vite_react_refresh %}
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -13,8 +16,14 @@
     {% csrf_token %}
     <main>
         {# S-01 SPA shell — React mounts here. The welcome/app-shell dispatch
-           moved client-side (GET /v1/me). django-vite tags land in Phase 2. #}
+           moved client-side (GET /v1/me). django-vite resolves the entry to
+           the Vite dev server (HMR) in DEBUG, or the hashed bundle from
+           dist/manifest.json in prod. #}
         <div id="root"></div>
     </main>
+    {# The SPA entry. Must come after #root so the mount point exists when
+       the module runs. `vite_asset` emits <script>/<link> in prod, a single
+       dev-server <script type="module"> in dev. #}
+    {% vite_asset 'src/main.tsx' %}
 </body>
 </html>
