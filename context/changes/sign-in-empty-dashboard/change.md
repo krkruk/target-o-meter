@@ -1,7 +1,7 @@
 ---
 change_id: sign-in-empty-dashboard
 title: Sign in via OAuth, set a username on first login, and land on an empty dashboard
-status: preparing
+status: planned
 created: 2026-07-25
 updated: 2026-07-25
 archived_at: null
