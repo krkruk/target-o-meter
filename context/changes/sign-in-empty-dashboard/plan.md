@@ -453,19 +453,19 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 #### Automated
 
-- [x] 3.1 API client `src/frontend/src/api.ts` (typed `getMe`/`patchMe`/`postLogout`/`login` + CSRF)
-- [x] 3.2 ISSF-target SVG at `src/frontend/assets/target.svg`
-- [x] 3.3 `App.tsx` auth seam + conditional render
-- [x] 3.4 `Welcome` component (+ CSS Module) + test
-- [x] 3.5 `AppShell` + `Sidebar` + `TopBar` (+ CSS Modules) + tests (collapse, Home-top, Logout-bottom, nick)
-- [x] 3.6 `NickPrompt` component (+ CSS Module) + test (409, empty-disabled, success)
-- [x] 3.7 Global `styles.css` + per-component CSS Modules
-- [x] 3.8 `tests/system/test_spa_shell.py` (new) + retire `tests/system/test_templates.py`
-- [x] 3.9 `npm run test` + `tsc --noEmit` + `npm run build` clean; `uv run pytest` + `ruff` + `lint-imports` green
+- [x] 3.1 API client `src/frontend/src/api.ts` (typed `getMe`/`patchMe`/`postLogout`/`login` + CSRF) — cef7d23
+- [x] 3.2 ISSF-target SVG at `src/frontend/assets/target.svg` — cef7d23
+- [x] 3.3 `App.tsx` auth seam + conditional render — cef7d23
+- [x] 3.4 `Welcome` component (+ CSS Module) + test — cef7d23
+- [x] 3.5 `AppShell` + `Sidebar` + `TopBar` (+ CSS Modules) + tests (collapse, Home-top, Logout-bottom, nick) — cef7d23
+- [x] 3.6 `NickPrompt` component (+ CSS Module) + test (409, empty-disabled, success) — cef7d23
+- [x] 3.7 Global `styles.css` + per-component CSS Modules — cef7d23
+- [x] 3.8 `tests/system/test_spa_shell.py` (new) + retire `tests/system/test_templates.py` — cef7d23
+- [x] 3.9 `npm run test` + `tsc --noEmit` + `npm run build` clean; `uv run pytest` + `ruff` + `lint-imports` green — cef7d23
 
 #### Manual
 
-- [ ] 3.10 Bypass-on (plain user) → app shell + nick prompt + logout; bypass-on (==OWNER_SUB_ID) → owner seam; bypass-off → welcome page
+- [x] 3.10 Bypass-on (plain user) → app shell + nick prompt + logout; bypass-on (==OWNER_SUB_ID) → owner seam; bypass-off → welcome page — cef7d23
 
 ### Phase 4: Real Auth0 smoke test (manual gate)
 
