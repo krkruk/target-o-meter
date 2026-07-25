@@ -62,16 +62,27 @@ check:  ## Run backend + frontend linters, fix formatting where possible
 	# predates the formatter, so a wholesale format would produce a huge
 	# unrelated diff. `ruff check --fix` handles the safe autofixes; deeper
 	# formatting is left to a dedicated cleanup if desired.
+	#
+	# Each step is announced before it runs (▸ [n/N]) so a failing run names
+	# exactly the tool that broke — make stops at the first non-zero exit, so
+	# the last ▸ printed is the culprit. The final ✓ only prints if every
+	# step passed.
+	@echo "▸ [1/5] ruff check --fix . (safe autofixes)"
 	uv run ruff check --fix .
+	@echo "▸ [2/5] ruff check . (gating re-check)"
 	uv run ruff check .
+	@echo "▸ [3/5] lint-imports (architecture contracts, AGENTS.md §6)"
 	uv run lint-imports
 	@if [ -f "$(FE_PKG)" ]; then \
-		echo "→ frontend toolchain present: running npm checks"; \
+		echo "▸ [4/5] frontend toolchain present: npm run lint (tsc via vite build)"; \
 		( cd $(FE_DIR) && npm run lint --if-present ); \
+		echo "▸ [5/5] tsc --noEmit (frontend type-check)"; \
 		( cd $(FE_DIR) && npx tsc --noEmit ); \
 	else \
-		echo "→ frontend toolchain absent (no $(FE_PKG)); skipping frontend checks"; \
+		echo "▸ [4/5] frontend toolchain absent (no $(FE_PKG)); skipping npm lint"; \
+		echo "▸ [5/5] frontend type-check skipped (no $(FE_PKG))"; \
 	fi
+	@echo "✓ check passed (be + fe lint, type-check, import contracts)"
 
 # --- Tests -----------------------------------------------------------------
 

@@ -117,7 +117,19 @@ def upload_and_process(request, payload: UploadDTO):
 
 ## 7. Commands
 
+Prefer the `make` targets over invoking the tools by hand — `make check`
+encodes the project's verification sequence (lint → type-check → import
+contracts, backend + frontend) and is the gate to run before committing. Do
+not re-implement that sequence or follow an external commit ritual; the
+Makefile is the source of truth and `make check` logs each step so a failure
+names the tool that broke. Run `make help` for all targets.
+
 ```bash
+make check           # lint + type-check + import contracts (be + fe) — verification gate
+make be-test         # `check` + backend pytest
+make fe-test         # `check` + frontend vitest
+make dev             # Django (:8000) + Vite (:5173) SPA dev with HMR
+
 uv run python src/manage.py runserver          # dev server
 uv run python src/manage.py qcluster           # start django-q2 async worker
 uv run python src/manage.py migrate            # apply migrations
