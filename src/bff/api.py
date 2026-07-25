@@ -29,6 +29,7 @@ migrate to it if the version is pinned up.)
 """
 from __future__ import annotations
 
+from django.contrib.auth import get_user_model
 from ninja import NinjaAPI
 from ninja.errors import HttpError
 from ninja.security import SessionAuth
@@ -47,8 +48,17 @@ def require_owner(request) -> UserContextDTO:
     Call inside the route body (after ``auth=session_auth`` has guaranteed
     ``request.user`` is authenticated). Returns the DTO so the route can use
     it if needed; raising is the 403 mechanism.
+
+    Impl-review F2: a session bound to a ``sub`` whose row has vanished
+    (S-04 user deletion, or ``sub`` drift after an Auth0 tenant migration)
+    would otherwise raise ``User.DoesNotExist`` → 500 on an authenticated
+    request. We honor the documented 401 contract by mapping the missing
+    row to ``HttpError(401)`` — forcing a clean re-login.
     """
-    dto = get_user_context(str(request.user.sub))
+    try:
+        dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
     if not dto.is_owner:
         raise HttpError(403, "Owner privileges required")
     return dto

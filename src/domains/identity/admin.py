@@ -1,9 +1,13 @@
 """Django admin registration for the identity ``User`` (F-01 Phase 4.2).
 
 A read-mostly admin over ``identity_user`` so the seeded dev admin can inspect
-and seed rows in a GUI. ``is_staff`` is settable (so another local admin can
-be promoted); ``role`` / ``is_owner`` are read-only (derived from
-``OWNER_SUB_ID`` — never editable, by design).
+and seed rows in a GUI. ``role`` / ``is_owner`` are read-only (derived from
+``OWNER_SUB_ID`` — never editable, by design). Permission fields
+(``is_staff`` / ``is_superuser`` / ``groups`` / ``user_permissions``) are also
+read-only (impl-review F4): a read-mostly admin must actually be read-mostly,
+and leaving ``is_superuser`` editable is a self-promotion escalation vector
+for any staff session. Promote a second local admin via ``manage.py shell``
+or ``createsuperuser``, not via the GUI.
 
 No password-change flow is exposed: OAuth users have unusable passwords, and
 the dev admin's password is set via the Docker dev-seed path (Phase 7, deferred)
@@ -31,7 +35,12 @@ class UserAdmin(DjangoUserAdmin):
     list_display = ("sub", "nick", "is_staff", "last_login")
     search_fields = ("sub", "nick")
     list_filter = ("is_staff",)
-    readonly_fields = ("role", "is_owner", "sub", "last_login")
+    # All permission + derived fields are read-only — promote via shell, not
+    # GUI (impl-review F4: read-mostly means read-mostly).
+    readonly_fields = (
+        "role", "is_owner", "sub", "last_login",
+        "is_staff", "is_superuser", "groups", "user_permissions",
+    )
 
     # No password management in admin — OAuth users have unusable passwords;
     # the dev admin password is set out-of-band (seed/shell).
@@ -42,7 +51,9 @@ class UserAdmin(DjangoUserAdmin):
             "description": "Role is derived from the OWNER_SUB_ID env var and "
                            "cannot be edited here.",
         }),
-        ("Permissions", {"fields": ("is_staff", "is_superuser", "groups", "user_permissions")}),
+        ("Permissions (read-only — promote via shell)", {
+            "fields": ("is_staff", "is_superuser", "groups", "user_permissions"),
+        }),
         ("Important dates", {"fields": ("last_login",)}),
     )
     add_fieldsets = (

@@ -63,8 +63,13 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, sub: str, nick: str = "", **extra) -> User:
-        password = extra.pop("password")
+    def create_superuser(self, sub: str, nick: str = "", password: str = "", **extra) -> User:
+        # ``password`` is a named param (not ``extra.pop``) so a caller that
+        # forgets it gets a clear ``TypeError`` naming the missing arg instead
+        # of an opaque ``KeyError`` (impl-review F6 — match Django's positional
+        # contract for ``BaseUserManager.create_superuser``).
+        if not password:
+            raise ValueError("Superusers must have a usable password.")
         extra.setdefault("is_staff", True)
         extra.setdefault("is_superuser", True)
         if extra.get("is_staff") is not True:

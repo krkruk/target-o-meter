@@ -153,6 +153,18 @@ CSRF_COOKIE_SECURE = SECURE_COOKIES
 # to send it on POSTs. django-ninja's NinjaAPI(csrf=True) reads it server-side.
 CSRF_COOKIE_HTTPONLY = False
 
+# Trust Render's TLS-terminating proxy (impl-review F1). Render fronts the app
+# with HTTPS and forwards ``X-Forwarded-Proto: https``; without this tuple
+# ``request.is_secure()`` returns False in prod, which (a) makes
+# ``_safe_next``'s ``require_https=request.is_secure()`` accept same-host
+# http:// URLs — a TLS-downgrade vector on the post-login redirect — and
+# (b) would silently drop the SECURE flag from cookies if it were derived
+# from is_secure(). Gated on SECURE_COOKIES so localhost dev (no HTTPS) is
+# unaffected. Do NOT set this without a trusted proxy stripping the header
+# upstream — Render does.
+if SECURE_COOKIES:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 
 # Register the production-safety system checks (Phase 2.4). Importing this
 # module is what makes ``target_o_meter.E001`` / ``W001`` fire at

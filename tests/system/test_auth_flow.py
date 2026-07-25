@@ -127,3 +127,32 @@ def test_owner_role_follows_env_not_row(client, monkeypatch: pytest.MonkeyPatch)
     # Now make them the owner by moving the env var — no row change.
     monkeypatch.setenv("OWNER_SUB_ID", "auth0|floats")
     assert client.get("/api/users").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Session bound to a vanished sub → 401, not 500 (impl-review F2 regression)
+# ---------------------------------------------------------------------------
+
+def test_api_me_returns_401_when_session_user_row_gone(client, user_sub) -> None:
+    """A session whose sub has no row (S-04 delete, Auth0 tenant migration)
+    must return 401 — not 500. The service raises ``DoesNotExist``; the BFF
+    maps it to ``HttpError(401)`` to honor the documented contract and force
+    a clean re-login.
+    """
+    user = make_user(sub=user_sub, nick="eve")
+    _login_as(client, user)
+    user.delete()  # row vanishes while the session is still alive
+
+    response = client.get("/api/me")
+    assert response.status_code == 401
+
+
+def test_api_users_returns_401_when_session_user_row_gone(client, owner_sub, user_sub) -> None:
+    """Same invariant on the owner route's ``require_owner``: a vanished row
+    is 401 (re-login), not 500."""
+    user = make_user(sub=user_sub, nick="frank")
+    _login_as(client, user)
+    user.delete()
+
+    response = client.get("/api/users")
+    assert response.status_code == 401
