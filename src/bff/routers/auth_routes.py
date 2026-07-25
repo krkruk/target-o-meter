@@ -19,6 +19,7 @@ Critical implementation details (see plan §"Critical Implementation Details"):
   - ``returnTo`` is ``quote_plus``-encoded; mis-encoding makes Auth0 silently
     fall back to the first Allowed Logout URL.
 """
+
 from __future__ import annotations
 
 from django.conf import settings
@@ -27,6 +28,8 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_POST
 
 from ninja import Router
 
@@ -88,6 +91,7 @@ def callback(request: HttpRequest) -> HttpResponse:
 
     # Re-fetch the ORM row — login() needs the model instance, not the DTO.
     from src.domains.identity.models import User
+
     user = User.objects.get(sub=sub)
 
     # ``login()`` without ``authenticate()``: Auth0 already proved identity, so
@@ -100,11 +104,23 @@ def callback(request: HttpRequest) -> HttpResponse:
     return redirect(next_url)
 
 
+@require_POST
+@csrf_protect
 def logout(request: HttpRequest) -> HttpResponse:
     """Clear the Django session, then redirect to Auth0 ``/v2/logout``.
 
-    GET-based in F-01 (template simplicity); S-01's SPA should re-implement as
-    POST + CSRF (plan §"What We're NOT Doing" — GET-logout CSRF-soft vector).
+    POST + CSRF (S-01). F-01 shipped this as a GET view (template simplicity);
+    the plan-review F5 flagged GET-logout as a CSRF-soft vector, so the SPA now
+    POSTs with an ``X-CSRFTOKEN`` header. Kept as a plain Django view (not a
+    ninja ``Router`` route) so the OIDC chain stays in one shape —
+    ``login_view`` and ``callback`` are plain Django views too, registered
+    top-level in ``urls.py``. ``@csrf_protect`` is explicit intent on top of
+    ``CsrfViewMiddleware`` (belt-and-suspenders); ``@require_POST`` rejects GET
+    with 405.
+
+    The session is cleared *before* the Auth0 redirect is issued, so even if
+    Auth0 is unreachable (no creds in dev), the Django side is already logged
+    out.
     """
     request.session.clear()
     from urllib.parse import quote_plus, urlencode

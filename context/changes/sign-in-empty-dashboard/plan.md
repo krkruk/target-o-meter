@@ -421,20 +421,20 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 #### Automated
 
-- [ ] 1.1 `has_set_nick` field on `User` + schema-only migration `0002` (no backfill)
-- [ ] 1.2 `set_nick` service in `src/domains/identity/services.py` (+ `NickTakenError`); update `_user_to_context_dto` to populate `has_set_nick`
-- [ ] 1.3 `PATCH /v1/me` route + `MeOut.has_set_nick` extension
-- [ ] 1.4 URL rename `/bff/*` + `/api/*` → `/v1/*` in `src/bff/urls.py`
-- [ ] 1.5 Logout GET → POST + CSRF (`@require_POST` + `@csrf_protect`, kept as plain Django view) in `src/bff/routers/auth_routes.py`
-- [ ] 1.6 `index` view serves the SPA shell document
-- [ ] 1.7 Backend tests updated (rename incl. `test_dev_bypass.py` + `set_nick` + POST logout + explicit CSRF tests); `test_templates.py` retired
-- [ ] 1.8 `uv run python src/manage.py makemigrations identity` → verify `0002_has_set_nick` file shape; `uv run python src/manage.py migrate` applies cleanly on a fresh DB
-- [ ] 1.9 `uv run pytest` green
-- [ ] 1.9 `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
+- [x] 1.1 `has_set_nick` field on `User` + schema-only migration `0002` (no backfill)
+- [x] 1.2 `set_nick` service in `src/domains/identity/services.py` (+ `NickTakenError`); update `_user_to_context_dto` to populate `has_set_nick`
+- [x] 1.3 `PATCH /v1/me` route + `MeOut.has_set_nick` extension
+- [x] 1.4 URL rename `/bff/*` + `/api/*` → `/v1/*` in `src/bff/urls.py`
+- [x] 1.5 Logout GET → POST + CSRF (`@require_POST` + `@csrf_protect`, kept as plain Django view) in `src/bff/routers/auth_routes.py`
+- [x] 1.6 `index` view serves the SPA shell document
+- [x] 1.7 Backend tests updated (rename incl. `test_dev_bypass.py` + `set_nick` + POST logout + explicit CSRF tests); `test_templates.py` retired
+- [x] 1.8 `uv run python src/manage.py makemigrations identity` → verify `0002_has_set_nick` file shape; `uv run python src/manage.py migrate` applies cleanly on a fresh DB
+- [x] 1.9 `uv run pytest` green
+- [x] 1.9 `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
 
 #### Manual
 
-- [ ] 1.10 `curl /v1/me` → 401; with bypass → 200 + `has_set_nick`; `/bff/login` → 404, `/v1/login` → 302
+- [x] 1.10 `curl /v1/me` → 401; with bypass → 200 + `has_set_nick`; `/bff/login` → 404, `/v1/login` → 302
 
 ### Phase 2: Frontend toolchain — Node, Vite, React, django-vite wired
 

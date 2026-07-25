@@ -7,8 +7,14 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body>
+    {# S-01: forces the csrftoken cookie on every ``/`` render (incl. the
+       unauthed first load) so the SPA's first PATCH /v1/me and POST /v1/logout
+       have a token to send. Django only sets the cookie when get_token() runs. #}
+    {% csrf_token %}
     <main>
-        {% block content %}{% endblock %}
+        {# S-01 SPA shell — React mounts here. The welcome/app-shell dispatch
+           moved client-side (GET /v1/me). django-vite tags land in Phase 2. #}
+        <div id="root"></div>
     </main>
 </body>
 </html>
