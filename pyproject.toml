@@ -28,6 +28,7 @@ default = [
     "django>=6.0.5",
     "django-ninja>=1.4.1",
     "django-q2>=1.8.0",
+    "authlib>=1.6.6",
     "pydantic>=2.13.4",
     "langchain>=1.3.14",
     "opencv-python-headless>=5.0.0.93",
@@ -45,11 +46,19 @@ test = [
 system-test = [
     "httpx>=0.28.0",
     "playwright>=1.40.0",
+    "pytest-playwright>=0.5.0",
 ]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "src.target_o_meter.settings"
 pythonpath = ["."]
+# 6.1: DEV suite runs by default (Auth0 bypassed); UAT is opt-in via -m uat +
+# RUN_UAT=1. --strict-markers makes a typo'd marker a hard error.
+addopts = ["--strict-markers", "--strict-config", "-m", "not uat"]
+markers = [
+    "dev: fast, Auth0-bypassed tests (default).",
+    "uat: slow acceptance tests hitting REAL Auth0; skipped unless RUN_UAT=1.",
+]
 
 [tool.ruff]
 # `cv/` is the frozen research sandbox (commit 76f6fc4) — reference-only,

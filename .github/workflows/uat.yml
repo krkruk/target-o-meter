@@ -1,0 +1,54 @@
+# UAT CI job — runs real-Auth0 acceptance tests when explicitly enabled.
+# This is the repo's first CI file (F-01 Phase 6.5). It is a no-op until:
+#   1. vars.UAT_ENABLED == 'true' is set in the repo settings, AND
+#   2. a UAT test exists (tests/acceptance/test_uat_auth_real_auth0.py — Q7,
+#      deferred to a later slice).
+# The per-test skip (tests/acceptance/conftest.py) makes the job green even
+# with no test file yet.
+name: UAT
+
+on:
+  push:
+    branches: [master, feature/oauth]
+  workflow_dispatch:
+
+jobs:
+  uat:
+    # Only run when explicitly enabled AND on the canonical repo (not forks —
+    # forks don't have the Auth0 secrets).
+    if: github.repository == 'krkruk/target-o-meter' && vars.UAT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      RUN_UAT: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Sync dependencies (all groups)
+        run: uv sync --all-groups
+
+      - name: Install Playwright browsers
+        run: uv run playwright install --with-deps chromium
+
+      - name: Run UAT suite
+        env:
+          AUTH0_UAT_USER_EMAIL: ${{ secrets.AUTH0_UAT_USER_EMAIL }}
+          AUTH0_UAT_USER_PASSWORD: ${{ secrets.AUTH0_UAT_USER_PASSWORD }}
+          AUTH0_UAT_USER_SUB: ${{ secrets.AUTH0_UAT_USER_SUB }}
+          AUTH0_UAT_USER_NICK: ${{ secrets.AUTH0_UAT_USER_NICK }}
+          AUTH0_UAT_OWNER_EMAIL: ${{ secrets.AUTH0_UAT_OWNER_EMAIL }}
+          AUTH0_UAT_OWNER_PASSWORD: ${{ secrets.AUTH0_UAT_OWNER_PASSWORD }}
+          AUTH0_UAT_OWNER_SUB: ${{ secrets.AUTH0_UAT_OWNER_SUB }}
+          AUTH0_UAT_OWNER_NICK: ${{ secrets.AUTH0_UAT_OWNER_NICK }}
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_CLIENT_SECRET }}
+          AUTH0_DOMAIN: ${{ secrets.AUTH0_DOMAIN }}
+          OWNER_SUB_ID: ${{ secrets.OWNER_SUB_ID }}
+        run: uv run pytest -m uat

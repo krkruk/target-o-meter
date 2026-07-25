@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — Target-o-meter{% endblock %}
+
+{% block content %}
+<section class="main">
+    {# request.user is populated by AuthenticationMiddleware (or the dev-bypass
+       middleware in dev). nick + role are the User model's properties. #}
+    <p>logged in as {{ request.user.nick }} ({{ request.user.role }})</p>
+    {# GET-based logout (F-01). S-01 should re-implement as POST + CSRF
+       (plan §"What We're NOT Doing" — GET-logout CSRF-soft vector). #}
+    <a class="button" href="{% url 'bff:logout' %}">Logout</a>
+</section>
+{% endblock %}

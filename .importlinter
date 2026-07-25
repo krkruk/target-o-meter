@@ -8,3 +8,12 @@ modules =
     src.domains.core
     src.domains.identity
     src.domains.vision
+
+[importlinter:contract:2]
+name = BFF Above Domains
+type = layers
+layers =
+    src.bff
+    src.domains.core
+    src.domains.identity
+    src.domains.vision
