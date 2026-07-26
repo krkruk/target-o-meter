@@ -136,9 +136,12 @@ to the layout work).
 - **React Router deep-link refresh** requires a Django catch-all URL pattern
   serving the SPA index — it must NOT shadow the API, OIDC, admin, or static
   URL prefixes. This is a small but easy-to-get-wrong routing concern.
-- **The `marked-image` surfacing** in `/results/:jobId` may need a new backend
-  route (`GET /v1/scoring/jobs/{id}/marked-image`) if the deliverable path
-  isn't already browser-fetchable. Confirm against Phase 4 during Phase 8.
+- **The `marked-image` surfacing** in `/results/:jobId` is resolved by adding
+  `marked_image_url` to `ScoringJobDTO` (Phase 4.0) — populated from
+  `marked_image_path` via `default_storage.url(...)`. No separate backend
+  route in S-02; the URL is browser-fetchable under both `USE_S3=False` dev
+  (MEDIA_URL) and the docker-compose MinIO path. The Tigris/prod presigned-URL
+  policy is deferred to S-03 with the OpenCV+S3 refactor.
 - **Live-reload in the docker-compose dev container**: `runserver --noreload`
   is in the command (per F-01's spec), so true live-reload may need an
   entrypoint watcher or dropping `--noreload` (which introduces a dual-process

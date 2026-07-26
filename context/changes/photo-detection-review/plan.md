@@ -284,21 +284,27 @@ verify they're pinned explicitly while here, but do not change versions.)
 lockfile. The canonical Django 6.0 backend class is
 `storages.backends.s3.S3Storage` (NOT the deprecated `S3Boto3Storage`).
 
-#### 1.4 `.env.example` — document every env var
+#### 1.4 `.env.example` — extend with Storage + Detector commentary
 
-**File**: `.env.example` (new)
+**File**: `.env.example` (**extend** — already exists from F-01/S-01)
 
-**Intent**: One place listing every env var the change introduces or consumes,
-with safe dev defaults and notes. The compose files and the dev target both
-read from `.env` (or document that they do).
+**Intent**: `.env.example` already carries the Auth section (`AUTH0_*`,
+`OWNER_SUB_ID`, `DEV_AUTH_BYPASS_SUB`, `DEV_ADMIN_*`, `SECURE_COOKIES`,
+`APP_BASE_URL`) and the Detector section (`GOOGLE_API_KEY`, `OLLAMA_HOST`,
+`OLLAMA_MODEL`). This phase APPENDS the Storage section and adds the
+`VISION_DETECTOR` value commentary (Phase 3.3 edits the same line). Do NOT
+overwrite or reorder the existing sections — append only.
 
-**Contract**: Sections — Django/app (`DEBUG`, `SECRET_KEY` placeholder,
-`ALLOWED_HOSTS`), Auth (`DEV_AUTH_BYPASS_SUB`, `OWNER_SUB_ID`, Auth0 vars
-referenced), Storage (`USE_S3=False` default with a comment explaining when to
-flip; `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_STORAGE_BUCKET_NAME`,
-`AWS_S3_ENDPOINT_URL` (MinIO only), `AWS_S3_ADDRESSING_STYLE=path` for MinIO),
-Detector (`VISION_DETECTOR=mock` for dev / `google` for prod, with the
-`DetectorFactory.build` names documented: `google`, `ollama`, `mock`).
+**Contract**: APPEND a new "Storage (S3 swap, S-02)" section to the existing
+file: `USE_S3=False` (default; comment explaining when to flip —
+docker-compose sets True against MinIO, prod sets True against Tigris),
+`AWS_ACCESS_KEY_ID=` / `AWS_SECRET_ACCESS_KEY=` (MinIO: `minioadmin` /
+`minioadmin`; prod: Tigris creds), `AWS_STORAGE_BUCKET_NAME=` (dev:
+`target-o-meter-local`), `AWS_S3_ENDPOINT_URL=` (MinIO only:
+`http://localhost:9000`; unset for Tigris), `AWS_S3_ADDRESSING_STYLE=path`
+(MinIO; `auto` for Tigris). Then in the existing Detector section add a
+comment line for `VISION_DETECTOR` (Phase 3.3 adds the value; Phase 1 just
+reserves the section).
 
 ### Success Criteria:
 
@@ -486,6 +492,35 @@ instance of `GoogleAIStudioDetector` (no env set). One monkeypatches
 `VISION_DETECTOR=mock` and asserts the factory returns a `MockDetector`. These
 can call `DetectorFactory.build` directly — no need to run the full pipeline.
 
+#### 3.2a Mandatory rewrite — patch-target migration for the 4 existing tests
+
+**File**: `src/domains/vision/tests/test_services_q2.py`
+
+**Intent**: Phase 3.1 removes `GoogleAIStudioDetector` from `services.py`'s
+imports, so `patch("src.domains.vision.services.GoogleAIStudioDetector", …)`
+in the existing tests becomes a `AttributeError: <module> has no attribute
+'GoogleAIStudioDetector'` at collection time. This rewrite is MANDATORY, not
+optional — all four existing tests WILL break without it.
+
+**Contract**: Migrate the four existing patch sites to patch
+`src.domains.vision.services.DetectorFactory.build` instead, returning the
+same instances the class-patch returned. Concretely:
+- Line 66-67 (`test_process_image_writes_deliverables_and_marks_succeeded`):
+  change `with patch("src.domains.vision.services.GoogleAIStudioDetector",
+  return_value=MockDetector())` → `with patch(
+  "src.domains.vision.services.DetectorFactory.build",
+  return_value=MockDetector())`.
+- Line 124 (`test_process_image_marks_failed_on_exception`): same swap.
+- Line 148 (the third `GoogleAIStudioDetector`-patching test): same swap,
+  preserving whatever `_Sentinel` / return-value shape that test uses.
+- Line 201-202 (`test_process_image_is_idempotent_on_terminal_state`): same
+  swap, preserving the `_Sentinel` instance.
+
+The new patch target exercises the actual production wiring (Phase 3.1's
+`DetectorFactory.build(...)` call) end-to-end, which the class-patch never
+did. Add `from src.domains.vision.detectors.factory import DetectorFactory`
+to the test module's imports if missing.
+
 #### 3.3 `.env.example` — detector value commentary
 
 **File**: `.env.example`
@@ -503,13 +538,12 @@ default in the example file with a comment: `# mock = dev (no API calls);
 #### Automated Verification:
 
 - `uv run pytest src/domains/vision/tests/test_services_q2.py` passes
-  (including the two new tests)
+  (including the two new tests + the 3.2a rewrite of the 4 existing tests)
 - `make check` passes (the removed `GoogleAIStudioDetector` import doesn't
   leave a dangling reference)
-- Existing `process_image` tests in `test_services_q2.py` still pass (they
-  patch `GoogleAIStudioDetector` directly via `with` stack — verify they still
-  work or update them to patch `DetectorFactory.build` instead; prefer the
-  latter so the test exercises the new wiring)
+- The 4 existing `process_image` tests now patch
+  `src.domains.vision.services.DetectorFactory.build` (mandatory per 3.2a —
+  they WILL fail collection with `AttributeError` otherwise)
 
 #### Manual Verification:
 
@@ -536,6 +570,28 @@ seam: `POST /v1/scoring/jobs` (multipart upload, atomic) and
 
 ### Changes Required:
 
+#### 4.0 `vision/dtos.py` + `vision/services._job_to_dto` — surface the marked image
+
+**File**: `src/domains/vision/dtos.py`, `src/domains/vision/services.py` (`_job_to_dto`)
+
+**Intent**: The `/results/:jobId` screen needs the marked image, but
+`ScoringJobDTO` (`dtos.py:37-51`) has no field carrying it. The ORM row has
+`marked_image_path` (`models.py:45`) but `_job_to_dto` (`services.py:278-322`)
+never copies it onto the DTO. Add the field so Phase 8.5 has a contract to
+consume — Phase 4 ships the GET carrying it.
+
+**Contract**: Add `marked_image_url: Optional[str] = None` to `ScoringJobDTO`
+(after `completed_at`). In `_job_to_dto`, populate it from
+`job.marked_image_path` via `default_storage.url(...)` when the path is set
+(lazy import `from django.core.files.storage import default_storage`; guard
+`None` so jobs still in `queued`/`running` don't 500). Under `USE_S3=False`
+dev this resolves to a `MEDIA_URL`-rooted URL the SPA can fetch directly;
+under the docker-compose MinIO path it resolves to a MinIO URL (the
+Tigris/prod presigned-URL policy is an S-03 concern when the OpenCV+S3
+refactor lands). `marked_image_url` stays `None` until `process_image` writes
+the deliverable and flips `status=SUCCEEDED` — Phase 8.5 treats `None` as
+"results not yet available" and renders the same fallback as a null `result`.
+
 #### 4.1 `scoring_routes.py` — the new router
 
 **File**: `src/bff/routers/scoring_routes.py` (new)
@@ -547,9 +603,12 @@ per-job ownership enforced on read.
 **Contract**:
 
 ```python
-from ninja import Router, Form, File
+from typing import Literal
+
+from ninja import Router, Form, File, Schema
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
+from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from src.bff.api import session_auth
@@ -566,7 +625,7 @@ router = Router()
 
 
 class ScoringJobIn(Schema):
-    target_type: str = "air_pistol"   # validated against vision's Literal downstream
+    target_type: Literal["air_pistol", "precision_pistol"] = "air_pistol"  # 422 on anything else
     caliber_hint: str | None = None   # free-text; UI taxonomy lives client-side
     distance_m: int | None = None     # BFF-level mock field; vision has no distance concept
 
@@ -583,7 +642,10 @@ def create_scoring_job(
     details: Form[ScoringJobIn],
     file: File[UploadedFile],
 ) -> ScoringJobOut:
-    user_dto = get_user_context(str(request.user.sub))
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
     storage = ScoringStorage()
     input_path = storage.save_upload(file.read(), file.name)
     job_id = schedule_image_processing(
@@ -597,7 +659,10 @@ def create_scoring_job(
 
 @router.get("/scoring/jobs/{job_id}", auth=session_auth, response={200: ScoringJobDTO})
 def get_scoring_job(request, job_id: str) -> ScoringJobDTO:
-    user_dto = get_user_context(str(request.user.sub))
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
     reap_stuck_jobs()   # PRD §Guardrail: no dead-end states
     try:
         return get_job(job_id, user_dto.user_uuid)
@@ -605,12 +670,22 @@ def get_scoring_job(request, job_id: str) -> ScoringJobDTO:
         raise HttpError(404, "Not found") from None
 ```
 
-`target_type` is sent as a plain string and validated by
-`schedule_image_processing`/the ORM's `Literal`-typed field — invalid values
-become a 422 or 500; pick whichever django-ninja + Django produces naturally
-and add a test pinning the chosen behavior. `distance_m` is intentionally NOT
-forwarded to `schedule_image_processing` (which has no such param) — it is a
-BFF mock field, dropped on the floor in S-02, promoted in S-03.
+`target_type` is typed as `Literal["air_pistol", "precision_pistol"]` on the
+request DTO, so django-ninja/Pydantic rejects anything else with **422 at the
+BFF boundary** — do NOT rely on the ORM's `CharField` (it has no `choices=`,
+so without this Pydantic guard an invalid value saves cleanly and only blows
+up inside `process_image` when the worker runs). The system-test matrix (4.3)
+pins `"banana"` → 422. `distance_m` is intentionally NOT forwarded to
+`schedule_image_processing` (which has no such param) — it is a BFF mock
+field, dropped on the floor in S-02, promoted in S-03.
+
+Both `create_scoring_job` and `get_scoring_job` wrap `get_user_context` in
+`try/except get_user_model().DoesNotExist → HttpError(401, "Session user no
+longer exists")` — this matches the convention in `session_routes.py:42-43,
+59-60` and `api.py:58-61` so a deleted-between-auth-and-body session sub
+(S-04 user deletion) returns 401 instead of an unhandled 500. The `404`
+mapping for `PermissionError` from `get_job` (not 403) is correct: ID-probers
+can't distinguish "exists, not mine" from "doesn't exist" (services.py:242-244).
 
 #### 4.2 `bff/urls.py` — mount the router
 
@@ -640,6 +715,9 @@ pytest.mark.dev]`. Test cases:
   `{job_id, status: "queued"}`, and a `ScoringJob` row exists with the right
   `user_uuid` and `status="queued"`
 - `POST` with missing file → 422 (django-ninja schema validation)
+- `POST` with `target_type=banana` → 422 (the `Literal` on `ScoringJobIn`
+  rejects it at the BFF boundary — guards against the silent-save/async-blowup
+  that the ORM's choice-less `CharField` would otherwise allow)
 - `POST` with `VISION_DETECTOR=mock` set in the env, then poll the created
   `job_id` via `GET` until `succeeded`; assert `result.holes` has 5 entries
   (MockDetector's fixed pattern)
@@ -1186,12 +1264,12 @@ S-03).
 
 **Contract**: Calls `getScoringJob(jobId)`; if `result` is null (the
 `_job_to_dto` fragility at `services.py:278-322` can produce a null result
-even on `succeeded`), render an "unable to load results" state. Otherwise
-render the marked image (for S-02 the marked-image URL is a backend deliverable
-path — wire it as a backend-proxied URL or a MinIO presigned URL; the simplest
-S-02 approach is a backend route that streams the bytes, added in this phase as
-a thin `GET /v1/scoring/jobs/{job_id}/marked-image` if not already
-surfaced — confirm against Phase 4 and add if missing). Each hole gets a
+even on `succeeded`) OR `marked_image_url` is null/empty, render an "unable to
+load results" state. Otherwise render the marked image from
+`marked_image_url` (Phase 4.0 surfaces this on the DTO; under `USE_S3=False`
+dev it's a `MEDIA_URL`-rooted URL the SPA can fetch directly; under the
+docker-compose MinIO path it's a MinIO URL — both browser-fetchable as-is,
+no separate backend route needed in S-02). Each hole gets a
 `<select>` of scores 0-10 + X; the selection updates local component state
 only (no API call in S-02).
 
@@ -1226,9 +1304,15 @@ chaining) and asserts navigation to `/results/:jobId`; the `failed` path shows
 - Full flow on mobile (or 760px viewport): dashboard → `/capture` → camera
   input → same waiting → results
 - `failed` state: with `VISION_DETECTOR=mock` it's hard to force a failure;
-  verify the error UI by temporarily breaking the detector (e.g. set
-  `VISION_DETECTOR=ollama` without `OLLAMA_HOST` — the factory raises,
-  `process_image` catches, status flips to `failed`)
+  verify the error UI by temporarily breaking the detector. Two ways to force
+  it: (a) set `VISION_DETECTOR=ollama` AND point `OLLAMA_HOST` at a guaranteed-
+  dead port (e.g. `http://127.0.0.1:9`) — the detector constructs fine
+  (`OllamaDetector.__init__` has a `DEFAULT_HOST` fallback and does NOT raise
+  on a missing env var), then `detect()` fails on connection-refused and
+  `process_image`'s except block flips the job to `failed`; (b) set
+  `VISION_DETECTOR=banana` — `DetectorFactory.build` raises `ValueError` on
+  unknown names immediately at `process_image`, → `failed` quickly and
+  deterministically (preferred for a fast manual check).
 - Refresh on `/waiting/:jobId` resumes polling (bookmarkable)
 - Refresh on `/results/:jobId` re-fetches and re-renders
 
@@ -1364,12 +1448,13 @@ end-to-end manual flow works before considering this change done.
 #### Automated
 
 - [ ] 3.1 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. 2 new tests)
-- [ ] 3.2 `make check` passes (no dangling GoogleAIStudioDetector import)
+- [ ] 3.2 4 existing tests migrated to patch `DetectorFactory.build` (Phase 3.2a — mandatory, otherwise `AttributeError`)
+- [ ] 3.3 `make check` passes (no dangling GoogleAIStudioDetector import)
 
 #### Manual
 
-- [ ] 3.3 `VISION_DETECTOR=mock make dev` runs MockDetector via the factory
-- [ ] 3.4 `VISION_DETECTOR` unset leaves prod-shape behavior unchanged
+- [ ] 3.4 `VISION_DETECTOR=mock make dev` runs MockDetector via the factory
+- [ ] 3.5 `VISION_DETECTOR` unset leaves prod-shape behavior unchanged
 
 ### Phase 4: BFF scoring routes (real, MockDetector-backed)
 
@@ -1446,6 +1531,6 @@ end-to-end manual flow works before considering this change done.
 
 - [ ] 8.5 Desktop full flow: dashboard → /upload → caliber+distance → file → /waiting/:jobId → /results/:jobId (5 mocked holes + dropdowns)
 - [ ] 8.6 Mobile (≤760px) full flow: dashboard → /capture → camera → waiting → results
-- [ ] 8.7 `failed` state: VISION_DETECTOR=ollama without OLLAMA_HOST → /waiting shows role="alert" error
+- [ ] 8.7 `failed` state: VISION_DETECTOR=banana (or ollama pointed at a dead port) → /waiting shows role="alert" error
 - [ ] 8.8 Refresh on /waiting/:jobId resumes polling
 - [ ] 8.9 Refresh on /results/:jobId re-fetches and re-renders
