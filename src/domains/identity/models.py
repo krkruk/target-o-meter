@@ -8,6 +8,7 @@ source of truth, so hand-editing a row cannot split Owner state from config.
 Per AGENTS.md §5 this domain defines pure models; no django-ninja, no HTTP.
 ``user_uuid`` references into other domains are plain ``UUIDField`` (not FK).
 """
+
 from __future__ import annotations
 
 import os
@@ -63,7 +64,9 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, sub: str, nick: str = "", password: str = "", **extra) -> User:
+    def create_superuser(
+        self, sub: str, nick: str = "", password: str = "", **extra
+    ) -> User:
         # ``password`` is a named param (not ``extra.pop``) so a caller that
         # forgets it gets a clear ``TypeError`` naming the missing arg instead
         # of an opaque ``KeyError`` (impl-review F6 — match Django's positional
@@ -104,6 +107,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sub = models.CharField(max_length=255, unique=True)
     nick = models.CharField(max_length=64)
+    # S-01: explicit "has the user chosen a nick" flag. ``UserManager.create_user``
+    # always assigns a ``shooter-<uuid8>`` fallback, so emptiness/string-matching
+    # can't detect first login. New OAuth rows are ``False`` → the SPA prompts;
+    # ``set_nick`` flips it to ``True``. Schema-only migration (no backfill — see
+    # plan §1.1).
+    has_set_nick = models.BooleanField(default=False)
     is_staff = models.BooleanField(default=False)
     # ``last_login`` + ``is_superuser`` inherited from the base classes.
 

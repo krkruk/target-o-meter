@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Target-o-meter</title>
+  </head>
+  <body>
+    <!--
+      This file is the Vite entry point used ONLY when running the Vite dev
+      server standalone (`npm run dev`) — useful for fast component iteration
+      without Django. In the actual app, Django serves `templates/base.html`
+      (carrying the django-vite tags + `<div id="root">`) and Vite is wired
+      through django-vite, not through this file. Both paths mount at #root.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -43,14 +43,25 @@ def _get_dev_user():
     immutable for the process lifetime (the bypass sub comes from env, which
     doesn't change at runtime), so caching is safe. Tests that change the env
     var must clear this cache.
+
+    S-01 bugfix: the nick is ``dev-<uuid8>`` (UUID-derived), NOT ``dev-<sub[:8]>``.
+    Auth0 subs share the ``auth0|`` prefix (6 of 8 chars), so prefix-based nicks
+    routinely collided on ``identity_user_nick_ci_unique`` and made
+    ``get_or_create``'s INSERT raise ``IntegrityError`` on the first request —
+    a 500 on every authed surface when switching between bypass subs across
+    branches. The UUID has enough entropy to be collision-free; since the bypass
+    user lands with ``has_set_nick=False`` (S-01), the SPA prompts for a real
+    nick on first visit anyway, so the dev nick never persists as identity.
     """
     global _dev_user
     if _dev_user is None:
+        import uuid
+
         from src.domains.identity.models import User
         sub = os.environ.get("DEV_AUTH_BYPASS_SUB", "")
         _dev_user = User.objects.get_or_create(
             sub=sub,
-            defaults={"nick": f"dev-{sub[:8]}"},
+            defaults={"nick": f"dev-{uuid.uuid4().hex[:8]}"},
         )[0]
     return _dev_user
 

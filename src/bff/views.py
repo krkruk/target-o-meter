@@ -1,10 +1,14 @@
-"""BFF view functions for the template-rendered shell (F-01 Phase 5).
+"""BFF view functions for the SPA shell (S-01).
 
-``index`` dispatches: anonymous → welcome page; authenticated → main page.
-F-01 ships only this shell text — dashboard content is S-01. The full URL
-contract is identical either way, so S-01 swaps templates for React with zero
-endpoint churn.
+``index`` serves the SPA bootstrap document regardless of auth state — the
+SPA decides welcome vs. app shell client-side via ``GET /v1/me``. F-01's
+welcome/main template dispatch is gone (the templates themselves are retired
+in Phase 2/3 when the React swap lands; for Phase 1 the shell is a minimal
+document carrying the root mount point).
+
+The URL name ``bff:index`` is preserved (logout's ``returnTo`` reverses it).
 """
+
 from __future__ import annotations
 
 from django.http import HttpRequest, HttpResponse
@@ -12,7 +16,5 @@ from django.shortcuts import render
 
 
 def index(request: HttpRequest) -> HttpResponse:
-    """Dispatch on auth state: anonymous → welcome, authenticated → main."""
-    if request.user.is_authenticated:
-        return render(request, "main.html")
-    return render(request, "welcome.html")
+    """Serve the SPA shell document. Auth-state dispatch moved client-side."""
+    return render(request, "base.html")

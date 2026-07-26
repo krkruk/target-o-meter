@@ -1,0 +1,10 @@
+# Vite + node toolchain artifacts. `dist/` is produced by `npm run build` and
+# consumed by django-vite in prod, but is fully reproducible from source —
+# never commit build output.
+node_modules/
+dist/
+.vite/
+
+# Local npm logs / cache (defense in depth).
+*.log
+npm-debug.log*

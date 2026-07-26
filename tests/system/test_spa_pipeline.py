@@ -1,0 +1,193 @@
+"""System test: ``/`` serves the SPA shell via the live ``runserver`` stack.
+
+Phase 2 blackbox contract: django-vite is wired and the index view serves a
+document carrying the React mount point + the vite entry. This is verified on
+the real subprocess path (not the Django test client — that never exercises
+WSGI / the actual template tag rendering through the serving stack) in both
+modes:
+
+  * DEV  (``DEBUG=True``):  the entry tag points at the Vite dev server.
+  * PROD (``DEBUG=False``): the entry tag points at the hashed bundle under
+    ``/static/assets/`` (read from ``dist/manifest.json``).
+
+The shared anchor across modes is ``src/main.tsx`` (dev-server URL carries it
+verbatim; the prod manifest is keyed by it). Both must also contain
+``<div id="root">`` and produce no server traceback.
+
+Phase 5.C extended the prod-mode test: the hashed bundle URL the served HTML
+references must actually be **fetchable** (200 + JavaScript content-type) and
+must carry the inlined SVG. The motivating bug: ``DEBUG=false make dev``
+showed a blank page (the SPA — including the inlined target.svg — never
+mounted) because ``collectstatic`` was never run and ``STORAGES`` had no
+WhiteNoise entry, so requests for ``/static/assets/main-*.js`` 404'd in prod
+mode. The original prod-mode test only asserted the HTML contained the script
+tag; it never fetched the script, so the 404 shipped green. Mirrors the dev-
+mode regression guard in ``test_vite_dev_server.py:test_served_script_url_is_
+javascript_from_vite``.
+
+Prerequisite for the prod case: ``src/frontend/dist/`` must exist (a built
+manifest). The build is produced by ``npm run build`` and is part of the Phase
+2 automated gate; this test skips the prod case with a clear reason when the
+build is absent so a fresh checkout without a build does not produce a false
+red.
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+
+pytestmark = [pytest.mark.django_db, pytest.mark.dev]
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_FRONTEND_DIST_MANIFEST = _REPO_ROOT / "src" / "frontend" / "dist" / "manifest.json"
+
+
+def test_index_serves_spa_shell_dev_mode(runserver) -> None:
+    """DEV: ``/`` serves the shell with the vite entry on the dev server.
+
+    The default ``runserver`` boot inherits ``DEBUG=True`` (settings default),
+    so django-vite emits a module script pointing at ``localhost:5173``.
+    """
+    response = runserver.get("/")
+    assert response.status_code == 200, response.text
+    body = response.text
+    assert '<div id="root">' in body
+    # The entry anchor — stable across dev/prod.
+    assert "src/main.tsx" in body
+    # Dev-mode signature: the script src points at the Vite dev server.
+    assert "localhost:5173" in body
+    runserver.assert_no_traceback()
+
+
+def test_index_serves_spa_shell_prod_mode(runserver_factory) -> None:
+    """PROD: ``/`` serves the shell with the hashed bundle from the manifest.
+
+    Boots with ``DEBUG=False`` + ``ALLOWED_HOSTS=*`` so django-vite reads
+    ``dist/manifest.json`` and emits a hashed ``/static/assets/main-*.js`` URL.
+    Requires a built ``dist/``; skipped (not failed) when absent.
+    """
+    if not _FRONTEND_DIST_MANIFEST.exists():
+        pytest.skip(
+            "src/frontend/dist/manifest.json absent — run `npm run build` in "
+            "src/frontend/ before exercising the prod-mode shell."
+        )
+
+    server = runserver_factory(
+        extra_env={"DEBUG": "False", "ALLOWED_HOSTS": "*"},
+    )
+    response = server.get("/")
+    assert response.status_code == 200, response.text
+    body = response.text
+    assert '<div id="root">' in body
+    # Prod-mode signature: the hashed bundle under /static/assets/.
+    assert "/static/assets/main-" in body
+    assert ".js" in body
+    # The dev-server URL must NOT leak into prod mode.
+    assert "localhost:5173" not in body
+    server.assert_no_traceback()
+
+
+def test_prod_mode_hashed_bundle_is_served_as_javascript(runserver_factory) -> None:
+    """PROD: the hashed bundle URL the shell references actually resolves to a
+    JavaScript file (200 + ``text/javascript``).
+
+    Phase 5.C regression guard for the blank-page bug. Before ``collectstatic``
+    was wired into the boot and ``STORAGES`` had no WhiteNoise entry, this URL
+    404'd in prod mode — the SPA never mounted, the inlined SVG vanished, and
+    the served HTML still looked correct (script tag present, just pointing at a
+    404). Mirrors the dev-mode guard at
+    ``test_vite_dev_server.py:test_served_script_url_is_javascript_from_vite``.
+    """
+    if not _FRONTEND_DIST_MANIFEST.exists():
+        pytest.skip(
+            "src/frontend/dist/manifest.json absent — run `npm run build` in "
+            "src/frontend/ before exercising the prod-mode bundle fetch."
+        )
+
+    server = runserver_factory(
+        extra_env={"DEBUG": "False", "ALLOWED_HOSTS": "*"},
+    )
+    html = server.get("/").text
+    # Extract the hashed bundle URL django-vite emitted.
+    m = re.search(r'<script[^>]+src="(/static/assets/main-[^"]+\.js)"', html)
+    assert m, f"no hashed bundle script tag found in served HTML:\n{html}"
+    script_path = m.group(1)
+
+    # Fetch it exactly as the browser would.
+    bundle_response = server.get(script_path)
+    assert bundle_response.status_code == 200, (
+        f"hashed bundle {script_path!r} returned "
+        f"{bundle_response.status_code} — the SPA's JS is 404 in prod mode "
+        f"(the blank-page bug). Is collectstatic wired + WhiteNoise storage set?"
+    )
+    content_type = bundle_response.headers.get("content-type", "")
+    assert "javascript" in content_type, (
+        f"hashed bundle {script_path!r} served as {content_type!r}, not "
+        f"JavaScript. The browser would refuse to execute it → blank page."
+    )
+    server.assert_no_traceback()
+
+
+def test_prod_mode_bundle_inlines_target_svg(runserver_factory) -> None:
+    """PROD: the hashed JS bundle carries the inlined target.svg as a base64
+    data URL, and NO separate ``/static/assets/target.svg`` is referenced.
+
+    The SVG (``src/frontend/assets/target.svg``, ~1.9KB) is below Vite's default
+    ``assetsInlineLimit`` (4096 bytes), so Vite inlines it as a
+    ``data:image/svg+xml;base64,...`` string inside the JS bundle rather than
+    emitting a separate hashed ``.svg`` file. This test pins BOTH halves of
+    that delivery path:
+
+      1. The bundle body carries the inlined data URL (the hero image ships).
+      2. Neither the served HTML nor the bundle body references a separate
+         ``assets/target.svg`` — which would 404 in prod (the exact symptom
+         from the ``DEBUG=false make dev`` bug report: the browser requested
+         ``/static/assets/target.svg`` and got 404 because no such file is
+         emitted or collected).
+
+    If a future ``assetsInlineLimit`` bump turns the SVG into a separate hashed
+    file, half 1 fails (no inline) and half 2 names the new reference shape to
+    add a fetch-assertion for.
+    """
+    if not _FRONTEND_DIST_MANIFEST.exists():
+        pytest.skip(
+            "src/frontend/dist/manifest.json absent — run `npm run build` in "
+            "src/frontend/ before exercising the prod-mode SVG-inlined check."
+        )
+
+    server = runserver_factory(
+        extra_env={"DEBUG": "False", "ALLOWED_HOSTS": "*"},
+    )
+    html = server.get("/").text
+    m = re.search(r'<script[^>]+src="(/static/assets/main-[^"]+\.js)"', html)
+    assert m, f"no hashed bundle script tag found in served HTML:\n{html}"
+    bundle_body = server.get(m.group(1)).text
+
+    # Half 1: the SVG ships inlined as a base64 data URL.
+    assert "data:image/svg+xml;base64," in bundle_body, (
+        f"hashed bundle {m.group(1)!r} does not carry the inlined target.svg — "
+        f"the welcome-page hero image would not render. (If Vite's "
+        f"assetsInlineLimit was raised, the SVG is now a separate hashed file "
+        f"and this assertion needs updating to fetch it.)"
+    )
+
+    # Half 2: no separate target.svg reference that would 404. The stale-bundle
+    # bug (the original ``GET /static/assets/target.svg HTTP/1.1" 404``) is
+    # caught here: a build that emits target.svg as a separate file leaves a
+    # reference in the bundle that this asserts absent.
+    assert "assets/target.svg" not in bundle_body, (
+        f"hashed bundle {m.group(1)!r} references a separate "
+        f"``assets/target.svg`` — that file is not emitted or collected, so the "
+        f"browser would 404 on it (the DEBUG=false missing-SVG bug). Either the "
+        f"bundle is stale (rebuild with `npm run build`) or Vite's "
+        f"assetsInlineLimit changed the SVG's delivery path."
+    )
+    assert "assets/target.svg" not in html, (
+        "served HTML references ``assets/target.svg`` directly — see bundle "
+        "assertion above for the fix path."
+    )
+    server.assert_no_traceback()
