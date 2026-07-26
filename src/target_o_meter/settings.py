@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import logging
 import os
 
 # Load .env BEFORE any os.environ.get below reads from it. python-dotenv is a
@@ -23,10 +24,25 @@ import os
 # THIS FILE's directory (``src/target_o_meter/``) — so it finds ``.env`` at the
 # repo root in normal layouts. Override with ``TOM_ENV_FILE=<path>`` to point
 # at a non-default location (e.g. a secrets manager's mount in prod).
+#
+# The return value is captured so a missing/unreadable .env (e.g. a wrong
+# ``TOM_ENV_FILE`` mount) surfaces a warning instead of silently failing open
+# with empty-string env defaults. Prod is unaffected (the platform injects env
+# vars directly; no .env file is expected there, and the no-file case for the
+# default ``load_dotenv()`` is intentional — only an explicit ``TOM_ENV_FILE``
+# that fails to load is suspicious).
 from dotenv import load_dotenv
 
+_env_logger = logging.getLogger("target_o_meter.settings")
 _env_file = os.environ.get("TOM_ENV_FILE")
-load_dotenv(_env_file) if _env_file else load_dotenv()
+_env_loaded = load_dotenv(_env_file) if _env_file else load_dotenv()
+if _env_file and not _env_loaded:
+    _env_logger.warning(
+        "TOM_ENV_FILE=%s could not be loaded (missing or unreadable); env "
+        "vars fall back to their defaults. Check the path / secrets-manager "
+        "mount.",
+        _env_file,
+    )
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent

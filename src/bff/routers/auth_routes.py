@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import logging
 
+from authlib.jose.errors import JoseError
+from authlib.oauth2 import OAuth2Error
 from django.conf import settings
 from django.contrib.auth import login
 from django.http import HttpRequest, HttpResponse
@@ -36,7 +38,7 @@ from django.views.decorators.http import require_POST
 from ninja import Router
 
 from src.bff.oauth import oauth
-from src.domains.identity.services import get_or_create_user_by_sub
+from src.domains.identity.services import get_or_create_user_row
 
 
 logger = logging.getLogger("target_o_meter.auth")
@@ -80,11 +82,28 @@ def callback(request: HttpRequest) -> HttpResponse:
     """Auth0 redirects here with ``?code``. Exchange for tokens, log in.
 
     Authlib's ``authorize_access_token`` auto-validates signature/iss/aud/
-    nonce/exp — if any check fails it raises, and Django returns a 500 (no
-    session is created, no row is mutated). On success we resolve-or-create
-    the ``User`` by ``sub`` and call Django's ``login()``.
+    nonce/exp. On a tampered/replayed/expired callback it raises
+    ``OAuth2Error`` (state/CSRF/expiry mismatch) or ``JoseError`` (token
+    signature/claims failure); we catch both and return a friendly 400 with
+    a retry link instead of letting Django surface a raw 500. Fail-closed is
+    preserved either way: no session is created, no row is mutated. On
+    success we resolve-or-create the ``User`` by ``sub`` and call Django's
+    ``login()``.
     """
-    token = oauth.auth0.authorize_access_token(request)
+    try:
+        token = oauth.auth0.authorize_access_token(request)
+    except (OAuth2Error, JoseError) as exc:
+        # State mismatch / CSRF / expired-code / token-validation failure.
+        # Log the typed exception (DEBUG=False hides the traceback from the
+        # user) and fail closed with a retry link — not a redirect, since a
+        # stale ``state`` could loop straight back here.
+        logger.warning("Auth0 token exchange failed: %s", exc)
+        login_url = reverse("bff:login")
+        return HttpResponse(
+            "Login session expired or could not be verified. "
+            f'<a href="{login_url}">Try logging in again</a>.',
+            status=400,
+        )
     userinfo = token.get("userinfo", {})
     sub = userinfo.get("sub")
     if not sub:
@@ -92,22 +111,20 @@ def callback(request: HttpRequest) -> HttpResponse:
         # than creating a row with an empty key (which UserManager rejects).
         return HttpResponse("OIDC response missing sub", status=400)
 
-    get_or_create_user_by_sub(sub)
-
-    # Re-fetch the ORM row — login() needs the model instance, not the DTO.
-    from src.domains.identity.models import User
-
-    user = User.objects.get(sub=sub)
+    # Resolve-or-create the User row via the service (AGENTS.md §5 — BFF never
+    # imports ``identity.User``). The service returns the ORM row (``login()``
+    # is keyed on the model instance) plus ``is_first_login_ever`` for owner-
+    # bootstrap logging.
+    user, is_first_login_ever = get_or_create_user_row(sub)
 
     # Phase 5.D owner bootstrap: Auth0's ``sub`` is opaque, so the owner can't
-    # pre-state ``OWNER_SUB_ID``. On the FIRST-EVER login (no other users
-    # exist), log at WARNING with the literal ``sub`` and a ready-to-paste
-    # instruction. The owner copies the sub into ``.env`` as ``OWNER_SUB_ID``,
-    # restarts, and from the next login on ``User.role`` derives ``OWNER`` via
-    # the existing env comparison. No DB change — the role-never-persisted
-    # invariant (research §7) is intact.
-    is_first_login = not User.objects.exclude(sub=sub).exists()
-    if is_first_login:
+    # pre-state ``OWNER_SUB_ID``. On the FIRST-EVER login (no users existed
+    # before this call), log at WARNING with the literal ``sub`` and a ready-
+    # to-paste instruction. The owner copies the sub into ``.env`` as
+    # ``OWNER_SUB_ID``, restarts, and from the next login on ``User.role``
+    # derives ``OWNER`` via the existing env comparison. No DB change — the
+    # role-never-persisted invariant (research §7) is intact.
+    if is_first_login_ever:
         logger.warning(
             "FIRST LOGIN — set OWNER_SUB_ID=%s in .env and restart to make "
             "this user the Owner. (sub=%s)",

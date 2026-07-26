@@ -362,3 +362,39 @@ def test_logout_post_clears_session(client, user_sub) -> None:
     assert response.status_code == 302
     # Session cleared before the Auth0 redirect is issued.
     assert not client.session._session
+
+
+def test_callback_returns_400_on_token_exchange_failure(client, monkeypatch) -> None:
+    """A token-exchange failure (state mismatch / CSRF / expiry / signature)
+    returns a 400 with a retry link — not a raw 500.
+
+    Fail-closed is preserved either way: no session is created, no user row is
+    mutated. The handler improves UX so an expired callback surfaces "Login
+    session expired" instead of a generic server error. Mocks Auth0's
+    ``authorize_access_token`` to raise the documented Authlib base exception.
+    """
+    from authlib.oauth2 import OAuth2Error
+
+    from src.bff.routers import auth_routes as auth_routes_mod
+
+    def _raise(_request):
+        raise OAuth2Error("state mismatch (fixture)")
+
+    monkeypatch.setattr(
+        auth_routes_mod.oauth.auth0,
+        "authorize_access_token",
+        _raise,
+    )
+
+    # No user row before — fail-closed must keep that invariant.
+    User = get_user_model()
+    assert User.objects.count() == 0
+
+    response = client.get("/callback")
+
+    assert response.status_code == 400
+    # The retry link points at the login route.
+    assert b'href="/login"' in response.content
+    # No session was created, no user row was inserted.
+    assert not client.session._session
+    assert User.objects.count() == 0

@@ -49,7 +49,12 @@ _HOP_BY_HOP = frozenset(
 
 # Headers the client sets that we must not blindly forward to Vite (they
 # describe the client→Django hop, not the Django→Vite hop).
-_CLIENT_ONLY = frozenset(("host", "content-length"))
+#
+# ``cookie`` is included so the Django session id + CSRF token never leave the
+# Django origin. Vite ignores cookies (no exploit today), but cross-origin
+# forwarding of browser-session headers is the kind of thing that bites if a
+# Vite plugin ever logs request headers — defense-in-depth on a dev-only path.
+_CLIENT_ONLY = frozenset(("host", "content-length", "cookie"))
 
 
 def _proxy_to_vite(request: HttpRequest, path: str) -> HttpResponse:

@@ -44,17 +44,41 @@ def _user_to_context_dto(user: User) -> UserContextDTO:
     )
 
 
-def get_or_create_user_by_sub(sub: str) -> UserContextDTO:
-    """Resolve-or-create the ``User`` row for an Auth0 ``sub``.
+def get_or_create_user_row(sub: str) -> tuple[User, bool]:
+    """Resolve-or-create the ``User`` row; return ``(row, is_first_login_ever)``.
 
-    Called by the BFF callback after Auth0 has proved identity. New rows get a
-    generated nick (F-01 fallback — S-01 adds the nick-on-first-login prompt).
-    Role is never set here: it is *derived* from ``OWNER_SUB_ID`` on read.
+    Called by the BFF callback after Auth0 has proved identity. Returns the
+    ORM row (``django.contrib.auth.login`` is keyed on the model instance,
+    not a DTO) and an ``is_first_login_ever`` flag (True when no users
+    existed before this call) — used by the callback's owner-bootstrap
+    logging.
+
+    This is the one service that returns an ORM object rather than a DTO.
+    Everywhere else the seam stays DTO-only (AGENTS.md §5); ``login()``'s
+    model-instance requirement is the legitimate, isolated exception.
+
+    ``is_first_login_ever`` is checked *before* the upsert so a returning
+    user (the only user, re-logging-in) correctly reads False — checking
+    ``exclude(sub=sub)`` after the upsert would re-fire on every same-user
+    relogin. Role is never set here: it is *derived* from ``OWNER_SUB_ID``
+    on read.
     """
+    is_first_login_ever = not User.objects.exists()
     user, _created = User.objects.get_or_create(
         sub=sub,
         defaults={"nick": _generated_nick()},
     )
+    return user, is_first_login_ever
+
+
+def get_or_create_user_by_sub(sub: str) -> UserContextDTO:
+    """Resolve-or-create the ``User`` row for an Auth0 ``sub`` (DTO seam).
+
+    Thin DTO wrapper over ``get_or_create_user_row`` for callers that don't
+    need the ORM row (e.g. ``login()``-free paths). New rows get a generated
+    nick (F-01 fallback — S-01 adds the nick-on-first-login prompt).
+    """
+    user, _is_first_login_ever = get_or_create_user_row(sub)
     return _user_to_context_dto(user)
 
 
