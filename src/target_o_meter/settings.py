@@ -335,14 +335,35 @@ STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))
 # above (``WhiteNoiseMiddleware``) only becomes load-bearing once
 # ``collectstatic`` has populated ``STATIC_ROOT`` and the storage backend knows
 # how to resolve the hashed manifest. ``whitenoise>=6.12.0`` is a runtime dep.
+#
+# S-02: the default backend is env-driven via ``USE_S3``. False (default) keeps
+# the no-creds host-dev path on ``FileSystemStorage``; True flips to
+# django-storages' S3 backend (Railway Storage Buckets / Tigris in prod, MinIO
+# in docker-compose dev). The AWS_* vars are read with ``os.environ[...]``
+# (not ``.get``) so a missing prod var is a loud ``KeyError`` at boot rather
+# than a silent misconfiguration. MinIO-vs-Tigris is controlled by
+# ``AWS_S3_ENDPOINT_URL`` (set for MinIO, unset for Tigris).
+USE_S3 = _env_bool('USE_S3', False)
+_default_backend = (
+    'storages.backends.s3.S3Storage' if USE_S3
+    else 'django.core.files.storage.FileSystemStorage'
+)
 STORAGES = {
     'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        'BACKEND': _default_backend,
     },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
     },
 }
+if USE_S3:
+    AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
+    AWS_SECRET_ACCESS_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
+    AWS_STORAGE_BUCKET_NAME = os.environ['AWS_STORAGE_BUCKET_NAME']
+    AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL')  # MinIO only; unset for Tigris
+    AWS_S3_ADDRESSING_STYLE = os.environ.get('AWS_S3_ADDRESSING_STYLE', 'auto')
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
 
 # ---------------------------------------------------------------------------
 # Vite + django-vite (S-01 Phase 2).

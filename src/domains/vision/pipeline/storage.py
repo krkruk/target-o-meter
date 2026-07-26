@@ -23,17 +23,45 @@ class ScoringStorage:
     """
 
     def __init__(self, location: str | Path | None = None, base_url: str | None = None) -> None:
-        # Default to MEDIA_ROOT/scoring (configured in settings); fall back to
-        # BASE_DIR/scoring_storage when MEDIA_ROOT isn't set.
-        if location is None:
-            from django.conf import settings
+        # Three construction modes (S-02 makes the default branch env-driven):
+        #   - explicit ``location``: tests / CLI always want a concrete on-disk
+        #     bucket → FileSystemStorage(location=...) directly.
+        #   - no location + USE_S3: settings already wired STORAGES['default'] to
+        #     the S3 backend → reuse Django's configured ``default_storage``
+        #     (don't hand-build an S3Storage; settings owns the creds).
+        #   - no location + USE_S3 off: host-dev default → FileSystemStorage
+        #     under MEDIA_ROOT/scoring (or BASE_DIR/scoring_storage).
+        from django.conf import settings
+
+        if location is not None:
+            self._storage = FileSystemStorage(location=str(location), base_url=base_url)
+            self._is_s3 = False
+        elif getattr(settings, "USE_S3", False):
+            from django.core.files.storage import default_storage
+            self._storage = default_storage
+            self._is_s3 = True
+        else:
             media_root = getattr(settings, "MEDIA_ROOT", None)
-            location = Path(media_root) / "scoring" if media_root else Path(settings.BASE_DIR) / "scoring_storage"
-        self._storage = FileSystemStorage(location=str(location), base_url=base_url)
-        # Cache the resolved root once so containment checks see a stable
-        # canonical path even if a caller passes a stored_path containing
-        # ``..`` segments or symlinks pointing outside the bucket.
-        self._root = Path(self._storage.location).resolve()
+            loc = (
+                str(Path(media_root) / "scoring") if media_root
+                else str(Path(settings.BASE_DIR) / "scoring_storage")
+            )
+            self._storage = FileSystemStorage(location=loc, base_url=base_url)
+            self._is_s3 = False
+
+        if self._is_s3:
+            # The path-shaped methods (absolute_path / write_deliverable /
+            # read_upload / _safe_join) assume a local filesystem root — they
+            # break under S3. S-02's MockDetector short-circuits before any of
+            # them run, so guard them loud rather than silently wrong. The
+            # OpenCV-needs-local-bytes refactor lands in S-03 alongside the real
+            # detector.
+            self._root = None
+        else:
+            # Cache the resolved root once so containment checks see a stable
+            # canonical path even if a caller passes a stored_path containing
+            # ``..`` segments or symlinks pointing outside the bucket.
+            self._root = Path(self._storage.location).resolve()
 
     def _safe_join(self, stored_path: str) -> Path:
         """Join ``stored_path`` onto the storage root, refusing to escape it.
@@ -43,7 +71,13 @@ class ScoringStorage:
         extension), so traversal is unreachable. The moment a future caller
         (e.g. the BFF) passes anything user-controlled through this surface,
         ``../../etc/passwd`` would be in scope without this check.
+
+        S3 has no filesystem root — the path-shaped methods are deferred to
+        S-03 (see ``__init__``). Calling one under ``USE_S3`` raises now so a
+        premature call is loud, not silently wrong.
         """
+        if self._is_s3:
+            raise NotImplementedError("S3 path ops land in S-03")
         resolved = (self._root / stored_path).resolve()
         try:
             resolved.relative_to(self._root)

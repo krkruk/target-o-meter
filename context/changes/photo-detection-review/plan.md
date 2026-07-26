@@ -1419,15 +1419,15 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [x] 1.1 `uv lock` refreshes cleanly with django-storages + boto3
-- [x] 1.2 `import storages, boto3` succeeds in a fresh `uv run python` shell
-- [x] 1.3 `make check` passes with storages in INSTALLED_APPS
-- [x] 1.4 `uv run python src/manage.py check` passes
+- [x] 1.1 `uv lock` refreshes cleanly with django-storages + boto3 — 0c1ceda
+- [x] 1.2 `import storages, boto3` succeeds in a fresh `uv run python` shell — 0c1ceda
+- [x] 1.3 `make check` passes with storages in INSTALLED_APPS — 0c1ceda
+- [x] 1.4 `uv run python src/manage.py check` passes — 0c1ceda
 
 #### Manual
 
-- [x] 1.5 infrastructure.md and AGENTS.md §1 edits read coherently (no leftover contradictions)
-- [x] 1.6 `.env.example` covers every env var referenced in code — automated as `tests/system/test_env_example_coverage.py` (system test standing in for the manual grep)
+- [x] 1.5 infrastructure.md and AGENTS.md §1 edits read coherently (no leftover contradictions) — 0c1ceda
+- [x] 1.6 `.env.example` covers every env var referenced in code — automated as `tests/system/test_env_example_coverage.py` (system test standing in for the manual grep) — 0c1ceda
 
 > **Plan adjustment:** the AWS_* `KEY=` lines from §1.4 are documented as
 > comments in `.env.example` here and activated as real `KEY=` lines in Phase 2,
@@ -1441,15 +1441,15 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [ ] 2.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes
-- [ ] 2.2 `make check` passes
-- [ ] 2.3 `manage.py check` passes with `USE_S3=False`
-- [ ] 2.4 `manage.py check` passes with `USE_S3=True` + MinIO vars monkeypatched
+- [x] 2.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes
+- [x] 2.2 `make check` passes
+- [x] 2.3 `manage.py check` passes with `USE_S3=False`
+- [x] 2.4 `manage.py check` passes with `USE_S3=True` + MinIO vars monkeypatched
 
 #### Manual
 
-- [ ] 2.5 `make dev` (host path) still writes to `scoring_storage/` on disk
-- [ ] 2.6 No regression in existing `test_services_q2.py`
+- [x] 2.5 `make dev` (host path) still writes to `scoring_storage/` on disk — covered at unit tier by `test_default_no_location_writes_under_media_root_scoring` (the no-location default branch; a blackbox `ScoringStorage()` would pollute `src/scoring_storage/` since `MEDIA_ROOT` isn't env-driven, so the system-test skill's "unit-level repro preferred" applies)
+- [x] 2.6 No regression in existing `test_services_q2.py` — full `be-test` green (117 passed)
 
 ### Phase 3: Detector env wiring
 
