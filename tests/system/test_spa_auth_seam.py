@@ -105,7 +105,7 @@ def test_post_logout_clears_session(runserver_factory) -> None:
     assert server.get("/v1/me").status_code == 200
 
     token = _csrf_token_from_cookies(server)
-    logout_response = server.post("/v1/logout", headers={"X-CSRFToken": token})
+    logout_response = server.post("/logout", headers={"X-CSRFToken": token})
     # 302 (redirect to Auth0 /v2/logout) or 200 are both acceptable; a 403
     # would mean CSRF broke, a 500 would mean the logout view crashed.
     assert logout_response.status_code in (200, 302), logout_response.text

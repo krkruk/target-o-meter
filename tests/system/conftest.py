@@ -158,14 +158,20 @@ def _boot_runserver(
     port = _free_port()
     addr = f"127.0.0.1:{port}"
     db_path = run_dir / "liveserver.sqlite3"
+    static_root = run_dir / "staticfiles"
     stderr_file = run_dir / "runserver.stderr"
 
     # Throwaway DB isolated from the developer's ``src/db.sqlite3``. settings
     # reads the path from RAILWAY_VOLUME_MOUNT_PATH (falling back to BASE_DIR);
     # pointing it at ``run_dir`` makes migrate / seed / server all agree.
+    # STATIC_ROOT is pointed at a run-dir subdir for the same reason: prod-mode
+    # tests run ``collectstatic`` here so the hashed bundle is served (Phase 5.C
+    # blank-page bug fix) without colliding with parallel boots or polluting the
+    # developer's ``src/staticfiles``.
     base_env = {
         **os.environ,
         "RAILWAY_VOLUME_MOUNT_PATH": str(run_dir),
+        "STATIC_ROOT": str(static_root),
         "DJANGO_SETTINGS_MODULE": "src.target_o_meter.settings",
         **(extra_env or {}),
     }
@@ -185,6 +191,19 @@ def _boot_runserver(
         raise RuntimeError(
             f"migrate failed (rc={migrate_proc.returncode}):\n"
             f"stdout:\n{migrate_proc.stdout}\nstderr:\n{migrate_proc.stderr}"
+        )
+
+    # Phase 5.C: collect the hashed bundle into STATIC_ROOT so WhiteNoise can
+    # serve it in DEBUG=False. Harmless in dev (django-vite proxies to the Vite
+    # dev server instead), load-bearing in prod. Skipped silently when no
+    # frontend build exists (``src/frontend/dist``) so non-frontend tests don't
+    # depend on a build artifact.
+    collectstatic_proc = _run_manage(["collectstatic", "--noinput", "--clear"])
+    if collectstatic_proc.returncode != 0:
+        raise RuntimeError(
+            f"collectstatic failed (rc={collectstatic_proc.returncode}):\n"
+            f"stdout:\n{collectstatic_proc.stdout}\n"
+            f"stderr:\n{collectstatic_proc.stderr}"
         )
 
     if seed_script:

@@ -127,3 +127,57 @@ def test_served_script_url_is_javascript_from_vite(runserver, vite_dev_server):
         f"First line of body: {r.text.splitlines()[0] if r.text else '(empty)'}"
     )
     runserver.assert_no_traceback()
+
+
+def test_dev_mode_proxy_serves_vite_assets_at_django_origin(
+    runserver, vite_dev_server
+):
+    """DEV: a request for ``/static/<vite-path>`` at Django's origin (``:8000``)
+    is proxied to Vite (``:5173``) so the browser never has to know which origin
+    owns each asset.
+
+    The motivating bug (``make dev`` at ``http://localhost:8000``): the browser
+    loaded the SPA shell from Django (``:8000``) but the JS modules from Vite
+    (``:5173``). Vite rewrites asset imports like
+    ``import targetUrl from '../../assets/target.svg'`` into bare absolute paths
+    (``/static/assets/target.svg?import``) and the asset's default-export URL is
+    itself a bare ``/static/assets/target.svg`` path. Browsers resolve bare
+    absolute paths against the **document's origin** (``:8000``), not the
+    importing module's origin (``:5173``); both requests hit Django → 404 → the
+    welcome-page hero SVG never rendered. Server log:
+
+        GET /static/assets/target.svg HTTP/1.1" 404 1865
+
+    Setting Vite's ``base`` to a full origin URL does NOT fix this — Vite's
+    module-graph import rewriting always strips the origin and emits bare
+    ``/static/...`` paths. The deterministic fix is Django-side: the custom
+    ``runserver`` command wraps the WSGI app in a ``ViteProxyStaticFilesHandler``
+    that proxies staticfiles misses to Vite. The browser resolves against
+    ``:8000`` (as it does), Django proxies to Vite, Vite serves the asset, the
+    image renders. In prod, WhiteNoise serves the collected bundle same-origin
+    and the proxy never runs (the custom ``runserver`` isn't used by gunicorn).
+
+    This test pins the proxy contract by hitting **Django's origin** (via the
+    ``runserver`` client) for the plain SVG asset — the URL the ``<img src>``
+    renders — and asserting Django returns it as ``image/svg+xml``. The asset
+    lives only in Vite's source tree (not in Django's staticfiles finders), so a
+    200 here proves the proxy is forwarding misses to Vite.
+    """
+    # The plain SVG fetch is what the <img src> renders — the load-bearing case.
+    response = runserver.get("/static/assets/target.svg")
+    assert response.status_code == 200, (
+        f"Django returned {response.status_code} for /static/assets/target.svg — "
+        f"the dev-mode Vite proxy is missing or not forwarding. The browser "
+        f"would 404 → the welcome-page hero SVG would not render (the ``make "
+        f"dev`` missing-image bug)."
+    )
+    content_type = response.headers.get("content-type", "")
+    assert "image/svg+xml" in content_type, (
+        f"Django proxied /static/assets/target.svg but the response is "
+        f"{content_type!r}, not image/svg+xml. The <img src> would not render."
+    )
+    # Sanity: the body is actually the SVG (carries the <svg> root element).
+    assert "<svg" in response.text, (
+        "proxied response body does not start with <svg — wrong asset served."
+    )
+    runserver.assert_no_traceback()

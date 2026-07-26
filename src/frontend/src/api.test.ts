@@ -3,7 +3,8 @@
 //   * getMe maps a 401 to the unauthenticated Me shape (the SPA's auth seam).
 //   * patchMe/postLogout send the X-CSRFToken header sourced from the
 //     csrftoken cookie (Django's SessionAuth enforces CSRF on non-GET).
-//   * login performs a full-page navigation to /v1/login.
+//   * login performs a full-page navigation to /login (Phase 5: dropped the
+//     /v1 prefix from the OIDC chain).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMe, patchMe, postLogout, login } from './api';
 
@@ -59,21 +60,22 @@ describe('api client', () => {
     expect((init?.headers as Record<string, string>)['X-CSRFToken']).toBe('test-csrf-token');
   });
 
-  it('sends X-CSRFToken on postLogout', async () => {
+  it('sends X-CSRFToken on postLogout to /logout', async () => {
     document.cookie = 'csrftoken=logout-token; path=/';
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(null, { status: 204 }) as Response
     );
     await postLogout();
-    const [, init] = fetchSpy.mock.calls[0];
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe('/logout');
     expect(init?.method).toBe('POST');
     expect((init?.headers as Record<string, string>)['X-CSRFToken']).toBe('logout-token');
   });
 
-  it('navigates the browser to /v1/login on login()', () => {
+  it('navigates the browser to /login on login()', () => {
     // Per the contract login() never resolves — full-page nav. Assert on the
     // side effect (href assignment), which the stub captures.
     expect(() => login()).toThrow();
-    expect(window.location.href).toBe('/v1/login');
+    expect(window.location.href).toBe('/login');
   });
 });

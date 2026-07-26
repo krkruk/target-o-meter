@@ -7,7 +7,8 @@
 //
 // CSRF: Django's SessionAuth enforces CSRF on non-GET. The SPA reads the
 // csrftoken cookie (CSRF_COOKIE_HTTPONLY=False in settings.py) and sends it
-// as X-CSRFToken on PATCH /v1/me and POST /v1/logout.
+// as X-CSRFToken on PATCH /v1/me and POST /logout. (Phase 5: logout lives at
+// the URL root alongside login/callback; only the ninja API keeps /v1/.)
 
 export type Role = 'owner' | 'user';
 
@@ -54,14 +55,14 @@ export async function patchMe(nick: string): Promise<Me> {
 }
 
 export async function postLogout(): Promise<void> {
-  const res = await fetch('/v1/logout', {
+  const res = await fetch('/logout', {
     method: 'POST',
     headers: jsonHeaders(),
   });
   if (!res.ok && res.status !== 302) {
     // 302 is the expected logout redirect to Auth0 /v2/logout; treat it as
     // success. Anything else is a real failure.
-    throw new Error(`POST /v1/logout failed: ${res.status}`);
+    throw new Error(`POST /logout failed: ${res.status}`);
   }
 }
 
@@ -69,6 +70,8 @@ export function login(): never {
   // Full-page navigation to the OIDC redirect chain. Never resolves — the
   // browser leaves the SPA. Throwing satisfies the `never` return type and
   // stops execution in tests that mock window.location.
-  window.location.href = '/v1/login';
-  throw new Error('navigating to /v1/login');
+  // Phase 5: dropped the /v1 prefix from the OIDC chain (login/callback/logout
+  // live at the URL root; /v1/ stays the version root for the ninja API only).
+  window.location.href = '/login';
+  throw new Error('navigating to /login');
 }

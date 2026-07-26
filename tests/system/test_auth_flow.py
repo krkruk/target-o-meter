@@ -4,10 +4,12 @@ This is the repo's first cross-domain API system test (AGENTS.md §4). It
 exercises the BFF (django-ninja) + identity domain (services) together through
 the Django test client — no real Auth0 call (UAT is deferred to a later slice).
 
-S-01 renamed the URL surface: the OIDC chain + django-ninja API now live under
-``/v1/`` (``/v1/login``, ``/v1/callback``, ``/v1/logout``, ``/v1/me``,
-``/v1/users``). The ``bff`` app name + URL names are unchanged, so
-``reverse("bff:callback")`` still resolves — only the path prefixes moved.
+S-01 renamed the URL surface. Phase 5 split the version root from the OIDC
+chain: the django-ninja API kept its ``/v1/`` version prefix
+(``/v1/me``, ``/v1/users``) but the OIDC redirect chain moved to the URL root
+(``/login``, ``/callback``, ``/logout``). The ``bff`` app name + URL names are
+unchanged, so ``reverse("bff:callback")`` still resolves — only the path
+prefixes moved.
 
 Auth is established via ``client.force_login()`` (Django's test helper) which
 populates ``request.user`` — exactly what ``SessionAuth`` reads (research §
@@ -269,12 +271,51 @@ def test_patch_me_rejects_invalid_nick(client, user_sub) -> None:
 
 
 # ---------------------------------------------------------------------------
-# POST /v1/logout — CSRF-enforced, clears session (S-01 closes F-01's GET-logout)
+# OIDC redirect chain lives at the URL root (/login, /callback, /logout).
+# Phase 5 dropped the /v1 prefix from the OIDC chain; /v1/* is the version root
+# for the ninja API only (/v1/me, /v1/users).
+#
+# The routing contract is pinned via ``reverse()`` — the canonical Django way to
+# assert a URL name → path mapping. We deliberately do NOT drive the views here:
+# ``login_view`` issues a real OAuth ``authorize_redirect`` (network I/O to
+# Auth0's discovery doc), and ``callback`` raises ``MismatchingStateError``
+# without a real state token. Those are integration concerns for Phase 4's
+# real-Auth0 manual gate, not routing invariants.
+# ---------------------------------------------------------------------------
+
+
+def test_oidc_routes_resolve_at_url_root() -> None:
+    """The OIDC redirect chain resolves at ``/login``, ``/callback``, ``/logout``
+    (Phase 5 dropped the ``/v1`` prefix from the chain).
+
+    ``reverse()`` is the load-bearing assertion: it pins the URL *names*
+    (``bff:login`` etc., unchanged) to their new path segments. A regression
+    that re-prefixes the chain with ``/v1`` would fail here.
+    """
+    from django.urls import reverse
+
+    assert reverse("bff:login") == "/login"
+    assert reverse("bff:callback") == "/callback"
+    assert reverse("bff:logout") == "/logout"
+
+
+def test_v1_login_is_404(client) -> None:
+    """``/v1/login`` is gone (Phase 5 moved the OIDC chain to the URL root).
+
+    Regression guard: ``/v1/`` stays the version root for the ninja API only
+    (``/v1/me``, ``/v1/users``); the OIDC chain no longer lives under it.
+    """
+    response = client.get("/v1/login")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /logout — CSRF-enforced, clears session (S-01 closes F-01's GET-logout)
 # ---------------------------------------------------------------------------
 
 
 def test_logout_rejects_get(client, user_sub) -> None:
-    """GET /v1/logout is no longer accepted (405) — logout is POST + CSRF now.
+    """GET /logout is no longer accepted (405) — logout is POST + CSRF now.
 
     F-01 shipped a GET logout (template simplicity); S-01's SPA POSTs instead
     (plan-review F5: GET-logout is a CSRF-soft vector). A regression that
@@ -283,12 +324,12 @@ def test_logout_rejects_get(client, user_sub) -> None:
     user = make_user(sub=user_sub, nick="alice")
     _login_as(client, user)
 
-    response = client.get("/v1/logout")
+    response = client.get("/logout")
     assert response.status_code == 405
 
 
 def test_logout_returns_403_without_csrf_token(client, user_sub) -> None:
-    """POST /v1/logout without ``X-CSRFTOKEN`` → 403 (``@csrf_protect``).
+    """POST /logout without ``X-CSRFTOKEN`` → 403 (``@csrf_protect``).
 
     Same load-bearing CSRF invariant as PATCH /v1/me, on the plain Django view
     (``@require_POST`` + ``@csrf_protect`` — not a ninja route).
@@ -297,12 +338,12 @@ def test_logout_returns_403_without_csrf_token(client, user_sub) -> None:
     _login_as(client, user)
     client.handler.enforce_csrf_checks = True
 
-    response = client.post("/v1/logout")
+    response = client.post("/logout")
     assert response.status_code == 403
 
 
 def test_logout_post_clears_session(client, user_sub) -> None:
-    """POST /v1/logout with a valid CSRF token clears the Django session.
+    """POST /logout with a valid CSRF token clears the Django session.
 
     The view also redirects to Auth0 ``/v2/logout``; without Auth0 creds the
     redirect target is unreachable, but the session is already cleared before
@@ -317,7 +358,7 @@ def test_logout_post_clears_session(client, user_sub) -> None:
     client.get("/")
     csrf = client.cookies["csrftoken"].value
 
-    response = client.post("/v1/logout", HTTP_X_CSRFTOKEN=csrf)
+    response = client.post("/logout", HTTP_X_CSRFTOKEN=csrf)
     assert response.status_code == 302
     # Session cleared before the Auth0 redirect is issued.
     assert not client.session._session

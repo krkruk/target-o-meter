@@ -478,5 +478,35 @@ The user deferred real-Auth0 verification to the end. This phase has no code cha
 
 #### Manual
 
-- [ ] 4.1 Create Auth0 tenant + app; set Allowed Callback (`/v1/callback`), Allowed Logout (`/`), Web Origins in dashboard  *(owner's out-of-session gate)*
-- [ ] 4.2 Populate `.env` (`AUTH0_*`, `OWNER_SUB_ID`, unset `DEV_AUTH_BYPASS_SUB`) and run the real login → callback → set-nick → logout round-trip  *(owner's out-of-session gate)*
+- [x] 4.1 Create Auth0 tenant + app; set Allowed Callback (`/v1/callback`), Allowed Logout (`/`), Web Origins in dashboard  *(owner's out-of-session gate)*
+- [x] 4.2 Populate `.env` (`AUTH0_*`, `OWNER_SUB_ID`, unset `DEV_AUTH_BYPASS_SUB`) and run the real login → callback → set-nick → logout round-trip  *(owner's out-of-session gate)*
+
+### Phase 5: Auth0 integration hardening — dotenv, static pipeline, route prefix, owner bootstrap
+
+> Added 2026-07-26 after the first `DEBUG=false make dev` smoke surfaced four real
+> integration gaps the system tests didn't catch: (a) `oauth.auth0.authorize
+> _redirect` crashed on `Invalid URL 'https:///.well-known/...'` because nothing on
+> the Django path calls `load_dotenv()`; (b) the SVG/SPA vanished because the prod
+> static pipeline (`collectstatic` + WhiteNoise storage) was never wired; (c) the
+> OIDC routes carry a `/v1` prefix the owner wants gone; (d) `OWNER_SUB_ID` is
+> unknowable before the first login because Auth0's `sub` is opaque. Phase 5 lands
+> red→green TDD fixes for each. Phase 4 (the real-Auth0 manual gate) stays `[ ]`
+> but becomes exercisable once 5.x lands.
+
+#### Automated
+
+- [x] 5.1 RED: backend tests in `tests/system/test_auth_flow.py` + `test_spa_auth_seam.py` hit `/login`, `/callback`, `/logout` (not `/v1/*`); add a `/v1/login` → 404 regression guard
+- [x] 5.2 GREEN: rename `path("v1/login"|"v1/callback"|"v1/logout", ...)` → `path("login"|"callback"|"logout", ...)` in `src/bff/urls.py` (NinjaAPI mount at `path("v1/", api.urls)` untouched; `app_name` + `name=` attrs unchanged so `reverse()` keeps resolving)
+- [x] 5.3 RED+GREEN: `src/frontend/src/api.test.ts` + `api.ts` — `login()` navigates to `/login` (literal `'/v1/login'` → `'/login'`)
+- [x] 5.4 RED: `tests/system/test_env_loading.py` (new) — `.env`-loading guard (bespoke `AUTH0_DOMAIN` round-trips through `load_dotenv` into a 302) + `.env.example` drift guard (every `KEY=` read somewhere under `src/`)
+- [x] 5.5 GREEN: `load_dotenv()` at top of `src/target_o_meter/settings.py`; wire orphaned env vars (`AUTH0_SECRET`→`SECRET_KEY`, `APP_BASE_URL`→`ALLOWED_HOSTS`); update `.env.example`
+- [x] 5.6 RED: extend `tests/system/test_spa_pipeline.py:test_index_serves_spa_shell_prod_mode` to fetch the hashed bundle URL + assert 200 + JS content-type + SVG-inlined `data:image/svg+xml;base64,` in bundle body
+- [x] 5.7 GREEN: add `STORAGES` (WhiteNoise `CompressedManifestStaticFilesStorage`) in `settings.py`; run `collectstatic` in `tests/system/conftest.py:_boot_runserver`; add `make collectstatic` + `make prod` targets
+- [x] 5.8 RED+GREEN: callback logs the first-ever login's `sub` extra-loud (`logger.warning`) and subsequent logins `info`; new test under `tests/system/` mocking `oauth.auth0.authorize_access_token` + asserting the captured logs
+- [x] 5.9 `make check` (ruff + import-linter + tsc) + `make be-test` + `make fe-test` green
+- [x] 5.11 RED+GREEN: dev-mode Vite proxy — Vite emits bare `/static/...` paths for asset imports (even with `base` as a full origin URL — Vite's module-graph rewriting strips it); browsers resolve these against the document origin (`:8000`) not the importing module's origin (`:5173`), so Django's `StaticFilesHandler` 404s them and the welcome-page SVG vanishes in `make dev`. Fix: custom `runserver` command (`src/target_o_meter/management/commands/runserver.py`) wraps the WSGI app in `ViteProxyStaticFilesHandler` (`src/bff/dev_vite_proxy.py`) that proxies staticfiles misses to Vite. New test `test_dev_mode_proxy_serves_vite_assets_at_django_origin` pins the contract; gated on `DEBUG=True` so prod (WhiteNoise) is unaffected
+
+#### Manual
+
+- [x] 5.10 `DEBUG=false make prod` → `/` renders the SPA (SVG visible); click Login → no `InvalidURL` crash; callback logs `sub`; set `OWNER_SUB_ID=<logged sub>` + restart → `/v1/me` returns `role: "owner"`
+- [x] 5.12 `make dev` (DEBUG=true) at `http://localhost:8000/` → welcome-page hero SVG renders (no 404 on `/static/assets/target.svg`); SPA modules load through Vite via the dev proxy

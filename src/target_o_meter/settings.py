@@ -13,6 +13,21 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 import os
 
+# Load .env BEFORE any os.environ.get below reads from it. python-dotenv is a
+# declared runtime dep (pyproject.toml); without this call the Django bootstrap
+# path (manage.py / wsgi / asgi) never loads .env, so AUTH0_DOMAIN etc. read
+# their empty-string defaults and the OAuth client builds a hostless discovery
+# URL (the ``Invalid URL 'https:///.well-known/...'`` crash from Phase 5.B).
+#
+# ``load_dotenv()`` with no path uses ``find_dotenv()``, which walks up from
+# THIS FILE's directory (``src/target_o_meter/``) — so it finds ``.env`` at the
+# repo root in normal layouts. Override with ``TOM_ENV_FILE=<path>`` to point
+# at a non-default location (e.g. a secrets manager's mount in prod).
+from dotenv import load_dotenv
+
+_env_file = os.environ.get("TOM_ENV_FILE")
+load_dotenv(_env_file) if _env_file else load_dotenv()
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -26,12 +41,49 @@ def _env_bool(name: str, default: bool = False) -> bool:
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get("SECRET_KEY", "django-insecure-0n%b*1&a_*5va-)s1tv8e+98yzsb=o*f!7w%h#puwwsjz6dlq6")
+# AUTH0_SECRET is the canonical name in .env (Auth0 convention); SECRET_KEY is
+# accepted as a Django-conventional alias. Both fall back to the insecure dev
+# default so a fresh checkout still runs.
+SECRET_KEY = (
+    os.environ.get("SECRET_KEY")
+    or os.environ.get("AUTH0_SECRET")
+    or "django-insecure-0n%b*1&a_*5va-)s1tv8e+98yzsb=o*f!7w%h#puwwsjz6dlq6"
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",") if os.environ.get("ALLOWED_HOSTS") else []
+
+def _allowed_hosts(debug: bool) -> list[str]:
+    """Build ALLOWED_HOSTS from explicit ALLOWED_HOSTS or derived from APP_BASE_URL.
+
+    APP_BASE_URL is the canonical deploy URL in .env (e.g.
+    ``http://localhost:8000``). When ALLOWED_HOSTS is unset, parse the host
+    from APP_BASE_URL so a single env var configures both the redirect URI
+    base and the host allowlist. Localhost dev → ``["localhost"]``.
+
+    When ``DEBUG=True``, returns ``[]`` so Django's default permissive dev
+    behavior is preserved (Django accepts any host in DEBUG when ALLOWED_HOSTS
+    is empty — this keeps the live-server test harness, which binds to
+    ``127.0.0.1``, working without forcing every test to set ALLOWED_HOSTS).
+    The APP_BASE_URL derivation is a prod convenience only.
+    """
+    explicit = os.environ.get("ALLOWED_HOSTS", "").strip()
+    if explicit:
+        return [h.strip() for h in explicit.split(",") if h.strip()]
+    if debug:
+        return []
+    base = os.environ.get("APP_BASE_URL", "").strip()
+    if base:
+        from urllib.parse import urlparse
+
+        host = urlparse(base).hostname
+        if host:
+            return [host]
+    return []
+
+
+ALLOWED_HOSTS = _allowed_hosts(DEBUG)
 
 
 # ---------------------------------------------------------------------------
@@ -70,6 +122,13 @@ SECURE_COOKIES = _env_bool("SECURE_COOKIES", False)
 # Application definition
 
 INSTALLED_APPS = [
+    # Project-level app (Phase 5): hosts the dev ``runserver`` override that
+    # proxies staticfiles misses to Vite, plus the production-safety system
+    # checks. MUST come BEFORE ``django.contrib.staticfiles`` — Django resolves
+    # management-command name collisions by iterating INSTALLED_APPS in reverse
+    # and letting later updates win, so the FIRST app that defines ``runserver``
+    # overrides the rest.
+    'src.target_o_meter',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -240,7 +299,28 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / "staticfiles"
+# Env-overridable so the live-server test harness can point collectstatic at a
+# per-run throwaway dir (avoids collisions across parallel boots). Defaults to
+# ``src/staticfiles`` for normal ``collectstatic`` / prod deploys.
+STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))
+
+# Django 6.0 ``STORAGES`` (Phase 5.C). WhiteNoise owns the staticfiles storage
+# in prod: it serves hashed bundles from ``STATIC_ROOT`` (populated by
+# ``collectstatic``) with gzip/brotli compression + content-hash far-future
+# caching. Without this entry, requests for ``/static/assets/main-*.js`` 404 in
+# ``DEBUG=False`` — the SPA never mounts and the inlined target.svg vanishes
+# (the ``DEBUG=false make dev`` blank-page bug). The middleware registration
+# above (``WhiteNoiseMiddleware``) only becomes load-bearing once
+# ``collectstatic`` has populated ``STATIC_ROOT`` and the storage backend knows
+# how to resolve the hashed manifest. ``whitenoise>=6.12.0`` is a runtime dep.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Vite + django-vite (S-01 Phase 2).

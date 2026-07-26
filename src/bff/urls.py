@@ -1,13 +1,16 @@
 """BFF URL configuration.
 
-Mounts the OIDC redirect chain (login/callback/logout) + the django-ninja API
-+ the SPA-shell index view under a single ``/v1/`` version root (S-01 renamed
-the surface: the ``bff/`` and ``api/`` prefixes are gone). The module is still
-``src/bff/`` (AGENTS.md §4 directory structure); only the URL tree changed.
+Mounts the OIDC redirect chain (login/callback/logout) at the URL root + the
+django-ninja API under its ``/v1/`` version root + the SPA-shell index view.
+Phase 5 split the version prefix from the OIDC chain: the API keeps ``/v1/``
+(``/v1/me``, ``/v1/users``, ``PATCH /v1/me``) but the OIDC redirect chain lives
+at the URL root (``/login``, ``/callback``, ``/logout``) so the OAuth URLs in
+the Auth0 dashboard stay short. The module is still ``src/bff/`` (AGENTS.md §4
+directory structure).
 
 App name stays ``bff`` so ``reverse("bff:callback")`` / ``reverse("bff:index")``
 keep working — internal Django URL names are not path segments. Auth0's Allowed
-Callback / Allowed Logout URLs are updated to ``/v1/callback`` / ``/`` in the
+Callback / Allowed Logout URLs are updated to ``/callback`` / ``/`` in the
 dashboard (plan Phase 4).
 """
 
@@ -28,10 +31,11 @@ api.add_router("/", owner_router)
 
 
 urlpatterns = [
-    # OIDC redirect chain — /v1/login, /v1/callback, /v1/logout.
-    path("v1/login", login_view, name="login"),
-    path("v1/callback", callback, name="callback"),
-    path("v1/logout", logout, name="logout"),
+    # OIDC redirect chain — /login, /callback, /logout (Phase 5: dropped the
+    # /v1 prefix so the OAuth URLs registered in the Auth0 dashboard stay short).
+    path("login", login_view, name="login"),
+    path("callback", callback, name="callback"),
+    path("logout", logout, name="logout"),
     # django-ninja API under /v1/ (so /v1/me, /v1/users, PATCH /v1/me).
     path("v1/", api.urls),
     # Index — SPA shell document (S-01). ``reverse("bff:index")`` → ``/``.

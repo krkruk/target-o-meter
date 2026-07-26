@@ -22,6 +22,8 @@ Critical implementation details (see plan §"Critical Implementation Details"):
 
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
 from django.contrib.auth import login
 from django.http import HttpRequest, HttpResponse
@@ -35,6 +37,9 @@ from ninja import Router
 
 from src.bff.oauth import oauth
 from src.domains.identity.services import get_or_create_user_by_sub
+
+
+logger = logging.getLogger("target_o_meter.auth")
 
 
 router = Router()
@@ -93,6 +98,24 @@ def callback(request: HttpRequest) -> HttpResponse:
     from src.domains.identity.models import User
 
     user = User.objects.get(sub=sub)
+
+    # Phase 5.D owner bootstrap: Auth0's ``sub`` is opaque, so the owner can't
+    # pre-state ``OWNER_SUB_ID``. On the FIRST-EVER login (no other users
+    # exist), log at WARNING with the literal ``sub`` and a ready-to-paste
+    # instruction. The owner copies the sub into ``.env`` as ``OWNER_SUB_ID``,
+    # restarts, and from the next login on ``User.role`` derives ``OWNER`` via
+    # the existing env comparison. No DB change — the role-never-persisted
+    # invariant (research §7) is intact.
+    is_first_login = not User.objects.exclude(sub=sub).exists()
+    if is_first_login:
+        logger.warning(
+            "FIRST LOGIN — set OWNER_SUB_ID=%s in .env and restart to make "
+            "this user the Owner. (sub=%s)",
+            sub,
+            sub,
+        )
+    else:
+        logger.info("Login successful (sub=%s)", sub)
 
     # ``login()`` without ``authenticate()``: Auth0 already proved identity, so
     # there's no password to check. We must set ``user.backend`` so the session

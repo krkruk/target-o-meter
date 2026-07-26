@@ -8,7 +8,7 @@
 # Commands are written to be copy-pasteable; `.PHONY` keeps them from being
 # shadowed by same-named files.
 
-.PHONY: help run dev migrate check be-test fe-test system-test acceptance-test
+.PHONY: help run dev prod migrate collectstatic check be-test fe-test system-test acceptance-test
 
 # Frontend presence guard. Exported so sub-makes / shell snippets can read it.
 FE_DIR := src/frontend
@@ -44,6 +44,28 @@ dev: migrate  ## Start Django (:8000) + Vite (:5173) together for full SPA dev w
 	DEBUG=true uv run python src/manage.py runserver --noreload & \
 	( cd $(FE_DIR) && npm run dev ) & \
 	wait
+
+# --- Prod-mode local smoke (DEBUG=false) -----------------------------------
+#
+# Phase 5.C: the DEBUG=false serving path needs the hashed bundle collected
+# into STATIC_ROOT so WhiteNoise can serve it. `make prod` does the full
+# prod-shape boot: build the frontend, collect the bundle, then run Django in
+# DEBUG=false. Use this to reproduce the original "SVG disappears at
+# DEBUG=false" bug class — the SPA (incl. the inlined target.svg) must mount.
+
+prod: collectstatic  ## Boot Django in DEBUG=false against the built + collected bundle
+	@echo "Starting Django (:8000) in DEBUG=false (prod shape)."
+	DEBUG=false uv run python src/manage.py runserver
+
+collectstatic:  ## Build the frontend + collect hashed static assets into STATIC_ROOT
+	@if [ -f "$(FE_PKG)" ]; then \
+		echo "▸ building frontend bundle (npm run build)"; \
+		( cd $(FE_DIR) && npm run build ); \
+	else \
+		echo "▸ no frontend toolchain ($(FE_PKG)); skipping npm run build"; \
+	fi
+	@echo "▸ collecting static files into src/staticfiles"
+	uv run python src/manage.py collectstatic --noinput --clear
 
 migrate:  ## Apply Django migrations
 	uv run python src/manage.py migrate
