@@ -10,6 +10,7 @@ tech_stack:
   framework: Django 6.0.5
   runtime: CPython
   database: SQLite3 (via Railway Volume)
+  object_storage: S3-compatible (Railway Storage Buckets, Tigris-backed, in prod; MinIO locally via docker-compose)
 ---
 
 ## Recommendation
@@ -58,13 +59,13 @@ Lowest floor cost ($2/month for a tiny VM) with persistent Docker containers and
 
 1. **No `llms.txt` docs** — agents must crawl the GitHub docs repo rather than loading a single structured file. This causes occasional CLI hallucination (outdated Nixpacks syntax, wrong command flags).
 2. **$5 Hobby credit may not cover full stack** — Django + Celery worker for image processing likely costs $5-8/month in resource usage. SQLite on a Volume eliminates managed database costs entirely.
-3. **No managed object storage** — same gap as Render. Uploaded target images need external S3, Cloudflare R2, or Railway Volumes (persist across deploys with explicit volume mounts).
+3. **Object storage is Tigris-backed, feature-thin** — Railway Storage Buckets (GA, Tigris-backed, S3-compatible) now host uploaded images + deliverables, removing the old "no managed object storage" gap. But the offering is deliberately small: no SSE, no versioning, no object locks, no bucket lifecycle rules, no public bucket access (deliverables must be surfaced via presigned URLs or backend proxying), and no native file-explorer UI. django-storages (`storages.backends.s3.S3Storage`) talks to it via standard AWS_* env vars.
 4. **Only 4 regions** — limited to US West, US East, EU West Metal (Amsterdam, `europe-west4-drams3a`), SE Asia. No Central/Eastern European region for the developer's location (Poland); Amsterdam is the closest available EU option.
 5. **Serverless sleep mode returns 502 on first request** — if enabled to stay within $5 credit, users experience cold-start failures on their first action.
 
 ### Pre-Mortem — How This Could Fail
 
-The team picked Railway for the $5/month price tag. Django deployed smoothly with Railpack auto-detection. SQLite on a persistent Volume kept database costs at zero. But a Celery worker for image processing pushed the real bill to $8-12/month — cheaper than Render's $20, but above the $5 credit. The missing `llms.txt` meant the AI agent periodically hallucinated Railway CLI commands, using outdated Nixpacks syntax instead of the newer Railpack builder. Debugging these mismatches burned days. The ephemeral filesystem (outside the Volume mount) forced an S3 integration for uploaded target images, adding cross-platform complexity. Six months in, Railway works and costs roughly half of Render, but the agent DX friction from missing structured docs wasted more development time than the cost savings justified.
+The team picked Railway for the $5/month price tag. Django deployed smoothly with Railpack auto-detection. SQLite on a persistent Volume kept database costs at zero. But a Celery worker for image processing pushed the real bill to $8-12/month — cheaper than Render's $20, but above the $5 credit. The missing `llms.txt` meant the AI agent periodically hallucinated Railway CLI commands, using outdated Nixpacks syntax instead of the newer Railpack builder. Debugging these mismatches burned days. Uploaded target images were placed in Railway Storage Buckets (Tigris-backed, S3-compatible) from day one — a planned, django-storages-driven integration rather than a last-minute scramble — with MinIO in docker-compose giving local S3-compatible parity. Six months in, Railway works and costs roughly half of Render, but the agent DX friction from missing structured docs wasted more development time than the cost savings justified.
 
 ### Unknown Unknowns
 
@@ -81,6 +82,7 @@ The team picked Railway for the $5/month price tag. Django deployed smoothly wit
 - **Rollback**: `railway redeploy` triggers a new deployment from a previous commit. Redeploy from any past deployment in the dashboard or via CLI. Typical time-to-revert: 2-5 minutes (build + deploy). SQLite schema changes are embedded in the database file on the persistent Volume — migrations are applied on deploy and do NOT roll back automatically. If a migration is irreversible, the database must be restored from a Volume backup.
 - **Approval**: Production deploy requires pushing to the main branch (or manual `railway up --prod`). An agent with a scoped `RAILWAY_TOKEN` can trigger deploys, set variables, and read logs. Destructive actions (drop database, delete service, delete project) should be dashboard-only by convention. No built-in approval gates at Hobby tier.
 - **Logs**: `railway logs` streams runtime logs. `railway logs --build` streams build logs. MCP tools provide structured log access. Logs are ephemeral — no persistent log storage on Railway; aggregate to an external service (e.g. Axiom, Logtail) for retention.
+- **Storage**: Uploaded target images + the three deliverables per job live in a Railway Storage Bucket (Tigris-backed, S3-compatible), reached through django-storages' `storages.backends.s3.S3Storage`. `USE_S3=True` flips `STORAGES["default"]` to the S3 backend in prod and in docker-compose dev (MinIO); `USE_S3=False` keeps `FileSystemStorage` as the no-creds host-dev fallback. Buckets are private by default — surface deliverables via presigned URLs or backend proxying, not public bucket access (Tigris offers no public-access setting, SSE, versioning, object locks, or lifecycle rules). Create the bucket once (`railway` dashboard or `mc mb` for MinIO); the app never creates buckets at runtime. Locally, `docker-compose.dev.yml` runs MinIO + a `create-bucket` service so the S3 code path is exercised without AWS creds.
 
 ## Risk Register
 
@@ -93,7 +95,7 @@ The team picked Railway for the $5/month price tag. Django deployed smoothly wit
 | `RAILPACK_DJANGO_APP_NAME` not auto-detected for `target_o_meter` | Unknown unknowns | M | H | Set `RAILPACK_DJANGO_APP_NAME=target_o_meter` as an environment variable explicitly in Railway dashboard. |
 | SQLite db.sqlite3 lost on redeploy without Volume mount | Research finding | H | H | Mount a Railway Volume and point `DATABASES['NAME']` to the volume path via `RAILWAY_VOLUME_MOUNT_PATH` env var. Test with a redeploy before going live. |
 | Concurrent writes corrupt SQLite under load | Unknown unknowns | L | H | SQLite serialized mode via `PRAGMA journal_mode=WAL` in Django connection. At hobbyist scale (single user, <10 concurrent writes) this is safe. Monitor for `database is locked` errors. |
-| Uploaded target images lost on redeploy (ephemeral filesystem) | Research finding | H | H | Use Railway Volumes for persistent storage or integrate Cloudflare R2 / AWS S3 for image uploads from day one. |
+| Uploaded target images lost on redeploy (ephemeral filesystem) | Research finding | H | H | Railway Storage Buckets (Tigris-backed) for uploaded images + deliverables; MinIO locally via docker-compose for S3-compatible dev parity. Configured via django-storages (`USE_S3=True` + `AWS_*` env vars). |
 | Railpack vs Nixpacks confusion in agent suggestions | Unknown unknowns | M | L | Document the Railpack-specific config in AGENTS.md. Ignore any `nixpacks.toml` references. |
 | Usage spike during concurrent image processing inflates bill | Unknown unknowns | M | M | Set resource limits on worker services. Cap concurrent image processing at 3 as per PRD. Monitor via Railway dashboard. |
 | SQLite Volume backup untested — data loss on Volume failure | Unknown unknowns | M | H | Test Railway Volume backup/restore before going live. Add a periodic `sqlite3 db.sqlite3 ".backup /mnt/backup/db.sqlite3"` cron job if Volume backups are unreliable. Schedule regular local downloads of the SQLite file as a safety net. |

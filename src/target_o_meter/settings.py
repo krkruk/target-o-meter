@@ -154,6 +154,12 @@ INSTALLED_APPS = [
     # Async task queue (AGENTS.md §2: django-q2 with SQLite broker via ORM
     # broker — task records live in the Django DB, which is SQLite here).
     'django_q',
+    # S3-compatible object storage (S-02). django-storages ships the
+    # ``storages.backends.s3.S3Storage`` backend ``STORAGES['default']`` flips to
+    # when ``USE_S3=True`` (Railway Storage Buckets / Tigris in prod, MinIO in
+    # docker-compose dev). Required by django-storages even when the FS fallback
+    # is active (``USE_S3=False``), so it lives here unconditionally.
+    'storages',
     # Bounded Contexts (DDD). Prefixed with `src.` to match the import-linter
     # root package (AGENTS.md \u00a76.1) and the BFF import convention (AGENTS.md \u00a76.2).
     'src.domains.core',

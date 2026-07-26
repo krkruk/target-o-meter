@@ -1419,15 +1419,23 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [ ] 1.1 `uv lock` refreshes cleanly with django-storages + boto3
-- [ ] 1.2 `import storages, boto3` succeeds in a fresh `uv run python` shell
-- [ ] 1.3 `make check` passes with storages in INSTALLED_APPS
-- [ ] 1.4 `uv run python src/manage.py check` passes
+- [x] 1.1 `uv lock` refreshes cleanly with django-storages + boto3
+- [x] 1.2 `import storages, boto3` succeeds in a fresh `uv run python` shell
+- [x] 1.3 `make check` passes with storages in INSTALLED_APPS
+- [x] 1.4 `uv run python src/manage.py check` passes
 
 #### Manual
 
-- [ ] 1.5 infrastructure.md and AGENTS.md §1 edits read coherently (no leftover contradictions)
-- [ ] 1.6 `.env.example` covers every env var referenced in code
+- [x] 1.5 infrastructure.md and AGENTS.md §1 edits read coherently (no leftover contradictions)
+- [x] 1.6 `.env.example` covers every env var referenced in code — automated as `tests/system/test_env_example_coverage.py` (system test standing in for the manual grep)
+
+> **Plan adjustment:** the AWS_* `KEY=` lines from §1.4 are documented as
+> comments in `.env.example` here and activated as real `KEY=` lines in Phase 2,
+> exactly when `settings.py` reads them. The repo's existing
+> `test_env_example_keys_are_read_somewhere` guardrail enforces *declared ⟺
+> read*; activating them in Phase 1 would leave them unread until Phase 2 and
+> trip that guardrail. `USE_S3=False` ships active (its token already appears in
+> `settings.py`).
 
 ### Phase 2: Storage config swap (layers 1+2+3)
 

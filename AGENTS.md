@@ -7,7 +7,7 @@
 *   **Frontend:** React + Oval + Redux, integrated via `django-vite` (HMR enabled for dev).
 *   **API Layer:** `django-ninja` (strictly enforcing Pydantic DTO contracts).
 *   **Database:** SQLite3 (WAL mode) at `db.sqlite3`.
-*   **Storage:** Django `FileSystemStorage` with hashed path bucketing for OpenCV binaries. DB stores metadata only.
+*   **Storage:** django-storages S3 backend in prod (Railway Storage Buckets, Tigris-backed) and in docker-compose dev (MinIO); `FileSystemStorage` is the env-selected debug fallback (`USE_S3=False`). Hashed-path bucketing for OpenCV binaries still applies under both backends (`ScoringStorage.save_upload`'s SHA-1 digest bucketing). DB stores metadata only.
 *   **Deployment Target:** Render (Persistent Disk) via GitHub Actions CI/CD.
 
 ## 2. Domain Constraints (Source of Truth: `context/foundation/prd.md`)
