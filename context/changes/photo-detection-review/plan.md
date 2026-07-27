@@ -1455,14 +1455,14 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [x] 3.1 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. 2 new tests)
-- [x] 3.2 4 existing tests migrated to patch `DetectorFactory.build` (Phase 3.2a — mandatory, otherwise `AttributeError`) — the file had **3** patch sites (not 4); all 3 migrated
-- [x] 3.3 `make check` passes (no dangling GoogleAIStudioDetector import)
+- [x] 3.1 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. 2 new tests) — 718e612
+- [x] 3.2 4 existing tests migrated to patch `DetectorFactory.build` (Phase 3.2a — mandatory, otherwise `AttributeError`) — the file had **3** patch sites (not 4); all 3 migrated — 718e612
+- [x] 3.3 `make check` passes (no dangling GoogleAIStudioDetector import) — 718e612
 
 #### Manual
 
-- [x] 3.4 `VISION_DETECTOR=mock make dev` runs MockDetector via the factory — automated as `tests/system/test_detector_env_wiring.py::test_vision_detector_mock_runs_mockdetector_via_factory` (drives `process_image` via `manage.py shell` subprocess; asserts 5-hole pattern + no traceback)
-- [x] 3.5 `VISION_DETECTOR` unset leaves prod-shape behavior unchanged — automated as `tests/system/test_detector_env_wiring.py::test_vision_detector_unset_boots_prod_shape` (runserver boots clean); the unset→google default is unit-pinned by `test_factory_default_is_google`
+- [x] 3.4 `VISION_DETECTOR=mock make dev` runs MockDetector via the factory — automated as `tests/system/test_detector_env_wiring.py::test_vision_detector_mock_runs_mockdetector_via_factory` (drives `process_image` via `manage.py shell` subprocess; asserts 5-hole pattern + no traceback) — 718e612
+- [x] 3.5 `VISION_DETECTOR` unset leaves prod-shape behavior unchanged — automated as `tests/system/test_detector_env_wiring.py::test_vision_detector_unset_boots_prod_shape` (runserver boots clean); the unset→google default is unit-pinned by `test_factory_default_is_google` — 718e612
 
 ### Phase 4: BFF scoring routes (real, MockDetector-backed)
 
