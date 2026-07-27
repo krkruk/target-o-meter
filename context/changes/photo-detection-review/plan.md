@@ -1468,15 +1468,15 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [x] 4.1 `uv run pytest tests/system/test_scoring_routes.py` passes (all cases)
-- [x] 4.2 `make check` passes (import-linter independence intact)
-- [x] 4.3 `make be-test` passes (no regressions)
+- [x] 4.1 `uv run pytest tests/system/test_scoring_routes.py` passes (all cases) — 3aec152
+- [x] 4.2 `make check` passes (import-linter independence intact) — 3aec152
+- [x] 4.3 `make be-test` passes (no regressions) — 3aec152
 
 #### Manual
 
-- [x] 4.4 `curl -F` POST to `/v1/scoring/jobs` returns 201 + job_id; poll transitions to succeeded with 5 mocked holes — automated as `tests/system/test_scoring_routes.py::test_post_scoring_jobs_creates_job_for_user_role` + `::test_get_scoring_job_returns_marked_image_url_when_succeeded` + `::test_post_scoring_jobs_works_on_live_runserver` (real WSGI multipart; the MockDetector round-trip drives `process_image` and asserts 5 holes + status=succeeded)
-- [x] 4.5 Atomicity: BFF raise after enqueue leaves no orphan ScoringJob row — automated as `tests/system/test_scoring_routes.py::test_post_scoring_jobs_rolls_back_on_enqueue_failure` (patches `schedule_image_processing` to raise after the row+enqueue; asserts no ScoringJob row survives the BFF's outer `transaction.atomic`)
-- [x] 4.6 Both Owner and User roles can upload — automated as `::test_post_scoring_jobs_creates_job_for_user_role` + `::test_post_scoring_jobs_allows_owner_role` (POST uses `session_auth` only, not `require_owner`)
+- [x] 4.4 `curl -F` POST to `/v1/scoring/jobs` returns 201 + job_id; poll transitions to succeeded with 5 mocked holes — automated as `tests/system/test_scoring_routes.py::test_post_scoring_jobs_creates_job_for_user_role` + `::test_get_scoring_job_returns_marked_image_url_when_succeeded` + `::test_post_scoring_jobs_works_on_live_runserver` (real WSGI multipart; the MockDetector round-trip drives `process_image` and asserts 5 holes + status=succeeded) — 3aec152
+- [x] 4.5 Atomicity: BFF raise after enqueue leaves no orphan ScoringJob row — automated as `tests/system/test_scoring_routes.py::test_post_scoring_jobs_rolls_back_on_enqueue_failure` (patches `schedule_image_processing` to raise after the row+enqueue; asserts no ScoringJob row survives the BFF's outer `transaction.atomic`) — 3aec152
+- [x] 4.6 Both Owner and User roles can upload — automated as `::test_post_scoring_jobs_creates_job_for_user_role` + `::test_post_scoring_jobs_allows_owner_role` (POST uses `session_auth` only, not `require_owner`) — 3aec152
 
 ### Phase 5: Docker dev environment (F-01 deferred + MinIO)
 
