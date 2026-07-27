@@ -9,9 +9,14 @@ modes:
   * DEV  (``DEBUG=True``):  the entry tag points at the Vite dev server.
   * PROD (``DEBUG=False``): the entry tag points at the hashed bundle under
     ``/static/assets/`` (read from ``dist/manifest.json``).
+  * DEV-CONTAINER (``DEBUG=True`` + ``DJANGO_VITE_DEV_MODE=False``): the entry
+    tag points at the hashed bundle too — the dev image bakes the bundle and
+    ``docker-compose.dev.yml`` flips django-vite into manifest mode because it
+    runs no Vite dev server on :5173. See ``test_dev_container_*`` below and
+    S-02 impl-review F11.
 
 The shared anchor across modes is ``src/main.tsx`` (dev-server URL carries it
-verbatim; the prod manifest is keyed by it). Both must also contain
+verbatim; the prod manifest is keyed by it). All must also contain
 ``<div id="root">`` and produce no server traceback.
 
 Phase 5.C extended the prod-mode test: the hashed bundle URL the served HTML
@@ -55,6 +60,18 @@ _PROD_MODE_ENV = {
     "DEBUG": "False",
     "ALLOWED_HOSTS": "*",
     "SECRET_KEY": "test-only-prod-mode-boot-key-not-secret",
+}
+
+# Dev-container boot env. ``make dev-container`` runs the dev image with
+# DEBUG=True (backend dev: autoreload, dev-bypass auth, USE_S3 against MinIO)
+# but DJANGO_VITE_DEV_MODE=False so the frontend is served from the baked
+# bundle (manifest mode) instead of an absent Vite dev server — there is no
+# :5173 service in docker-compose.dev.yml. This is the third serving mode
+# alongside native dev (DEBUG=True + Vite on :5173) and prod (DEBUG=False +
+# manifest). See S-02 impl-review F11.
+_DEV_CONTAINER_ENV = {
+    "DEBUG": "True",
+    "DJANGO_VITE_DEV_MODE": "False",
 }
 
 
@@ -201,5 +218,91 @@ def test_prod_mode_bundle_inlines_target_svg(runserver_factory) -> None:
     assert "assets/target.svg" not in html, (
         "served HTML references ``assets/target.svg`` directly — see bundle "
         "assertion above for the fix path."
+    )
+    server.assert_no_traceback()
+
+
+# ---------------------------------------------------------------------------
+# Dev-container mode (S-02 impl-review F11): DEBUG=True but no Vite dev server.
+# ---------------------------------------------------------------------------
+#
+# ``make dev-container`` brings up docker-compose.dev.yml, which runs the dev
+# image with DEBUG=True (backend dev) but DJANGO_VITE_DEV_MODE=False. The dev
+# image bakes the frontend bundle (``npm ci && npm run build`` in the Dockerfile
+# dev stage) and django-vite serves it from ``dist/manifest.json`` — no Vite
+# process, no :5173, no HMR in-container (native ``make dev`` keeps HMR).
+#
+# The motivating bug: the dev compose has no Vite service, and ``dev_mode`` was
+# bound directly to ``DEBUG``, so the dev container emitted
+# ``<script src="http://localhost:5173/...">`` with nothing answering on :5173.
+# The browser loaded the Django shell (fine) but the JS module import failed →
+# ``#root`` stayed empty → a blank page. These tests pin the dev-container
+# serving contract (manifest mode under DEBUG=True) so the regression can't
+# recur. They run without Docker: they boot a plain runserver with the same
+# env posture the dev compose sets.
+
+
+def test_dev_container_mode_serves_hashed_bundle(runserver_factory) -> None:
+    """DEV-CONTAINER: ``DEBUG=True`` + ``DJANGO_VITE_DEV_MODE=False`` serves the
+    hashed bundle (not the absent :5173 dev server).
+
+    Regression guard for the blank ``make dev-container`` page. The dev image
+    bakes the bundle; the dev compose flips django-vite into manifest mode so
+    the entry tag points at ``/static/assets/main-*.js`` instead of
+    ``http://localhost:5173/...`` (which has no answerer in-container).
+    """
+    if not _FRONTEND_DIST_MANIFEST.exists():
+        pytest.skip(
+            "src/frontend/dist/manifest.json absent — run `npm run build` in "
+            "src/frontend/ before exercising the dev-container bundle check."
+        )
+
+    server = runserver_factory(extra_env=_DEV_CONTAINER_ENV)
+    html = server.get("/").text
+    # The dev-server URL must NOT appear: nothing answers :5173 in-container.
+    assert "localhost:5173" not in html, (
+        "dev-container HTML references the Vite dev server (:5173), but "
+        "docker-compose.dev.yml runs no Vite service — the browser would fail "
+        "to import the entry module and #root stays empty (the blank page)."
+    )
+    # Manifest-mode signature: the hashed bundle under /static/assets/.
+    assert "/static/assets/main-" in html
+    assert ".js" in html
+    assert '<div id="root">' in html
+    server.assert_no_traceback()
+
+
+def test_dev_container_mode_bundle_is_fetchable_javascript(runserver_factory) -> None:
+    """DEV-CONTAINER: the hashed bundle the shell references resolves to a 200
+    JavaScript file under DEBUG=True + manifest mode.
+
+    Mirrors ``test_prod_mode_hashed_bundle_is_served_as_javascript`` for the
+    dev-container posture. The bundle must be served via the DEBUG runserver's
+    staticfiles finders (``src/frontend/dist`` is in STATICFILES_DIRS), so a
+    200 here proves the dev image's baked bundle is reachable from the
+    container's runserver.
+    """
+    if not _FRONTEND_DIST_MANIFEST.exists():
+        pytest.skip(
+            "src/frontend/dist/manifest.json absent — run `npm run build` in "
+            "src/frontend/ before exercising the dev-container bundle fetch."
+        )
+
+    server = runserver_factory(extra_env=_DEV_CONTAINER_ENV)
+    html = server.get("/").text
+    m = re.search(r'<script[^>]+src="(/static/assets/main-[^"]+\.js)"', html)
+    assert m, f"no hashed bundle script tag found in served HTML:\n{html}"
+    script_path = m.group(1)
+
+    bundle_response = server.get(script_path)
+    assert bundle_response.status_code == 200, (
+        f"hashed bundle {script_path!r} returned {bundle_response.status_code} "
+        f"in dev-container mode — the SPA's JS is unreachable (the blank page). "
+        f"Is the dev image baking the bundle into src/frontend/dist?"
+    )
+    content_type = bundle_response.headers.get("content-type", "")
+    assert "javascript" in content_type, (
+        f"hashed bundle {script_path!r} served as {content_type!r}, not "
+        f"JavaScript in dev-container mode."
     )
     server.assert_no_traceback()

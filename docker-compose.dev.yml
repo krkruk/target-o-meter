@@ -3,7 +3,8 @@
 #
 # Four services share the ``dev`` image (built from Dockerfile's dev stage):
 #   - web:       runserver + dev-seed (migrate + seed first), live-reload via
-#                 bind-mount of ./src + ./templates
+#                 bind-mount of the backend Python packages (NOT ./src/frontend,
+#                 which the image bakes — mounting it would shadow the bundle)
 #   - worker:    qcluster (the async worker that runs process_image)
 #   - minio:     S3 API (:9000) + console (:9001)
 #   - create-bucket: one-shot ``mc mb`` against minio (idempotent)
@@ -12,6 +13,12 @@
 # MinIO; VISION_DETECTOR=mock keeps the detector offline. The dev-seed.sh
 # entrypoint runs migrate + the admin/owner/user seed before exec'ing the
 # role command (web → runserver, worker → qcluster).
+#
+# Frontend: this stack runs no Vite dev server. The dev image bakes the bundle
+# (Dockerfile dev stage: npm ci && npm run build) and ``web`` sets
+# DJANGO_VITE_DEV_MODE=False so django-vite serves it from dist/manifest.json
+# (manifest mode) instead of the absent :5173. Native ``make dev`` keeps HMR
+# for live frontend work; HMR-in-container is intentionally not provided.
 #
 # Env is read from ``.env`` (copy .env.example to .env). The compose overrides
 # the storage + detector vars below to flip on the S3/MinIO path; everything
@@ -42,6 +49,14 @@ services:
       # Mocked detector — no API calls, exercises the full round-trip.
       VISION_DETECTOR: mock
       DEBUG: "True"
+      # Serve the frontend from the dev image's baked bundle (manifest mode),
+      # NOT the absent :5173 Vite dev server. This stack runs no Vite service,
+      # so the default (dev_mode=DEBUG=True) would emit http://localhost:5173/...
+      # and the browser would import nothing → blank page. The dev image bakes
+      # src/frontend/dist; DJANGO_VITE_DEV_MODE=False makes django-vite read it
+      # via manifest mode. HMR-in-container is intentionally not provided — use
+      # native `make dev` for live frontend work. (S-02 impl-review F11.)
+      DJANGO_VITE_DEV_MODE: "False"
       # Throwaway DB under the named volume (settings reads RAILWAY_VOLUME_MOUNT_PATH).
       RAILWAY_VOLUME_MOUNT_PATH: /data
       # Auth bypass so the app is usable without Auth0 creds.
@@ -56,13 +71,25 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
       ALLOWED_HOSTS: localhost,127.0.0.1,fedora-linux.local
     volumes:
-      # Live-reload: code edits in ./src reach the container immediately.
+      # Granular backend mounts (NOT ./src:/app/src). The blanket mount would
+      # shadow the dev image's baked src/frontend/dist with the host's
+      # gitignored-empty dist/, undoing the image-time frontend build → blank
+      # page. Mounting the backend Python packages + manage.py preserves the
+      # live-reload contract (edit a .py → runserver reloads) WITHOUT touching
+      # the frontend bundle. ``src/`` holds only target_o_meter/ bff/ domains/
+      # frontend/ + manage.py (AGENTS.md §4), so this list fully covers backend
+      # live-reload. ``worker`` keeps the blanket ./src mount below — it never
+      # serves the frontend, so shadowing src/frontend there is harmless.
+      #
       # The :Z suffix lets podman relabel the host path for the container's
       # SELinux context on Fedora (bind mounts need it; named volumes below
       # don't — podman labels those automatically). NOTE: podman-compose (unlike
       # the docker CLI) drops the option when combined with :cached, so :cached
       # is omitted — it's a Docker-for-Mac no-op on Linux anyway.
-      - ./src:/app/src:z
+      - ./src/target_o_meter:/app/src/target_o_meter:z
+      - ./src/bff:/app/src/bff:z
+      - ./src/domains:/app/src/domains:z
+      - ./src/manage.py:/app/src/manage.py:z
       - ./templates:/app/templates:z
       - ./docker:/app/docker:z
       # SQLite DB + MinIO data on named volumes (persist across re-up).

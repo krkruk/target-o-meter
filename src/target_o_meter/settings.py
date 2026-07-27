@@ -383,10 +383,12 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # mirror for the disk-spill thre
 # ---------------------------------------------------------------------------
 #
 # django-vite 3.1.0 bridges Vite's dev server (HMR) and its hashed production
-# build to Django's template layer. In DEBUG, ``{% vite_asset %}`` /
-# ``{% vite_react_refresh %}`` emit URLs pointing at the Vite dev server
-# (``http://localhost:5173``); in prod they resolve hashed files from
-# ``dist/manifest.json``.
+# build to Django's template layer. When ``dev_mode`` is True, ``{% vite_asset
+# %}`` / ``{% vite_react_refresh %}`` emit URLs pointing at the Vite dev server
+# (``http://localhost:5173``); when False they resolve hashed files from
+# ``dist/manifest.json``. ``dev_mode`` defaults to ``DEBUG`` (so native
+# ``make dev`` HMR needs no extra env) but is overridable via
+# ``DJANGO_VITE_DEV_MODE`` — see the note on the dict below.
 #
 # ``manifest_path`` is consulted only when ``dev_mode=False``, but pointing it
 # unconditionally is harmless and avoids a dev/prod settings split for S-01's
@@ -394,13 +396,24 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # mirror for the disk-spill thre
 # lives under ``src/frontend/dist/`` (``BASE_DIR`` == ``src/``).
 #
 # ``STATICFILES_DIRS`` adds the built bundle so ``collectstatic`` picks it up
-# for prod (WhiteNoise serves it). In dev django-vite proxies to the Vite dev
-# server instead, so the entry is unused-but-harmless in DEBUG.
+# for prod (WhiteNoise serves it). In native dev django-vite proxies to the
+# Vite dev server instead, so the entry is unused-but-harmless there; in the
+# dev container (``DEBUG=True`` + ``DJANGO_VITE_DEV_MODE=False``) the finders
+# serve the baked bundle directly.
 FRONTEND_DIR = BASE_DIR / "frontend"
 
+# ``dev_mode`` is decoupled from ``DEBUG`` so the dev-container posture can
+# serve the built bundle (manifest mode) while keeping ``DEBUG=True`` for
+# backend dev (autoreload, dev-bypass auth, USE_S3 against MinIO).
+# ``docker-compose.dev.yml`` runs no Vite dev server (its only services are
+# web/worker/minio/create-bucket), so the default ``dev_mode=DEBUG=True`` would
+# emit ``http://localhost:5173/...`` with nothing answering → blank page. The
+# compose sets ``DJANGO_VITE_DEV_MODE=False`` to force manifest mode. The
+# default stays ``DEBUG`` so native ``make dev`` (Django :8000 + Vite :5173,
+# HMR) is unchanged. (S-02 impl-review F11.)
 DJANGO_VITE = {
     "default": {
-        "dev_mode": DEBUG,
+        "dev_mode": _env_bool("DJANGO_VITE_DEV_MODE", DEBUG),
         "dev_server_host": "localhost",
         "dev_server_port": 5173,
         "manifest_path": FRONTEND_DIR / "dist" / "manifest.json",

@@ -206,3 +206,78 @@ def test_dev_seed_script_seeds_via_app_surface_not_orm() -> None:
     assert "create_superuser" in script
     # migrate runs unconditionally (idempotent re-runs safe).
     assert "manage.py migrate" in script
+
+
+# ---------------------------------------------------------------------------
+# Dev-container frontend serving (S-02 impl-review F11)
+# ---------------------------------------------------------------------------
+#
+# ``make dev-container`` serves a blank page if the dev container has no
+# servable frontend bundle. The dev compose runs DEBUG=True (no Vite dev
+# server), so django-vite must be flipped into manifest mode AND the dev image
+# must bake the bundle. These static assertions pin that wiring without needing
+# the Docker daemon — the live serving contract is covered by
+# ``test_spa_pipeline.py::test_dev_container_*``.
+
+
+def test_dev_compose_forces_django_vite_manifest_mode() -> None:
+    """``web`` sets ``DJANGO_VITE_DEV_MODE=False`` so django-vite serves the
+    baked bundle (manifest mode), not the absent :5173 Vite dev server.
+
+    Regression guard for the blank ``make dev-container`` page: without this
+    env, ``dev_mode`` defaults to ``DEBUG=True`` and the entry tag points at
+    ``http://localhost:5173/...`` with nothing answering → ``#root`` stays
+    empty.
+    """
+    doc = _load_compose("docker-compose.dev.yml")
+    assert doc["services"]["web"]["environment"]["DJANGO_VITE_DEV_MODE"] == "False"
+
+
+def test_dev_compose_web_does_not_shadow_frontend_bundle() -> None:
+    """``web`` does NOT mount ``./src:/app/src`` (the blanket mount that would
+    shadow the dev image's baked ``src/frontend/dist`` with the host's
+    gitignored-empty dist/).
+
+    The granular mounts (``./src/target_o_meter``, ``./src/bff``,
+    ``./src/domains``, ``./src/manage.py``) preserve backend live-reload
+    without touching the frontend bundle. ``worker`` keeps the blanket mount —
+    it never serves the frontend, so shadowing ``src/frontend`` there is
+    harmless.
+    """
+    doc = _load_compose("docker-compose.dev.yml")
+    web_volumes = doc["services"]["web"]["volumes"]
+    shadowing = [v for v in web_volumes if v.split(":")[0] == "./src"]
+    assert not shadowing, (
+        f"web mounts the blanket ./src path ({shadowing}), which would shadow "
+        f"the dev image's baked src/frontend/dist → blank page. Use granular "
+        f"backend mounts instead."
+    )
+    # Sanity: the granular backend mounts that preserve live-reload are present.
+    web_srcs = {v.split(":")[0] for v in web_volumes}
+    assert {
+        "./src/target_o_meter", "./src/bff", "./src/domains",
+    } <= web_srcs, (
+        f"granular backend mounts missing from web volumes: {web_volumes}"
+    )
+
+
+def test_devfile_dev_stage_builds_frontend() -> None:
+    """The Dockerfile ``dev`` stage builds the frontend (``npm run build``) so
+    the dev image carries ``src/frontend/dist`` for manifest-mode serving.
+
+    The dev image is the only source of the frontend bundle in the dev
+    container (no Vite service, host's dist/ is gitignored-empty). Mirrors the
+    prod stage's build. Reading the Dockerfile as text (not building) avoids
+    needing the daemon — the full build is the manual gate.
+    """
+    dockerfile = (_REPO_ROOT / "Dockerfile").read_text()
+    # Locate the dev stage body (FROM base AS dev ... up to the next FROM).
+    dev_start = dockerfile.find("FROM base AS dev")
+    assert dev_start != -1, "no 'FROM base AS dev' stage in Dockerfile"
+    next_from = dockerfile.find("\nFROM", dev_start + 1)
+    dev_stage = dockerfile[dev_start : next_from if next_from != -1 else len(dockerfile)]
+    assert "npm run build" in dev_stage, (
+        "the dev stage does not run 'npm run build' — the dev image would have "
+        "no src/frontend/dist → django-vite can't serve the bundle → blank page"
+    )
+    assert "npm ci" in dev_stage, "dev stage must run 'npm ci' before 'npm run build'"

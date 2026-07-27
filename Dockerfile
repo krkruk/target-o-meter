@@ -3,8 +3,13 @@
 # Two stages share a common Python 3.14 base with the opencv system deps the
 # vision domain needs (per infrastructure.md Risk Register: pre-build opencv
 # into the image so Railpack/Docker don't rebuild it on every change):
-#   - ``dev``: deps only — ``src/`` is bind-mounted at runtime for live-reload,
-#     so it is NOT copied here (keeps the build cache stable across code edits).
+#   - ``dev``: deps + the baked frontend bundle (``npm ci && npm run build``).
+#     Backend Python ``src/`` is bind-mounted at runtime (compose) for live-
+#     reload, but ``src/frontend/`` is NOT mounted (the dev compose mounts only
+#     the backend packages), so the baked ``dist/`` survives. The dev compose
+#     runs DEBUG=True + DJANGO_VITE_DEV_MODE=False so the bundle is served via
+#     manifest mode (no Vite dev server in-container). HMR stays on native
+#     ``make dev``.
 #   - ``prod``: copies ``src/`` and builds the frontend so ``collectstatic`` has
 #     the hashed bundle, then runs under gunicorn (NOT runserver).
 #
@@ -57,11 +62,28 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --group default
 
 # ---------------------------------------------------------------------------
-# Dev stage: deps only. src/ is bind-mounted at runtime (compose).
+# Dev stage: deps + the baked frontend bundle. Backend Python src/ is bind-
+# mounted at runtime (compose), but ``src/frontend/`` is NOT — the dev compose
+# mounts only the backend Python packages + manage.py (not ``./src/frontend``)
+# so this baked ``dist/`` survives as the container's frontend source.
 # ---------------------------------------------------------------------------
 FROM base AS dev
-# Intent: live-reload. Copying src/ here would be overwritten by the bind mount
-# AND bust the cache on every code edit, so it is intentionally absent.
+# Bake the frontend bundle so the dev container serves the SPA without a Vite
+# dev server. ``docker-compose.dev.yml`` runs DEBUG=True (backend dev) +
+# DJANGO_VITE_DEV_MODE=False so django-vite serves this bundle from
+# ``dist/manifest.json`` (manifest mode) instead of the absent :5173 dev server.
+# Native ``make dev`` (Django :8000 + Vite :5173 HMR) is unchanged — that path
+# doesn't use the image. Mirrors the prod stage's build; scoped to src/frontend.
+COPY src/frontend ./src/frontend
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        nodejs \
+        npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && cd src/frontend \
+    && npm ci \
+    && npm run build \
+    && rm -rf node_modules
 CMD ["uv", "run", "python", "src/manage.py", "runserver", "0.0.0.0:8000"]
 
 # ---------------------------------------------------------------------------
