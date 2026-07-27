@@ -44,8 +44,17 @@ WORKDIR /app
 
 # Install deps once (Docker cache: deps change far less often than src/).
 # ``--frozen`` refuses to write the lockfile — CI-grade reproducibility.
+#
+# The project splits runtime deps between [project.dependencies] (django,
+# gunicorn, whitenoise, the CV/scipy stack) and the PEP 735 ``default`` group
+# (django-ninja, django-q2, authlib). ``uv sync`` includes [project.dependencies]
+# by default, but named groups (even one called ``default``) are NOT auto-
+# included unless listed in a ``default-groups`` setting — so we pass
+# ``--group default`` explicitly. ``--no-dev`` excludes the dev/test/system-test
+# groups (ruff, pytest, playwright — not runtime). The result is the full
+# runtime dep set the container needs.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --group default
 
 # ---------------------------------------------------------------------------
 # Dev stage: deps only. src/ is bind-mounted at runtime (compose).
@@ -60,8 +69,12 @@ CMD ["uv", "run", "python", "src/manage.py", "runserver", "0.0.0.0:8000"]
 # ---------------------------------------------------------------------------
 FROM base AS prod
 
-# Copy the application + frontend source.
+# Copy the application + frontend source + the project-level templates dir.
+# (settings.py's TEMPLATES['DIRS'] points at BASE_DIR.parent / 'templates' —
+# BASE_DIR is /app/src in the container, so templates live at /app/templates/.
+# The dev stage bind-mounts this; the prod stage must COPY it.)
 COPY src/ ./src/
+COPY templates/ ./templates/
 
 # Build the frontend bundle so collectstatic has the hashed assets to serve
 # via WhiteNoise. Node is not in the base image; install it via the official
@@ -84,4 +97,7 @@ ENV DEBUG=False
 RUN uv run python src/manage.py collectstatic --noinput --clear
 
 # gunicorn is a default-group dep (pyproject.toml). The prod compose runs it.
-CMD ["uv", "run", "gunicorn", "target_o_meter.wsgi:application", "--bind", "0.0.0.0:8000"]
+# The module path is ``src.target_o_meter.wsgi`` (the repo's DDD layout puts the
+# Django project under src/; PYTHONPATH=/app makes ``src`` importable but not
+# ``target_o_meter`` directly).
+CMD ["uv", "run", "gunicorn", "src.target_o_meter.wsgi:application", "--bind", "0.0.0.0:8000"]

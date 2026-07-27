@@ -13,8 +13,27 @@
 # → qcluster), becoming PID 1 so signals reach Django directly.
 set -euo pipefail
 
+# Scratch dir for transient stderr capture (the migrate retry loop).
+RUN_DIR="${RAILWAY_VOLUME_MOUNT_PATH:-/tmp}"
+
 echo "▸ migrate"
-uv run python src/manage.py migrate --noinput
+# podman-compose starts web + worker concurrently; the bind-mount :Z relabel
+# (chcon for SELinux) can still be in-flight when the first manage.py call runs,
+# surfacing as "Permission denied". Retry a few times — the relabel completes
+# within seconds and the retry succeeds. Without this, the loser of the start
+# race exits(2) before the relabel finishes.
+for attempt in 1 2 3 4 5 6 7 8; do
+    if uv run python src/manage.py migrate --noinput 2>"$RUN_DIR/.migrate.err"; then
+        break
+    fi
+    if grep -q "Permission denied" "$RUN_DIR/.migrate.err" 2>/dev/null; then
+        echo "  migrate: Permission denied (SELinux relabel in-flight?), retry $attempt/8..."
+        sleep 2
+        continue
+    fi
+    cat "$RUN_DIR/.migrate.err" >&2
+    exit 1
+done
 
 echo "▸ dev seed (admin + owner + user)"
 # ``manage.py shell``-invoked seed using the identity domain's service surface.

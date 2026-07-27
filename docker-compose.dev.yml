@@ -26,6 +26,12 @@ services:
     command: ["/app/docker/dev-seed.sh"]
     environment:
       SERVICE_ROLE: web
+      # The project isn't editable-installed in the image (the [project] name is
+      # a placeholder), so make the package root importable for EVERY process —
+      # including qcluster's spawned workers, which don't re-run manage.py's
+      # sys.path bootstrap. Without this, the worker errors with "Function
+      # src.domains.vision.services.process_image is not defined".
+      PYTHONPATH: /app
       # S3 against MinIO (flips the USE_S3 swap on).
       USE_S3: "True"
       AWS_ACCESS_KEY_ID: minioadmin
@@ -50,9 +56,14 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
     volumes:
       # Live-reload: code edits in ./src reach the container immediately.
-      - ./src:/app/src:cached
-      - ./templates:/app/templates:cached
-      - ./docker:/app/docker:cached
+      # The :Z suffix lets podman relabel the host path for the container's
+      # SELinux context on Fedora (bind mounts need it; named volumes below
+      # don't — podman labels those automatically). NOTE: podman-compose (unlike
+      # the docker CLI) drops the option when combined with :cached, so :cached
+      # is omitted — it's a Docker-for-Mac no-op on Linux anyway.
+      - ./src:/app/src:z
+      - ./templates:/app/templates:z
+      - ./docker:/app/docker:z
       # SQLite DB + MinIO data on named volumes (persist across re-up).
       - db-data:/data
     ports:
@@ -69,6 +80,9 @@ services:
     command: ["/app/docker/dev-seed.sh"]
     environment:
       SERVICE_ROLE: worker
+      # PYTHONPATH=/app — see the web service comment. The worker's spawned
+      # qcluster subprocesses need it to import src.domains.vision.services.
+      PYTHONPATH: /app
       USE_S3: "True"
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
@@ -83,9 +97,10 @@ services:
       AUTH0_SECRET: ${AUTH0_SECRET:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
     volumes:
-      - ./src:/app/src:cached
-      - ./templates:/app/templates:cached
-      - ./docker:/app/docker:cached
+      # :Z for SELinux on Fedora bind mounts (see the web service comment).
+      - ./src:/app/src:z
+      - ./templates:/app/templates:z
+      - ./docker:/app/docker:z
       - db-data:/data
     depends_on:
       # migrate (run by web's dev-seed) must complete first so the worker's

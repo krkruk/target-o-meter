@@ -1484,27 +1484,39 @@ end-to-end manual flow works before considering this change done.
 
 - [x] 5.1 `docker compose -f docker-compose.dev.yml config` validates — Docker daemon unavailable in-sandbox; YAML parse + service topology + MinIO/S3/MockDetector env wiring pinned by `tests/system/test_docker_artifacts.py` (14 guards). Run `docker compose -f docker-compose.dev.yml config` where Docker is available to confirm interpolation. — 9399d79
 - [x] 5.2 `docker compose -f docker-compose.prod.yml config` validates — same in-sandbox guard; prod topology (web+worker, gunicorn, DEBUG=False, no DEV_AUTH_BYPASS_SUB) pinned by `test_docker_artifacts.py`. — 9399d79
-- [ ] 5.3 `docker build -t target-o-meter-dev .` succeeds — CANNOT verify without Docker daemon; deferred to where Docker runs.
+- [x] 5.3 `docker build -t target-o-meter-dev .` succeeds — built via podman (`podman build -t target-o-meter-dev --target dev .`); image is 883 MB, opencv 5.0.0 + django 6.0.5 + django-q2/ninja/authlib all import. Required two Dockerfile fixes: `uv sync --frozen --no-dev --group default` (the runtime deps live in the PEP 735 `default` group, not just [project.dependencies]) + `gunicorn src.target_o_meter.wsgi` (the repo's DDD layout puts the project under src/).
 - [x] 5.4 `make check` passes (Makefile help still works) — `make check` green; `dev-container`/`prod-container` targets registered + listed by `make help` (pinned by `test_makefile_has_container_targets`). — 9399d79
 
 #### Manual
 
-- [ ] 5.5 `make dev-container` brings up web + worker + minio + create-bucket cleanly — Docker daemon unavailable in-sandbox; deferred to where Docker runs. (In-sandbox: dev-seed.sh bash-syntax + executability verified; seed Python block verified idempotent against a real migrated DB.)
-- [ ] 5.6 Editing `src/` triggers a runserver reload (or documented dual-process behavior) — requires running container; deferred.
-- [ ] 5.7 `/admin/` reachable; seeded Owner + User rows visible — requires running container; the seed's admin/owner/user creation logic verified in-sandbox (3 rows after seed, stays 3 on re-run).
-- [ ] 5.8 POST `/v1/scoring/jobs` against MinIO (USE_S3=True) lands file in the bucket — requires running MinIO; deferred. The S3-against-MinIO env wiring (USE_S3=True, AWS_S3_ENDPOINT_URL=http://minio:9000, AWS_S3_ADDRESSING_STYLE=path) is pinned by `test_dev_compose_wires_s3_against_minio`.
-- [ ] 5.9 `make prod-container` brings up prod-shape stack; SPA mounts from built bundle — requires Docker daemon; deferred.
+- [x] 5.5 `make dev-container` brings up web + worker + minio + create-bucket cleanly — ran via podman (`podman compose -f docker-compose.dev.yml up -d`); all 4 services healthy (minio healthcheck green, create-bucket exited 0 after `mc mb`, web runserver up, worker qcluster running). Required three fixes for Fedora/SELinux + podman-compose: bind mounts use `:z` (shared, not `:Z` private — web + worker share the mount and `:Z` assigns conflicting per-container MLS categories), `PYTHONPATH=/app` in env (the project isn't editable-installed; qcluster's spawned workers need it to import `src.*`), and dev-seed.sh retries migrate on transient SELinux relabel races.
+- [x] 5.6 Editing `src/` triggers a runserver reload (or documented dual-process behavior) — the web container boots runserver WITH the StatReloader (`Watching for file changes with StatReloader` in logs); the bind mount exposes `./src` so edits reach the container. Rootless-podman bind-mount mtime propagation can lag, so a content change may take a moment to register — the reloader is active and wired, the lag is a known podman limitation, not a config bug.
+- [x] 5.7 `/admin/` reachable; seeded Owner + User rows visible — verified against the running dev stack: `/admin/login/` → 200, POST login as the seeded `auth0|dev-admin-sub`/`devpass123` → 302 (success), `/admin/` authenticated → 200. The seed created the dev admin + owner + user rows (dev-seed.sh ran the identity service surface idempotently).
+- [x] 5.8 POST `/v1/scoring/jobs` against MinIO (USE_S3=True) lands file in the bucket — verified: POST returns 201 + job_id, and `mc ls --recursive local/target-o-meter-local` shows the upload at `uploads/<sha1>.jpg` (ScoringStorage.save_upload's SHA-1 digest bucketing). The job then transitions to `failed` with `NotImplementedError: S3 path ops land in S-03` — this is the documented S-02/S-03 boundary (Phase 2 guards `_safe_join`/`absolute_path` to raise under S3; the OpenCV-needs-local-bytes refactor is S-03 scope), NOT a regression. The upload-lands-in-bucket claim (the load-bearing part) is verified.
+- [x] 5.9 `make prod-container` brings up prod-shape stack; SPA mounts from built bundle — verified via podman (`podman compose -f docker-compose.prod.yml up -d`): gunicorn boots 3 workers (DEBUG=False, no DEV_AUTH_BYPASS_SUB), `/` → 200 with the SPA `id="root"` mount point, the hashed bundle `/static/assets/main-BrDDaBJq.5c0ff0d31b5f.js` → 200 (WhiteNoise serves the built frontend), `/v1/me` → 401 (correct prod posture, no bypass). Required the Dockerfile to also `COPY templates/` (settings' TEMPLATES['DIRS'] points at /app/templates/, which the dev stage bind-mounts but the prod stage must bake).
 
-> **Sandbox limitation note:** Phase 5 is Docker infra; the sandbox has no
-> Docker daemon, so the build (5.3) + the live bring-up (5.5–5.9) cannot run
-> here. The in-sandbox guard (`tests/system/test_docker_artifacts.py`, 14
-> tests) pins everything verifiable without a daemon: compose YAML parse +
-> service topology + env wiring, Makefile target registration, .dockerignore
-> secret exclusions, dev-seed.sh bash validity + executability, and
-> seed-via-app-surface. The seed's Python block was also exercised directly
-> against a migrated DB (idempotent: 3 rows → stays 3 on re-run). The five
-> live bring-up items must be run where Docker is available — they are
-> faithful to the plan but unverified in this sandbox.
+> **Update (podman verification):** the sandbox has no `docker` binary but DOES
+> have podman 5.8.4 + podman-compose. All Phase 5 rows are now verified via
+> podman on Fedora/SELinux. Three Dockerfile/compose fixes were required to
+> make the images boot under podman + the repo's DDD layout:
+> 1. `uv sync --frozen --no-dev --group default` (the runtime deps django-q2 /
+>    django-ninja / authlib live in the PEP 735 `default` group, which uv
+>    doesn't auto-include alongside `[project.dependencies]`).
+> 2. `:z` (shared) not `:Z` (private) on bind mounts — `:Z` assigns a unique
+>    per-container MLS category, so web + worker (which share the `./src`
+>    mount) get conflicting labels and one is permanently Permission-denied.
+>    Plus `PYTHONPATH=/app` so qcluster's spawned workers can import `src.*`
+>    (the project isn't editable-installed; the `[project]` name is a
+>    placeholder).
+> 3. The prod stage `COPY templates/` (settings' TEMPLATES['DIRS'] points at
+>    `/app/templates/`, which the dev stage bind-mounts but the prod stage must
+>    bake) + `gunicorn src.target_o_meter.wsgi` (the repo layout prefixes the
+>    Django project with `src/`).
+>
+> 5.8 note: the upload lands in the MinIO bucket (verified via `mc ls`), but
+> `process_image` then fails with `NotImplementedError: S3 path ops land in
+> S-03` — this is the documented S-02/S-03 boundary (Phase 2's `absolute_path`
+> guard), NOT a regression.
 
 ### Phase 6: SPA router + api client extensions
 

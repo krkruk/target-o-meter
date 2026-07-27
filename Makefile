@@ -70,21 +70,28 @@ collectstatic:  ## Build the frontend + collect hashed static assets into STATIC
 migrate:  ## Apply Django migrations
 	uv run python src/manage.py migrate
 
-# --- Dockerized dev/prod stacks (S-02 Phase 5) -----------------------------
+# --- Containerized dev/prod stacks (S-02 Phase 5) --------------------------
 #
 # `make dev-container` brings up web + worker + MinIO + create-bucket, live-
 # reloading, seeded with dev admin/owner/user, exercising the S3 backend
 # against MinIO + MockDetector. `make prod-container` brings up a prod-shape
 # stack (DEBUG=False, built frontend served via WhiteNoise, gunicorn). Both
-# read env from .env (copy .env.example to .env). Requires Docker.
+# read env from .env (copy .env.example to .env).
+#
+# Runtime: podman (5.8+) with podman-compose as the compose provider. On
+# Fedora/SELinux, bind mounts in docker-compose.dev.yml carry the :Z suffix so
+# podman relabels the host path for the container's SELinux context. `docker`
+# isn't required; podman is Docker-compatible so the compose files are
+# unchanged otherwise. (`alias docker=podman` makes the README/docs match if
+# you prefer the docker spelling at the shell.)
 
-dev-container:  ## Bring up the dockerized dev stack (web + worker + MinIO + create-bucket) with live-reload
+dev-container:  ## Bring up the containerized dev stack (web + worker + MinIO + create-bucket) with live-reload
 	@echo "▸ building images (first run is slow; opencv system deps bake in)"
-	docker compose -f docker-compose.dev.yml up --build
+	podman compose -f docker-compose.dev.yml up --build
 
-prod-container:  ## Bring up a prod-shape stack (DEBUG=false, built frontend, gunicorn) in Docker
+prod-container:  ## Bring up a prod-shape stack (DEBUG=false, built frontend, gunicorn) in containers
 	@echo "▸ building prod images"
-	docker compose -f docker-compose.prod.yml up --build
+	podman compose -f docker-compose.prod.yml up --build
 
 # --- Checks (backend + frontend) -------------------------------------------
 #

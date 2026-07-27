@@ -16,9 +16,12 @@ services:
       context: .
       target: prod
     image: target-o-meter-prod
-    command: ["uv", "run", "gunicorn", "target_o_meter.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+    command: ["uv", "run", "gunicorn", "src.target_o_meter.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
     environment:
       DEBUG: "False"
+      # PYTHONPATH=/app so gunicorn + qcluster workers can import src.* (the
+      # project isn't editable-installed; see docker-compose.dev.yml).
+      PYTHONPATH: /app
       RAILWAY_VOLUME_MOUNT_PATH: /data
       # Storage: real AWS_* (Tigris) from .env. USE_S3 defaults to False if
       # unset, which falls back to FS — set USE_S3=True + AWS_* in .env to
@@ -53,6 +56,9 @@ services:
     command: ["uv", "run", "python", "src/manage.py", "qcluster"]
     environment:
       DEBUG: "False"
+      # PYTHONPATH=/app so gunicorn + qcluster workers can import src.* (the
+      # project isn't editable-installed; see docker-compose.dev.yml).
+      PYTHONPATH: /app
       RAILWAY_VOLUME_MOUNT_PATH: /data
       USE_S3: ${USE_S3:-False}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
