@@ -314,6 +314,18 @@ def _job_to_dto(job: ScoringJob) -> ScoringJobDTO:
                 detector_name=result_dict.get("detector", ""),
             )
 
+    marked_image_url = None
+    if job.marked_image_path:
+        # Resolve the deliverable URL via the SAME storage that wrote it. The
+        # marked-image path on the job is relative to ``ScoringStorage``'s root
+        # (``MEDIA_ROOT/scoring`` under ``USE_S3=False``, or the S3 backend
+        # under ``USE_S3=True``). Using the global ``default_storage`` here
+        # would resolve against the wrong root under FS dev (default_storage
+        # is rooted at ``MEDIA_ROOT``, not ``MEDIA_ROOT/scoring``). Under S3
+        # ``ScoringStorage`` IS ``default_storage`` so the two coincide.
+        storage = ScoringStorage()
+        marked_image_url = storage._storage.url(job.marked_image_path)
+
     return ScoringJobDTO(
         job_id=job.id,
         status=job.status,
@@ -323,4 +335,5 @@ def _job_to_dto(job: ScoringJob) -> ScoringJobDTO:
         error=job.error,
         created_at=job.created_at.isoformat() if job.created_at else None,
         completed_at=job.completed_at.isoformat() if job.completed_at else None,
+        marked_image_url=marked_image_url,
     )

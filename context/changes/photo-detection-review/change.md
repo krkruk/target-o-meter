@@ -3,7 +3,7 @@ change_id: photo-detection-review
 title: Photograph, upload, and review a detected ISSF target score
 status: implementing
 created: 2026-07-26
-updated: 2026-07-26
+updated: 2026-07-27
 archived_at: null
 ---
 

@@ -21,6 +21,7 @@ from django.urls import path
 from src.bff.api import api
 from src.bff.routers.auth_routes import callback, login_view, logout
 from src.bff.routers.owner_routes import router as owner_router
+from src.bff.routers.scoring_routes import router as scoring_router
 from src.bff.routers.session_routes import router as session_router
 from src.bff.views import index
 
@@ -28,6 +29,7 @@ app_name = "bff"
 
 api.add_router("/", session_router)
 api.add_router("/", owner_router)
+api.add_router("/", scoring_router)
 
 
 urlpatterns = [
