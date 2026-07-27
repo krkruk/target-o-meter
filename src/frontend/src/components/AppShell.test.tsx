@@ -10,6 +10,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import type { Me } from '../api';
 
@@ -21,16 +22,27 @@ function makeMe(overrides: Partial<Me> = {}): Me {
   };
 }
 
+// S-02 Phase 6.3: AppShell now mounts <Routes> and calls useNavigate(), so it
+// must render inside a <Router>. The existing tests wrap their renders in
+// MemoryRouter via this helper (analogous to the Phase 3.2a patch-target
+// migration — when the component's context requirements change, the tests
+// must follow).
+function renderInRouter(ui: React.ReactElement) {
+  return render(
+    <MemoryRouter initialEntries={['/dashboard']}>{ui}</MemoryRouter>
+  );
+}
+
 describe('AppShell', () => {
   it('renders the app brand and the nick in the top bar', () => {
-    render(<AppShell me={makeMe()} onLogout={() => {}} />);
+    renderInRouter(<AppShell me={makeMe()} onLogout={() => {}} />);
     const banner = screen.getByRole('banner');
     expect(banner).toHaveTextContent(/target-o-meter/i);
     expect(banner).toHaveTextContent(/alice/);
   });
 
   it('renders Home as the first sidebar entry and Logout pinned at the bottom', () => {
-    render(<AppShell me={makeMe()} onLogout={() => {}} />);
+    renderInRouter(<AppShell me={makeMe()} onLogout={() => {}} />);
     const nav = screen.getByRole('navigation');
     // Nav items carry role="menuitem"; the collapse toggle is a plain button
     // and is excluded so the order assertion targets the menu, not the chrome.
@@ -42,7 +54,7 @@ describe('AppShell', () => {
   });
 
   it('collapses and expands the sidebar via the toggle', async () => {
-    const { container } = render(<AppShell me={makeMe()} onLogout={() => {}} />);
+    const { container } = renderInRouter(<AppShell me={makeMe()} onLogout={() => {}} />);
     const toggle = screen.getByRole('button', { name: /collapse|expand|menu|toggle/i });
     // The shell exposes its collapsed state on a data attribute so the test
     // asserts on the observable state, not a class name.
@@ -59,7 +71,7 @@ describe('AppShell', () => {
   // the attribute lived only on the parent .shell, never on the <nav> itself.
   // jsdom can't compute layout, so this pins the DOM signal the CSS keys off.
   it('reflects the collapsed state on the sidebar nav element', async () => {
-    render(<AppShell me={makeMe()} onLogout={() => {}} />);
+    renderInRouter(<AppShell me={makeMe()} onLogout={() => {}} />);
     const nav = screen.getByRole('navigation', { name: /main navigation/i });
     // Expanded first.
     expect(nav.getAttribute('data-collapsed')).toBe('false');
@@ -71,20 +83,22 @@ describe('AppShell', () => {
 
   it('fires onLogout when the Logout entry is activated', async () => {
     const onLogout = vi.fn();
-    render(<AppShell me={makeMe()} onLogout={onLogout} />);
+    renderInRouter(<AppShell me={makeMe()} onLogout={onLogout} />);
     await userEvent.click(screen.getByRole('menuitem', { name: /logout/i }));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
-  it('renders a dashboard placeholder in the main area', () => {
-    render(<AppShell me={makeMe()} onLogout={() => {}} />);
+  it('renders the routed Dashboard component in the main area at /dashboard', () => {
+    // S-02 Phase 6: the main area is now owned by <Routes>. At /dashboard the
+    // Dashboard route renders (Phase 7 fills in its content; Phase 6 ships a
+    // stub with data-testid="dashboard-route"). The placeholder is gone.
+    renderInRouter(<AppShell me={makeMe()} onLogout={() => {}} />);
     const main = screen.getByRole('main');
-    // S-01 ships a placeholder; S-02/S-03 replace it with real content.
-    expect(main.textContent?.toLowerCase()).toMatch(/dashboard|placeholder|will appear|coming/);
+    expect(main.querySelector('[data-testid="dashboard-route"]')).not.toBeNull();
   });
 
   it('renders a disabled Admin entry for owners (seam for S-04)', () => {
-    render(
+    renderInRouter(
       <AppShell
         me={makeMe({ user: { nick: 'owner', role: 'owner', has_set_nick: true } })}
         onLogout={() => {}}
@@ -97,7 +111,53 @@ describe('AppShell', () => {
   });
 
   it('does not render the Admin entry for plain users', () => {
-    render(<AppShell me={makeMe()} onLogout={() => {}} />);
+    renderInRouter(<AppShell me={makeMe()} onLogout={() => {}} />);
     expect(screen.queryByText(/admin/i)).toBeNull();
+  });
+
+  // S-02 Phase 6.3/6.5: the main area is now owned by <Routes>. Assert that a
+  // routed component renders inside the shell (the router mount is wired), and
+  // that the Sidebar's Home button navigates to /dashboard (the unwired onHome
+  // from S-01 is now router-driven).
+  it('renders a routed component inside the shell main area', () => {
+    render(
+      <MemoryRouter initialEntries={['/dashboard']}>
+        <Routes>
+          <Route path="/*" element={<AppShell me={makeMe()} onLogout={() => {}} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const main = screen.getByRole('main');
+    expect(main).toBeInTheDocument();
+    // The shell still renders its chrome (brand + nav) around the routed content.
+    expect(screen.getByRole('banner')).toHaveTextContent(/target-o-meter/i);
+    expect(screen.getByRole('navigation')).toBeInTheDocument();
+  });
+
+  it('navigates to /dashboard when the Sidebar Home button is activated', async () => {
+    // A LocationProbe inside the router reads the current path after the click
+    // — asserting on the routed path is more honest than a sentinel flag.
+    let currentPath = '';
+    function LocationProbe() {
+      const loc = useLocation();
+      currentPath = loc.pathname;
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={['/capture']}>
+        <LocationProbe />
+        <Routes>
+          <Route
+            path="/*"
+            element={<AppShell me={makeMe()} onLogout={() => {}} />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+    // Before clicking, we're on /capture.
+    expect(currentPath).toBe('/capture');
+    await userEvent.click(screen.getByRole('menuitem', { name: /home/i }));
+    // After clicking Home, the router navigated to /dashboard.
+    expect(currentPath).toBe('/dashboard');
   });
 });

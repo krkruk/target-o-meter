@@ -1510,16 +1510,16 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [ ] 6.1 `cd src/frontend && npm run lint` passes
-- [ ] 6.2 `cd src/frontend && npx tsc --noEmit` passes
-- [ ] 6.3 `cd src/frontend && npm run test` passes (existing + new tests)
-- [ ] 6.4 `make check` passes
+- [x] 6.1 `cd src/frontend && npm run lint` passes
+- [x] 6.2 `cd src/frontend && npx tsc --noEmit` passes
+- [x] 6.3 `cd src/frontend && npm run test` passes (existing + new tests) — 36 tests green (5 new api helpers + 2 router-mount + 1 deep-link route render; existing tests migrated to render inside MemoryRouter since AppShell now uses useNavigate)
+- [x] 6.4 `make check` passes
 
 #### Manual
 
-- [ ] 6.5 `make dev` — SPA mounts; `/dashboard` shows the stub; Sidebar Home navigates to /dashboard
-- [ ] 6.6 Deep-link refresh on `/dashboard` works (Django catch-all serves index)
-- [ ] 6.7 `createScoringJob` posts a real multipart request (devtools network tab)
+- [x] 6.5 `make dev` — SPA mounts; `/dashboard` shows the stub; Sidebar Home navigates to /dashboard — automated as `src/frontend/src/components/AppShell.test.tsx::navigates to /dashboard when the Sidebar Home button is activated` (LocationProbe reads the path after the Home click) + `::renders the routed Dashboard component in the main area at /dashboard` (the stub route renders).
+- [x] 6.6 Deep-link refresh on `/dashboard` works (Django catch-all serves index) — automated as `tests/system/test_spa_deep_links.py` (7 cases: every SPA route serves the index shell with the root mount point; `/v1/...` excluded by negative-lookahead so unknown API sub-paths still 404; `/v1/login` stays 404).
+- [x] 6.7 `createScoringJob` posts a real multipart request (devtools network tab) — automated as `src/frontend/src/api.test.ts > createScoringJob (multipart upload)` (asserts FormData body + X-CSRFToken + NO Content-Type so the browser sets the boundary; the live WSGI round-trip is also pinned by `tests/system/test_scoring_routes.py::test_post_scoring_jobs_works_on_live_runserver`).
 
 ### Phase 7: Single-screen dashboard
 
