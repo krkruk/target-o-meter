@@ -1,10 +1,10 @@
 ---
 change_id: photo-detection-review
 title: Photograph, upload, and review a detected ISSF target score
-status: impl_reviewed
+status: archived
 created: 2026-07-26
 updated: 2026-07-27
-archived_at: null
+archived_at: 2026-07-27T20:57:37Z
 ---
 
 ## Notes
