@@ -1482,10 +1482,10 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [x] 5.1 `docker compose -f docker-compose.dev.yml config` validates — Docker daemon unavailable in-sandbox; YAML parse + service topology + MinIO/S3/MockDetector env wiring pinned by `tests/system/test_docker_artifacts.py` (14 guards). Run `docker compose -f docker-compose.dev.yml config` where Docker is available to confirm interpolation.
-- [x] 5.2 `docker compose -f docker-compose.prod.yml config` validates — same in-sandbox guard; prod topology (web+worker, gunicorn, DEBUG=False, no DEV_AUTH_BYPASS_SUB) pinned by `test_docker_artifacts.py`.
+- [x] 5.1 `docker compose -f docker-compose.dev.yml config` validates — Docker daemon unavailable in-sandbox; YAML parse + service topology + MinIO/S3/MockDetector env wiring pinned by `tests/system/test_docker_artifacts.py` (14 guards). Run `docker compose -f docker-compose.dev.yml config` where Docker is available to confirm interpolation. — 9399d79
+- [x] 5.2 `docker compose -f docker-compose.prod.yml config` validates — same in-sandbox guard; prod topology (web+worker, gunicorn, DEBUG=False, no DEV_AUTH_BYPASS_SUB) pinned by `test_docker_artifacts.py`. — 9399d79
 - [ ] 5.3 `docker build -t target-o-meter-dev .` succeeds — CANNOT verify without Docker daemon; deferred to where Docker runs.
-- [x] 5.4 `make check` passes (Makefile help still works) — `make check` green; `dev-container`/`prod-container` targets registered + listed by `make help` (pinned by `test_makefile_has_container_targets`).
+- [x] 5.4 `make check` passes (Makefile help still works) — `make check` green; `dev-container`/`prod-container` targets registered + listed by `make help` (pinned by `test_makefile_has_container_targets`). — 9399d79
 
 #### Manual
 
