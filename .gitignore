@@ -13,3 +13,9 @@ scoring_storage/
 # transcripts) — created fresh per run under results/<run-id>/. Never commit.
 results/
 .zcode/
+
+# Docker dev artifacts (named-volume data lives in Docker, not the repo tree).
+# The compose files mount these as named volumes; this guard is for any stray
+# bind-mount exports or local dumps.
+minio-data/
+db-data/

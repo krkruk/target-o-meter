@@ -1,0 +1,76 @@
+# Local prod-shape smoke stack (DEBUG=false, built frontend, gunicorn).
+#
+# Used by ``make prod-container`` to reproduce prod serving-path bugs locally
+# (the SPA must mount from WhiteNoise's hashed bundle, the dev-bypass must be
+# off, no live-reload). This is NOT the actual prod deploy (that's Railway via
+# GitHub Actions); it's a prod-posture mirror for local verification.
+#
+# No MinIO: prod uses Railway Storage Buckets (Tigris), so this stack reads
+# real AWS_* vars from .env (or you point them at a real S3-compatible endpoint).
+# No DEV_AUTH_BYPASS_SUB: prod has no bypass (E001 refuses to boot if it's set
+# under DEBUG=False). Mounts only the db volume; the image baked the code.
+
+services:
+  web:
+    build:
+      context: .
+      target: prod
+    image: target-o-meter-prod
+    command: ["uv", "run", "gunicorn", "target_o_meter.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
+    environment:
+      DEBUG: "False"
+      RAILWAY_VOLUME_MOUNT_PATH: /data
+      # Storage: real AWS_* (Tigris) from .env. USE_S3 defaults to False if
+      # unset, which falls back to FS — set USE_S3=True + AWS_* in .env to
+      # exercise the S3 path against a real endpoint.
+      USE_S3: ${USE_S3:-False}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-}
+      AWS_S3_ENDPOINT_URL: ${AWS_S3_ENDPOINT_URL:-}
+      AWS_S3_ADDRESSING_STYLE: ${AWS_S3_ADDRESSING_STYLE:-auto}
+      VISION_DETECTOR: ${VISION_DETECTOR:-google}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OWNER_SUB_ID: ${OWNER_SUB_ID:-}
+      SECRET_KEY: ${AUTH0_SECRET:-}
+      AUTH0_SECRET: ${AUTH0_SECRET:-}
+      AUTH0_CLIENT_ID: ${AUTH0_CLIENT_ID:-}
+      AUTH0_CLIENT_SECRET: ${AUTH0_CLIENT_SECRET:-}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
+      SECURE_COOKIES: ${SECURE_COOKIES:-True}
+    volumes:
+      - db-data:/data
+      - staticfiles:/app/src/staticfiles
+    ports:
+      - "8000:8000"
+
+  worker:
+    image: target-o-meter-prod
+    build:
+      context: .
+      target: prod
+    command: ["uv", "run", "python", "src/manage.py", "qcluster"]
+    environment:
+      DEBUG: "False"
+      RAILWAY_VOLUME_MOUNT_PATH: /data
+      USE_S3: ${USE_S3:-False}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-}
+      AWS_S3_ENDPOINT_URL: ${AWS_S3_ENDPOINT_URL:-}
+      AWS_S3_ADDRESSING_STYLE: ${AWS_S3_ADDRESSING_STYLE:-auto}
+      VISION_DETECTOR: ${VISION_DETECTOR:-google}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OWNER_SUB_ID: ${OWNER_SUB_ID:-}
+      SECRET_KEY: ${AUTH0_SECRET:-}
+      AUTH0_SECRET: ${AUTH0_SECRET:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
+    volumes:
+      - db-data:/data
+    depends_on:
+      - web
+
+volumes:
+  db-data:
+  staticfiles:

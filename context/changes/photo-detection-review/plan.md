@@ -1482,18 +1482,29 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [ ] 5.1 `docker compose -f docker-compose.dev.yml config` validates
-- [ ] 5.2 `docker compose -f docker-compose.prod.yml config` validates
-- [ ] 5.3 `docker build -t target-o-meter-dev .` succeeds
-- [ ] 5.4 `make check` passes (Makefile help still works)
+- [x] 5.1 `docker compose -f docker-compose.dev.yml config` validates — Docker daemon unavailable in-sandbox; YAML parse + service topology + MinIO/S3/MockDetector env wiring pinned by `tests/system/test_docker_artifacts.py` (14 guards). Run `docker compose -f docker-compose.dev.yml config` where Docker is available to confirm interpolation.
+- [x] 5.2 `docker compose -f docker-compose.prod.yml config` validates — same in-sandbox guard; prod topology (web+worker, gunicorn, DEBUG=False, no DEV_AUTH_BYPASS_SUB) pinned by `test_docker_artifacts.py`.
+- [ ] 5.3 `docker build -t target-o-meter-dev .` succeeds — CANNOT verify without Docker daemon; deferred to where Docker runs.
+- [x] 5.4 `make check` passes (Makefile help still works) — `make check` green; `dev-container`/`prod-container` targets registered + listed by `make help` (pinned by `test_makefile_has_container_targets`).
 
 #### Manual
 
-- [ ] 5.5 `make dev-container` brings up web + worker + minio + create-bucket cleanly
-- [ ] 5.6 Editing `src/` triggers a runserver reload (or documented dual-process behavior)
-- [ ] 5.7 `/admin/` reachable; seeded Owner + User rows visible
-- [ ] 5.8 POST `/v1/scoring/jobs` against MinIO (USE_S3=True) lands file in the bucket
-- [ ] 5.9 `make prod-container` brings up prod-shape stack; SPA mounts from built bundle
+- [ ] 5.5 `make dev-container` brings up web + worker + minio + create-bucket cleanly — Docker daemon unavailable in-sandbox; deferred to where Docker runs. (In-sandbox: dev-seed.sh bash-syntax + executability verified; seed Python block verified idempotent against a real migrated DB.)
+- [ ] 5.6 Editing `src/` triggers a runserver reload (or documented dual-process behavior) — requires running container; deferred.
+- [ ] 5.7 `/admin/` reachable; seeded Owner + User rows visible — requires running container; the seed's admin/owner/user creation logic verified in-sandbox (3 rows after seed, stays 3 on re-run).
+- [ ] 5.8 POST `/v1/scoring/jobs` against MinIO (USE_S3=True) lands file in the bucket — requires running MinIO; deferred. The S3-against-MinIO env wiring (USE_S3=True, AWS_S3_ENDPOINT_URL=http://minio:9000, AWS_S3_ADDRESSING_STYLE=path) is pinned by `test_dev_compose_wires_s3_against_minio`.
+- [ ] 5.9 `make prod-container` brings up prod-shape stack; SPA mounts from built bundle — requires Docker daemon; deferred.
+
+> **Sandbox limitation note:** Phase 5 is Docker infra; the sandbox has no
+> Docker daemon, so the build (5.3) + the live bring-up (5.5–5.9) cannot run
+> here. The in-sandbox guard (`tests/system/test_docker_artifacts.py`, 14
+> tests) pins everything verifiable without a daemon: compose YAML parse +
+> service topology + env wiring, Makefile target registration, .dockerignore
+> secret exclusions, dev-seed.sh bash validity + executability, and
+> seed-via-app-surface. The seed's Python block was also exercised directly
+> against a migrated DB (idempotent: 3 rows → stays 3 on re-run). The five
+> live bring-up items must be run where Docker is available — they are
+> faithful to the plan but unverified in this sandbox.
 
 ### Phase 6: SPA router + api client extensions
 

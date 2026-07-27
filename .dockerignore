@@ -1,0 +1,47 @@
+# Keep the Docker build context lean (faster builds, smaller upload to daemon).
+# Secrets never get baked into the image (compose reads .env from the host at
+# runtime); generated/dev-only trees stay on the host.
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node / frontend build artifacts (the prod stage rebuilds the bundle itself)
+src/frontend/node_modules/
+src/frontend/dist/
+
+# Git + docs
+.git/
+.gitignore
+context/          # docs, not runtime
+docs/
+
+# Dev DBs + generated storage (compose mounts volumes for these)
+*.sqlite3
+db.sqlite3
+staticfiles/
+scoring_storage/
+results/
+
+# Frozen CV research sandbox (reference-only, out of scope per AGENTS.md §1)
+cv/
+resources/
+
+# IDE / tooling
+.ai/
+.zcode/
+.vscode/
+.idea/
+
+# Env files (compose reads .env from the host; the image must NOT bake secrets)
+.env
+.env.local
+.env.uat
+.env.example
+
+# Docker artifacts (avoid recursive context)
+docker-compose.*.yml
+Dockerfile
+.dockerignore
