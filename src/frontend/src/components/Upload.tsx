@@ -16,6 +16,13 @@ export function Upload() {
   async function handleFile(file: File) {
     if (!selection) return;
     try {
+      // TODO(S-03): target_type is hardcoded to 'air_pistol'. PRD covers four
+      // categories — air_pistol, precision_pistol, rifle, shotgun — but
+      // CaliberDistanceStep doesn't collect a target-type selection yet, and
+      // the BFF's Literal['air_pistol', 'precision_pistol'] only accepts the
+      // first two. S-03 should add a target-type <select> covering all four
+      // (and widen the BFF Literal), then thread the selection through here.
+      // See S-02 impl-review F8.
       const result = await createScoringJob(
         file,
         'air_pistol',

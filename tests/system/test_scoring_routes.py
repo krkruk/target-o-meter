@@ -265,7 +265,10 @@ def test_get_scoring_job_returns_marked_image_url_when_succeeded(
 ) -> None:
     """After ``process_image`` succeeds, the GET response carries
     ``marked_image_url`` populated from ``job.marked_image_path`` via
-    ``default_storage.url(...)``. Pins Phase 4.0's DTO field surfacing."""
+    ``ScoringStorage()._storage.url(...)`` (NOT the global ``default_storage``
+    — under FS dev the marked path is relative to ``MEDIA_ROOT/scoring``, so
+    ``default_storage`` would resolve against the wrong root; see the comment
+    in ``services._job_to_dto``). Pins Phase 4.0's DTO field surfacing."""
     from src.domains.vision.detectors.mock_detector import MockDetector
     from src.domains.vision.services import process_image
 

@@ -54,6 +54,7 @@ services:
       SECRET_KEY: ${AUTH0_SECRET:-}
       AUTH0_SECRET: ${AUTH0_SECRET:-}
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
+      ALLOWED_HOSTS: localhost,127.0.0.1,fedora-linux.local
     volumes:
       # Live-reload: code edits in ./src reach the container immediately.
       # The :Z suffix lets podman relabel the host path for the container's

@@ -22,8 +22,10 @@ echo "▸ migrate"
 # surfacing as "Permission denied". Retry a few times — the relabel completes
 # within seconds and the retry succeeds. Without this, the loser of the start
 # race exits(2) before the relabel finishes.
+migrated=0
 for attempt in 1 2 3 4 5 6 7 8; do
     if uv run python src/manage.py migrate --noinput 2>"$RUN_DIR/.migrate.err"; then
+        migrated=1
         break
     fi
     if grep -q "Permission denied" "$RUN_DIR/.migrate.err" 2>/dev/null; then
@@ -34,6 +36,13 @@ for attempt in 1 2 3 4 5 6 7 8; do
     cat "$RUN_DIR/.migrate.err" >&2
     exit 1
 done
+# If all 8 attempts hit "Permission denied" the loop falls through here
+# without ever `break`ing — fail loudly rather than seeding an unmigrated DB.
+if [ "$migrated" -ne 1 ]; then
+    echo "  migrate: Permission denied persisted across all 8 attempts" >&2
+    cat "$RUN_DIR/.migrate.err" >&2
+    exit 1
+fi
 
 echo "▸ dev seed (admin + owner + user)"
 # ``manage.py shell``-invoked seed using the identity domain's service surface.
