@@ -365,6 +365,19 @@ if USE_S3:
     AWS_S3_FILE_OVERWRITE = False
     AWS_DEFAULT_ACL = None
 
+# S-02 review (impl-review F2): cap multipart upload size so the BFF's
+# ``file.read()`` in ``scoring_routes.create_scoring_job`` can't be driven into
+# a single multi-MB/multi-GB ``bytes`` allocation per request. Django rejects
+# oversized requests with a 413 (RequestDataTooBig) BEFORE the view runs, so
+# the upload path never sees them. ``DATA_UPLOAD_MAX_MEMORY_SIZE`` bounds the
+# in-memory buffered size (Django spills above this to a temp file via
+# ``FILE_UPLOAD_TEMP_DIR``, but the BFF's ``file.read()`` then re-reads the
+# whole thing — so this cap also bounds the re-read). 10 MiB comfortably fits
+# a real ISSF target photo (typically a few MB) while keeping the per-request
+# memory footprint predictable under the §2 3-concurrent-task cap.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MiB; rejects >cap with 413
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # mirror for the disk-spill threshold
+
 # ---------------------------------------------------------------------------
 # Vite + django-vite (S-01 Phase 2).
 # ---------------------------------------------------------------------------

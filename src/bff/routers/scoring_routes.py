@@ -44,7 +44,6 @@ from src.domains.vision.dtos import ScoringJobDTO
 from src.domains.vision.pipeline.storage import ScoringStorage
 from src.domains.vision.services import (
     get_job,
-    reap_stuck_jobs,
     schedule_image_processing,
 )
 
@@ -81,7 +80,15 @@ def create_scoring_job(
     details: Form[ScoringJobIn],
     file: File[UploadedFile],
 ) -> ScoringJobOut:
-    """Multipart upload → enqueue. Both Owner and User roles can upload."""
+    """Multipart upload → enqueue. Both Owner and User roles can upload.
+
+    TODO(S-03): no per-user submission rate limit. A logged-in user can POST
+    at arbitrary rate, each enqueuing a q2 task; the queue is capped at 50 /
+    3 workers, so one user can saturate scoring for everyone. Acceptable for
+    single-user MVP; S-03 should add a per-user QUEUED+RUNNING ceiling
+    (count rows owned by user_uuid, reject 429 above ~5). See S-02
+    impl-review F7.
+    """
     try:
         user_dto = get_user_context(str(request.user.sub))
     except get_user_model().DoesNotExist:
@@ -102,13 +109,20 @@ def create_scoring_job(
     "/scoring/jobs/{job_id}", auth=session_auth, response={200: ScoringJobDTO}
 )
 def get_scoring_job(request, job_id: str) -> ScoringJobDTO:
-    """Reap stuck jobs then read. Owner-only — 404 on mismatch OR missing."""
+    """Read a job. Owner-only — 404 on mismatch OR missing.
+
+    Reaping of stuck RUNNING rows is NOT done here: it runs on a django-q2
+    Schedule (``reap-stuck-scoring-jobs`` row, registered by the vision
+    migration 0003) every 60s. Keeping the read path off the SQLite write lock
+    matters under the 1500ms client poll — see S-02 impl-review F3. The
+    ``STUCK_RUNNING_TIMEOUT_SECONDS`` (1200s) >> the 60s cadence, so a stuck
+    job still resolves within ≤60s of staleness, far under the reap window.
+    """
     try:
         user_dto = get_user_context(str(request.user.sub))
     except get_user_model().DoesNotExist:
         raise HttpError(401, "Session user no longer exists") from None
 
-    reap_stuck_jobs()  # PRD §Guardrail: no dead-end states
     try:
         return get_job(job_id, user_dto.user_uuid)
     except PermissionError:

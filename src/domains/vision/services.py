@@ -202,7 +202,7 @@ def process_image(job_id: str | UUID) -> dict:
 
 # Stuck-job detection — rows older than this while still RUNNING are assumed
 # orphaned by a SIGKILLed worker (OOM, deploy, host reboot) and reaped.
-STUCK_RUNNING_TIMEOUT_SECONDS = 1200  # 2× settings.Q_CLUSTER['retry']
+STUCK_RUNNING_TIMEOUT_SECONDS = 1200  # 2× settings.Q_CLUSTER['timeout'] (600s); generous headroom over the ~30s pipeline + q2 timeout
 
 
 def reap_stuck_jobs(timeout_seconds: int = STUCK_RUNNING_TIMEOUT_SECONDS) -> int:
