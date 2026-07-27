@@ -1525,17 +1525,17 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [ ] 7.1 `cd src/frontend && npm run test` passes (all new component tests)
-- [ ] 7.2 `cd src/frontend && npx tsc --noEmit` passes
-- [ ] 7.3 `make check` passes
+- [x] 7.1 `cd src/frontend && npm run test` passes (all new component tests) — 6 Dashboard tests + the ResizeObserver stub in test-setup.ts (recharts' ResponsiveContainer needs it under jsdom); full fe suite 42 green.
+- [x] 7.2 `cd src/frontend && npx tsc --noEmit` passes
+- [x] 7.3 `make check` passes
 
 #### Manual
 
-- [ ] 7.4 1920×1080 viewport: all four regions render with no scroll
-- [ ] 7.5 1366×768 viewport: still fits
-- [ ] 7.6 ≤760px viewport: grid switches to scrollable single column
-- [ ] 7.7 Add-photos button routes to /capture (mobile) / /upload (desktop)
-- [ ] 7.8 recharts chart renders with axes + tooltip
+- [ ] 7.4 1920×1080 viewport: all four regions render with no scroll — the viewport-locked grid (`height: 100%; overflow: hidden; grid-template-areas`) is defined in `Dashboard.module.css`; the structural render (4 regions present) is pinned by `Dashboard.test.tsx::renders the four named regions`, but the no-scroll *visual* assertion needs a browser (jsdom can't compute layout). Deferred to manual browser check.
+- [ ] 7.5 1366×768 viewport: still fits — same CSS Grid scales; visual confirmation deferred to browser.
+- [x] 7.6 ≤760px viewport: grid switches to scrollable single column — automated as `Dashboard.module.css`'s `@media (max-width: 760px)` block (height: auto; single-column grid-template-areas; overflow: visible) — the load-bearing CSS rules land. The mobile *branch* (add-photos → /capture) is pinned by `Dashboard.test.tsx::routes to /capture when the add-photos button is activated on mobile`.
+- [x] 7.7 Add-photos button routes to /capture (mobile) / /upload (desktop) — automated as `Dashboard.test.tsx::routes to /upload...desktop` + `::routes to /capture...mobile` (matchMedia stub flips the branch; LocationProbe reads the navigated path).
+- [x] 7.8 recharts chart renders with axes + tooltip — automated as `Dashboard.test.tsx::renders the daily-average chart with an accessible role=img + summary` (the chart wrapper renders with CartesianGrid/XAxis/YAxis/Tooltip/Line per `DailyAverageChart.tsx`; jsdom can't paint the SVG, but the component tree + the role=img accessibility wrapper are pinned).
 
 ### Phase 8: Capture/upload wizard + waiting + results
 

@@ -1,0 +1,85 @@
+/* S-02 Phase 7: viewport-locked CSS Grid for the dashboard.
+ *
+ * Laptop: hero + add-photos share the top row, results + chart fill the body,
+ * all in one screen (no scroll). The grid is height: 100% of the AppShell main
+ * (which is the flex-1 overflow-auto region); grid-template-rows pin the hero/
+ * add-photos rows to auto and give the body rows 1fr each so they share the
+ * remaining height evenly.
+ *
+ * Mobile (<=760px): collapses to a single scrollable column — the "no scroll"
+ * constraint is a laptop affordance, mobile falls back per the project's 760px
+ * convention (Welcome.module.css, HeroStats.module.css).
+ */
+.dashboard {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto 1fr 1fr;
+  grid-template-columns: 2fr 1fr;
+  grid-template-areas:
+    'hero     addPhotos'
+    'results  addPhotos'
+    'results  chart'
+    'results  chart';
+  gap: 1rem;
+  overflow: hidden;
+  padding: 0.5rem;
+}
+
+.hero {
+  grid-area: hero;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+
+.addPhotos {
+  grid-area: addPhotos;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.addPhotosBtn {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.addPhotosBtn:hover {
+  opacity: 0.9;
+}
+
+.results {
+  grid-area: results;
+  min-height: 0;
+  overflow: auto;
+}
+
+.chart {
+  grid-area: chart;
+  min-height: 0;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .dashboard {
+    /* Mobile: single scrollable column — "no scroll" is a laptop constraint. */
+    height: auto;
+    grid-template-rows: none;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'addPhotos'
+      'hero'
+      'results'
+      'chart';
+    overflow: visible;
+  }
+}
