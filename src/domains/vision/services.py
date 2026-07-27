@@ -7,7 +7,9 @@ Per AGENTS.md §6.2 — BFF wraps ``schedule_image_processing`` in
     ``ScoringJob(status="queued")`` and enqueues ``process_image`` on
     django-q2. Returns ``job.id``.
   - ``process_image(job_id)`` — the q2 task body. Loads the ``ScoringJob``,
-    builds the detector from config (default ``GoogleAIStudioDetector``),
+    builds the detector via ``DetectorFactory.build(VISION_DETECTOR)`` (env-
+    driven; defaults to ``"google"`` so prod behavior is unchanged, dev flips
+    to ``"mock"`` with no API key),
     runs ``PipelineRunner.run(...)`` writing deliverables via
     ``ScoringStorage``, stores the result JSON + paths on the job, sets
     ``status="succeeded"`` (or ``failed`` + error on exception).
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
@@ -33,9 +36,7 @@ from src.domains.vision.dtos import (
     ScoringResultDTO,
 )
 from src.domains.vision.detectors.detection_result import DetectionResult
-from src.domains.vision.detectors.google_ai_studio_detector import (
-    GoogleAIStudioDetector,
-)
+from src.domains.vision.detectors.factory import DetectorFactory
 from src.domains.vision.models import ScoringJob
 from src.domains.vision.pipeline.pipeline_runner import PipelineRunner
 from src.domains.vision.pipeline.storage import ScoringStorage
@@ -127,8 +128,11 @@ def process_image(job_id: str | UUID) -> dict:
         job.save(update_fields=["status", "started_at", "updated_at"])
 
     try:
-        # Build the detector from config (default Google; future: env switch).
-        detector = GoogleAIStudioDetector()
+        # Build the detector via the factory, env-driven so dev can flip to
+        # MockDetector (VISION_DETECTOR=mock) and S-03 to Ollama without code
+        # changes. Default "google" keeps prod behavior unchanged.
+        detector_name = os.environ.get("VISION_DETECTOR", "google")
+        detector = DetectorFactory.build(detector_name)
         runner = PipelineRunner(detector)
         storage = ScoringStorage()
 

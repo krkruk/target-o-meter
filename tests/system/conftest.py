@@ -340,20 +340,104 @@ def runserver_factory(request: pytest.FixtureRequest, tmp_path: Path):
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(item, call):
-    """Thread the test outcome onto each ``LiveServer`` so teardown can decide
-    keep-on-failure vs clean-on-success.
+    """Thread the test outcome onto each ``LiveServer`` / ``CliResult`` so
+    teardown can decide keep-on-failure vs clean-on-success.
 
     ``makereport`` runs for setup/call/teardown phases; we only care about the
-    ``call`` phase (the test body). If it did not pass, flag every server
-    attached to the node so ``_teardown_runserver`` keeps the run dir.
+    ``call`` phase (the test body). If it did not pass, flag every server / CLI
+    result attached to the node so teardown keeps the run dir.
     """
     outcome = yield
     report = outcome.get_result()
     if report.when == "call" and report.failed:
-        for attr in ("_live_server", "_live_servers"):
+        for attr in ("_live_server", "_live_servers", "_cli_results"):
             val = getattr(item, attr, None)
             if val is None:
                 continue
             servers = val if isinstance(val, list) else [val]
             for server in servers:
                 server.test_failed = True
+
+
+# ---------------------------------------------------------------------------
+# CLI fixture (S-02): one subprocess per invocation, isolated under results/.
+# ---------------------------------------------------------------------------
+#
+# The sibling of ``runserver`` for one-shot CLI commands (manage.py shell, the
+# vision CLI). Each call gets its own ``results/<test>-<uuid>/`` as cwd AND as
+# the Django DB dir (``RAILWAY_VOLUME_MOUNT_PATH`` points there, mirroring the
+# runserver clean-context contract — never the developer's ``src/db.sqlite3``).
+# Captures stdout + stderr + exit code; keeps the run dir on failure so the
+# captured stderr is the post-mortem oracle.
+
+
+class CliResult:
+    """Outcome of one CLI invocation — the three observable signals."""
+
+    def __init__(self, proc: subprocess.CompletedProcess, run_dir: Path) -> None:
+        self.returncode = proc.returncode
+        self.stdout = proc.stdout
+        self.stderr = proc.stderr
+        self.run_dir = run_dir
+        self.test_failed = False  # set by the makereport hook
+
+    def assert_no_traceback(self) -> None:
+        """Fail if stderr contains a Python traceback (a swallowed exception)."""
+        if b"Traceback (most recent call last)" in self.stderr:
+            raise AssertionError(
+                f"CLI traceback in stderr:\n{self.stderr.decode(errors='replace')}"
+            )
+
+    def assert_success(self) -> None:
+        """rc == 0 AND no traceback. Pair with a stdout/output-file assertion."""
+        assert self.returncode == 0, (
+            f"expected exit 0, got {self.returncode}\n"
+            f"stdout:\n{self.stdout.decode(errors='replace')}\n"
+            f"stderr:\n{self.stderr.decode(errors='replace')}"
+        )
+        self.assert_no_traceback()
+
+
+@pytest.fixture
+def cli(request: pytest.FixtureRequest):
+    """Factory: run a CLI command in a clean run dir under ``results/``.
+
+    Yields ``run(argv, *, extra_env=None, cwd=None) -> CliResult``. Each call
+    gets its own ``results/<test>-<uuid>/`` as cwd and as the Django DB dir
+    (``RAILWAY_VOLUME_MOUNT_PATH``). Like the server fixture, failed runs keep
+    their run dir for post-mortem; successful runs clean up.
+    """
+    runs: list[CliResult] = []
+
+    def run(
+        argv: list[str],
+        *,
+        extra_env: dict[str, str] | None = None,
+        cwd: Path | None = None,
+    ) -> CliResult:
+        run_dir = _run_dir_for(f"{request.node.name}-run{len(runs)}")
+        env = {
+            **os.environ,
+            "RAILWAY_VOLUME_MOUNT_PATH": str(run_dir),
+            **(extra_env or {}),
+        }
+        proc = subprocess.run(
+            argv,
+            cwd=str(cwd or run_dir),
+            env=env,
+            capture_output=True,
+            timeout=180,
+        )
+        result = CliResult(proc, run_dir)
+        runs.append(result)
+        return result
+
+    request.node._cli_results = runs  # makereport hook reads this
+    try:
+        yield run
+    finally:
+        for r in runs:
+            if not r.test_failed:
+                shutil.rmtree(r.run_dir, ignore_errors=True)
+            else:
+                print(f"\n[system-test] kept failed-run artifacts at: {r.run_dir}")

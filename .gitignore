@@ -6,6 +6,9 @@ __pycache__/
 .env.uat
 staticfiles/
 resources
+# Generated FS storage for uploads + per-job deliverables (USE_S3=False dev
+# path; ScoringStorage's default root). Prod uses S3, so this is dev-only.
+scoring_storage/
 # Blackbox system-test run artifacts (SQLite DBs, captured server logs, API
 # transcripts) — created fresh per run under results/<run-id>/. Never commit.
 results/

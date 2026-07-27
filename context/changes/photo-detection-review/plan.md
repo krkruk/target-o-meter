@@ -1441,28 +1441,28 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [x] 2.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes
-- [x] 2.2 `make check` passes
-- [x] 2.3 `manage.py check` passes with `USE_S3=False`
-- [x] 2.4 `manage.py check` passes with `USE_S3=True` + MinIO vars monkeypatched
+- [x] 2.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes — 12cf71a
+- [x] 2.2 `make check` passes — 12cf71a
+- [x] 2.3 `manage.py check` passes with `USE_S3=False` — 12cf71a
+- [x] 2.4 `manage.py check` passes with `USE_S3=True` + MinIO vars monkeypatched — 12cf71a
 
 #### Manual
 
-- [x] 2.5 `make dev` (host path) still writes to `scoring_storage/` on disk — covered at unit tier by `test_default_no_location_writes_under_media_root_scoring` (the no-location default branch; a blackbox `ScoringStorage()` would pollute `src/scoring_storage/` since `MEDIA_ROOT` isn't env-driven, so the system-test skill's "unit-level repro preferred" applies)
-- [x] 2.6 No regression in existing `test_services_q2.py` — full `be-test` green (117 passed)
+- [x] 2.5 `make dev` (host path) still writes to `scoring_storage/` on disk — covered at unit tier by `test_default_no_location_writes_under_media_root_scoring` (the no-location default branch; a blackbox `ScoringStorage()` would pollute `src/scoring_storage/` since `MEDIA_ROOT` isn't env-driven, so the system-test skill's "unit-level repro preferred" applies) — 12cf71a
+- [x] 2.6 No regression in existing `test_services_q2.py` — full `be-test` green (117 passed) — 12cf71a
 
 ### Phase 3: Detector env wiring
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. 2 new tests)
-- [ ] 3.2 4 existing tests migrated to patch `DetectorFactory.build` (Phase 3.2a — mandatory, otherwise `AttributeError`)
-- [ ] 3.3 `make check` passes (no dangling GoogleAIStudioDetector import)
+- [x] 3.1 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. 2 new tests)
+- [x] 3.2 4 existing tests migrated to patch `DetectorFactory.build` (Phase 3.2a — mandatory, otherwise `AttributeError`) — the file had **3** patch sites (not 4); all 3 migrated
+- [x] 3.3 `make check` passes (no dangling GoogleAIStudioDetector import)
 
 #### Manual
 
-- [ ] 3.4 `VISION_DETECTOR=mock make dev` runs MockDetector via the factory
-- [ ] 3.5 `VISION_DETECTOR` unset leaves prod-shape behavior unchanged
+- [x] 3.4 `VISION_DETECTOR=mock make dev` runs MockDetector via the factory — automated as `tests/system/test_detector_env_wiring.py::test_vision_detector_mock_runs_mockdetector_via_factory` (drives `process_image` via `manage.py shell` subprocess; asserts 5-hole pattern + no traceback)
+- [x] 3.5 `VISION_DETECTOR` unset leaves prod-shape behavior unchanged — automated as `tests/system/test_detector_env_wiring.py::test_vision_detector_unset_boots_prod_shape` (runserver boots clean); the unset→google default is unit-pinned by `test_factory_default_is_google`
 
 ### Phase 4: BFF scoring routes (real, MockDetector-backed)
 

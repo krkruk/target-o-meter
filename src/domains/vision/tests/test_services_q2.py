@@ -10,6 +10,7 @@ the unversioned ``resources/train/`` set.
 """
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -19,6 +20,10 @@ import pytest
 from django.conf import settings
 from django.utils import timezone
 
+from src.domains.vision.detectors.factory import DetectorFactory
+from src.domains.vision.detectors.google_ai_studio_detector import (
+    GoogleAIStudioDetector,
+)
 from src.domains.vision.detectors.mock_detector import MockDetector
 from src.domains.vision.models import ScoringJob
 from src.domains.vision.pipeline.storage import ScoringStorage
@@ -64,7 +69,7 @@ def test_process_image_writes_deliverables_and_marks_succeeded(
     )
 
     with patch(
-        "src.domains.vision.services.GoogleAIStudioDetector",
+        "src.domains.vision.services.DetectorFactory.build",
         return_value=MockDetector(),
     ):
         with patch("src.domains.vision.services.ScoringStorage", lambda *a, **kw: storage):
@@ -121,7 +126,7 @@ def test_process_image_marks_failed_on_exception(tmp_path: Path) -> None:
         target_type="air_pistol",
     )
 
-    with patch("src.domains.vision.services.GoogleAIStudioDetector", return_value=MockDetector()):
+    with patch("src.domains.vision.services.DetectorFactory.build", return_value=MockDetector()):
         with patch("src.domains.vision.services.ScoringStorage", lambda *a, **kw: storage):
             with pytest.raises(Exception):
                 process_image(str(job.id))
@@ -198,7 +203,7 @@ def test_process_image_is_idempotent_on_terminal_state(
             detector_calls.append(1)
             return super().detect(*a, **kw)
 
-    with patch("src.domains.vision.services.GoogleAIStudioDetector", return_value=_Sentinel()):
+    with patch("src.domains.vision.services.DetectorFactory.build", return_value=_Sentinel()):
         with patch("src.domains.vision.services.ScoringStorage", lambda *a, **kw: storage):
             result = process_image(str(job.id))
 
@@ -251,3 +256,56 @@ def test_reap_stuck_jobs_leaves_fresh_running_rows_alone(
 
     job.refresh_from_db()
     assert job.status == ScoringJob.Status.RUNNING
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: env-driven detector wiring (VISION_DETECTOR → DetectorFactory.build).
+# ---------------------------------------------------------------------------
+
+
+def test_process_image_reads_vision_detector_env(
+    monkeypatch: pytest.MonkeyPatch,
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """process_image routes detector selection through
+    ``DetectorFactory.build(os.environ["VISION_DETECTOR"])`` (Phase 3.1), not a
+    hardcoded ``GoogleAIStudioDetector()``.
+
+    With ``VISION_DETECTOR=mock`` the factory spy must be called with ``"mock"``
+    and the job must succeed with MockDetector's 5-hole pattern. The spy makes
+    the test deterministic regardless of the google detector's offline behavior.
+    """
+    storage, rel_input = storage_with_upload
+    job = ScoringJob.objects.create(
+        user_uuid=uuid4(),
+        status=ScoringJob.Status.QUEUED,
+        input_path=rel_input,
+        target_type="air_pistol",
+    )
+    monkeypatch.setenv("VISION_DETECTOR", "mock")
+
+    with patch(
+        "src.domains.vision.services.DetectorFactory.build",
+        return_value=MockDetector(),
+    ) as build_spy:
+        with patch("src.domains.vision.services.ScoringStorage", lambda *a, **kw: storage):
+            result = process_image(str(job.id))
+
+    build_spy.assert_called_once_with("mock")
+    job.refresh_from_db()
+    assert job.status == ScoringJob.Status.SUCCEEDED
+    assert result["count"] == 5
+
+
+def test_factory_default_is_google(monkeypatch: pytest.MonkeyPatch) -> None:
+    """VISION_DETECTOR unset (or "google") builds a GoogleAIStudioDetector — pins
+    the prod default so a future change can't silently flip it (Phase 3.2)."""
+    monkeypatch.delenv("VISION_DETECTOR", raising=False)
+    detector = DetectorFactory.build(os.environ.get("VISION_DETECTOR", "google"))
+    assert isinstance(detector, GoogleAIStudioDetector)
+
+
+def test_factory_mock_name_returns_mock_detector() -> None:
+    """``DetectorFactory.build("mock")`` returns a MockDetector (Phase 3.2)."""
+    assert isinstance(DetectorFactory.build("mock"), MockDetector)
+
