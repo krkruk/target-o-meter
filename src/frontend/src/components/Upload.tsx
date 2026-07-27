@@ -1,9 +1,60 @@
-// Upload route — S-02 Phase 8 fills this in (PC file-picker wizard).
-// Phase 6 ships a stub so the router table resolves.
+// S-02 Phase 8: Upload route — PC file picker. Same flow as Capture minus the
+// `capture` attribute. Renders CaliberDistanceStep first, then the file input.
+// On file selection, calls createScoringJob and navigates to /waiting/:jobId.
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { CaliberDistanceStep, type CaliberDistanceSelection } from './CaliberDistanceStep';
+import { createScoringJob } from '../api';
+import styles from './Upload.module.css';
+
 export function Upload() {
+  const [step, setStep] = useState<'caliber' | 'upload'>('caliber');
+  const [selection, setSelection] = useState<CaliberDistanceSelection | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  async function handleFile(file: File) {
+    if (!selection) return;
+    try {
+      const result = await createScoringJob(
+        file,
+        'air_pistol',
+        selection.caliber,
+        selection.distance_m,
+      );
+      navigate(`/waiting/${result.job_id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (step === 'caliber') {
+    return (
+      <CaliberDistanceStep
+        onNext={(sel) => {
+          setSelection(sel);
+          setStep('upload');
+        }}
+      />
+    );
+  }
+
   return (
-    <div data-testid="upload-route">
-      {/* TODO Phase 8: PC file picker */}
+    <div className={styles.upload}>
+      <input
+        type="file"
+        accept="image/*"
+        aria-label="Select a photo of your target"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+        }}
+      />
+      {error && (
+        <div role="alert" className={styles.error}>
+          Upload failed: {error}
+        </div>
+      )}
     </div>
   );
 }

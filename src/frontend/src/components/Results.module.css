@@ -1,0 +1,65 @@
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.marked {
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  align-self: center;
+}
+
+.heading {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-muted);
+}
+
+.holes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hole {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.holeLabel {
+  flex: 1;
+  font-size: 0.95rem;
+}
+
+.correctLabel {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.hole select {
+  padding: 0.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: #fff;
+}
+
+.fallback {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #b00020;
+}
