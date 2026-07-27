@@ -1541,18 +1541,18 @@ end-to-end manual flow works before considering this change done.
 
 #### Automated
 
-- [x] 8.1 `cd src/frontend && npm run test` passes (all wizard component tests) — 13 new tests (CaliberDistanceStep 5, Waiting 4, Results 4) + the existing suite; full fe suite 55 green.
-- [x] 8.2 `cd src/frontend && npx tsc --noEmit` passes
-- [x] 8.3 `make check` passes
-- [x] 8.4 `make fe-test` passes
+- [x] 8.1 `cd src/frontend && npm run test` passes (all wizard component tests) — 13 new tests (CaliberDistanceStep 5, Waiting 4, Results 4) + the existing suite; full fe suite 55 green. — 1a8835c
+- [x] 8.2 `cd src/frontend && npx tsc --noEmit` passes — 1a8835c
+- [x] 8.3 `make check` passes — 1a8835c
+- [x] 8.4 `make fe-test` passes — 1a8835c
 
 #### Manual
 
-- [x] 8.5 Desktop full flow: dashboard → /upload → caliber+distance → file → /waiting/:jobId → /results/:jobId (5 mocked holes + dropdowns) — automated piecewise: the wizard step (CaliberDistanceStep.test.tsx), the Upload file→createScoringJob→/waiting navigation (CaliberDistanceStep.test.tsx > Upload), the Waiting state machine (Waiting.test.tsx), and the Results render with per-hole dropdowns (Results.test.tsx). The API-level round-trip (POST→201→poll→succeeded with 5 holes) is pinned by tests/system/test_scoring_routes.py.
-- [x] 8.6 Mobile (≤760px) full flow: dashboard → /capture → camera → waiting → results — automated as CaliberDistanceStep.test.tsx > Capture (renders file input with capture="environment" after the wizard step; createScoringJob → /waiting navigation). The dashboard's mobile add-photos branch → /capture is pinned by Dashboard.test.tsx.
-- [x] 8.7 `failed` state: VISION_DETECTOR=banana (or ollama pointed at a dead port) → /waiting shows role="alert" error — automated as Waiting.test.tsx::renders role=alert on a failed job (the failed-job shape renders role=alert with the error text). The VISION_DETECTOR=banana → process_image marks FAILED backend path is exercised by the existing test_services_q2.py failure tests.
-- [x] 8.8 Refresh on /waiting/:jobId resumes polling — Waiting reads jobId from useParams on mount and starts polling in useEffect; the mount-poll behavior is pinned by every Waiting test (each renders at /waiting/:jobId and observes the first poll). A refresh re-mounts → re-polls.
-- [x] 8.9 Refresh on /results/:jobId re-fetches and re-renders — Results reads jobId from useParams and fetches in useEffect on mount; pinned by every Results test (each renders at /results/:jobId and observes the getScoringJob fetch). A refresh re-mounts → re-fetches.
+- [x] 8.5 Desktop full flow: dashboard → /upload → caliber+distance → file → /waiting/:jobId → /results/:jobId (5 mocked holes + dropdowns) — automated piecewise: the wizard step (CaliberDistanceStep.test.tsx), the Upload file→createScoringJob→/waiting navigation (CaliberDistanceStep.test.tsx > Upload), the Waiting state machine (Waiting.test.tsx), and the Results render with per-hole dropdowns (Results.test.tsx). The API-level round-trip (POST→201→poll→succeeded with 5 holes) is pinned by tests/system/test_scoring_routes.py. — 1a8835c
+- [x] 8.6 Mobile (≤760px) full flow: dashboard → /capture → camera → waiting → results — automated as CaliberDistanceStep.test.tsx > Capture (renders file input with capture="environment" after the wizard step; createScoringJob → /waiting navigation). The dashboard's mobile add-photos branch → /capture is pinned by Dashboard.test.tsx. — 1a8835c
+- [x] 8.7 `failed` state: VISION_DETECTOR=banana (or ollama pointed at a dead port) → /waiting shows role="alert" error — automated as Waiting.test.tsx::renders role=alert on a failed job (the failed-job shape renders role=alert with the error text). The VISION_DETECTOR=banana → process_image marks FAILED backend path is exercised by the existing test_services_q2.py failure tests. — 1a8835c
+- [x] 8.8 Refresh on /waiting/:jobId resumes polling — Waiting reads jobId from useParams on mount and starts polling in useEffect; the mount-poll behavior is pinned by every Waiting test (each renders at /waiting/:jobId and observes the first poll). A refresh re-mounts → re-polls. — 1a8835c
+- [x] 8.9 Refresh on /results/:jobId re-fetches and re-renders — Results reads jobId from useParams and fetches in useEffect on mount; pinned by every Results test (each renders at /results/:jobId and observes the getScoringJob fetch). A refresh re-mounts → re-fetches. — 1a8835c
 
 > **End-to-end acceptance note:** the SPA's full browser flow (a real browser
 > driving dashboard → /upload → file picker → /waiting → /results) is covered
