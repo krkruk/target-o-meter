@@ -70,6 +70,69 @@ _MANAGE_PY = _REPO_ROOT / "src" / "manage.py"
 # boot, named by the test + a short UUID so parallel runs never collide.
 _RESULTS_ROOT = _REPO_ROOT / "results"
 
+# Env vars that must NOT leak from the developer's shell / ``.env`` into the
+# spawned ``runserver`` / CLI subprocess. Without this denylist, a ``.env`` on
+# disk (loaded into ``os.environ`` by ``settings.load_dotenv()`` during any
+# earlier ``manage.py`` invocation in the same process tree) silently flips
+# test outcomes — e.g. ``DEV_AUTH_BYPASS_SUB`` activates the dev-auth-bypass
+# middleware, turning the expected 401 on ``/v1/me`` into a 200 and breaking
+# 6 live-server tests. Tests that need a specific value pass it via the
+# fixture's ``extra_env=`` argument, which is applied AFTER the sanitize step
+# and so overrides the denylist cleanly. (S-02 impl-review F10.)
+_SANITIZED_ENV_DENYLIST = frozenset({
+    # Dev-only auth bypass + dev admin seeding.
+    "DEV_AUTH_BYPASS_SUB",
+    "DEV_ADMIN_SUB",
+    "DEV_ADMIN_NICK",
+    "DEV_ADMIN_PASSWORD",
+    # Real credentials — tests must opt in via extra_env, never inherit.
+    "GOOGLE_API_KEY",
+    "AUTH0_CLIENT_ID",
+    "AUTH0_CLIENT_SECRET",
+    "AUTH0_DOMAIN",
+    "AUTH0_SECRET",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_STORAGE_BUCKET_NAME",
+    "AWS_S3_ENDPOINT_URL",
+    "AWS_S3_ADDRESSING_STYLE",
+    # Owner identity — tests set this via the ``owner_sub`` fixture / extra_env.
+    "OWNER_SUB_ID",
+    # Backend selectors — tests that exercise a specific branch pass extra_env.
+    "USE_S3",
+    "VISION_DETECTOR",
+    "OLLAMA_HOST",
+    "OLLAMA_MODEL",
+    # Redirected to an empty file under run_dir by ``_sanitized_env`` so the
+    # subprocess's own ``load_dotenv()`` can't re-introduce the leak.
+    "TOM_ENV_FILE",
+})
+
+
+def _sanitized_env(run_dir: Path) -> dict[str, str]:
+    """``os.environ`` with the denylist above stripped AND ``TOM_ENV_FILE``
+    pointed at an empty file under ``run_dir``.
+
+    The ``TOM_ENV_FILE`` redirect is the load-bearing part: ``settings.py``
+    calls ``load_dotenv()`` at import time, and the no-arg form walks up from
+    the settings file to find the repo-root ``.env``. Without redirecting it,
+    the spawned subprocess re-reads the developer's ``.env`` *itself* and
+    re-introduces every var the denylist just stripped — so the denylist alone
+    is necessary but not sufficient. Pointing ``TOM_ENV_FILE`` at an empty
+    file makes ``load_dotenv`` a clean no-op (returns True on an empty file,
+    no warning, no env pollution).
+
+    ``extra_env=`` overrides land on top of this and so win cleanly.
+    """
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in _SANITIZED_ENV_DENYLIST
+    }
+    # Empty .env in the run-dir → load_dotenv reads nothing, returns True.
+    (run_dir / ".env").touch()
+    env["TOM_ENV_FILE"] = str(run_dir / ".env")
+    return env
+
 
 def _run_dir_for(test_id: str) -> Path:
     """Allocate a unique ``results/<test-id>-<uuid8>/`` for one boot."""
@@ -169,7 +232,7 @@ def _boot_runserver(
     # blank-page bug fix) without colliding with parallel boots or polluting the
     # developer's ``src/staticfiles``.
     base_env = {
-        **os.environ,
+        **_sanitized_env(run_dir),
         "RAILWAY_VOLUME_MOUNT_PATH": str(run_dir),
         "STATIC_ROOT": str(static_root),
         "DJANGO_SETTINGS_MODULE": "src.target_o_meter.settings",
@@ -417,7 +480,7 @@ def cli(request: pytest.FixtureRequest):
     ) -> CliResult:
         run_dir = _run_dir_for(f"{request.node.name}-run{len(runs)}")
         env = {
-            **os.environ,
+            **_sanitized_env(run_dir),
             "RAILWAY_VOLUME_MOUNT_PATH": str(run_dir),
             **(extra_env or {}),
         }

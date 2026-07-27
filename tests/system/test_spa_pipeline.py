@@ -45,6 +45,18 @@ pytestmark = [pytest.mark.django_db, pytest.mark.dev]
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _FRONTEND_DIST_MANIFEST = _REPO_ROOT / "src" / "frontend" / "dist" / "manifest.json"
 
+# Prod-mode boot env. The SECRET_KEY is explicit (NOT inherited from the
+# developer's ``.env``) because ``conftest._sanitized_env`` strips AUTH0_SECRET
+# / SECRET_KEY to keep tests isolated from the host environment — a prod-shape
+# boot (DEBUG=False) fails the E002 system check without a real key. The value
+# is test-only (these boots never sign real sessions; they assert on the served
+# HTML / bundle bytes). See S-02 impl-review F10.
+_PROD_MODE_ENV = {
+    "DEBUG": "False",
+    "ALLOWED_HOSTS": "*",
+    "SECRET_KEY": "test-only-prod-mode-boot-key-not-secret",
+}
+
 
 def test_index_serves_spa_shell_dev_mode(runserver) -> None:
     """DEV: ``/`` serves the shell with the vite entry on the dev server.
@@ -77,7 +89,7 @@ def test_index_serves_spa_shell_prod_mode(runserver_factory) -> None:
         )
 
     server = runserver_factory(
-        extra_env={"DEBUG": "False", "ALLOWED_HOSTS": "*"},
+        extra_env=_PROD_MODE_ENV,
     )
     response = server.get("/")
     assert response.status_code == 200, response.text
@@ -109,7 +121,7 @@ def test_prod_mode_hashed_bundle_is_served_as_javascript(runserver_factory) -> N
         )
 
     server = runserver_factory(
-        extra_env={"DEBUG": "False", "ALLOWED_HOSTS": "*"},
+        extra_env=_PROD_MODE_ENV,
     )
     html = server.get("/").text
     # Extract the hashed bundle URL django-vite emitted.
@@ -160,7 +172,7 @@ def test_prod_mode_bundle_inlines_target_svg(runserver_factory) -> None:
         )
 
     server = runserver_factory(
-        extra_env={"DEBUG": "False", "ALLOWED_HOSTS": "*"},
+        extra_env=_PROD_MODE_ENV,
     )
     html = server.get("/").text
     m = re.search(r'<script[^>]+src="(/static/assets/main-[^"]+\.js)"', html)
