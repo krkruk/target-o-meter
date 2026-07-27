@@ -30,8 +30,9 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /login/i })).toBeInTheDocument();
     });
-    // And NOT the app shell.
-    expect(screen.queryByText(/your dashboard will appear/i)).toBeNull();
+    // And NOT the app shell — the shell's Sidebar carries the main navigation,
+    // which Welcome does not render.
+    expect(screen.queryByRole('navigation', { name: /main navigation/i })).toBeNull();
   });
 
   it('renders the AppShell when authenticated, without the nick prompt if has_set_nick is true', async () => {
@@ -40,8 +41,10 @@ describe('App', () => {
       user: { nick: 'alice', role: 'user', has_set_nick: true },
     });
     render(<App />);
+    // The AppShell's Sidebar nav is the shell-specific signal (Welcome has no
+    // sidebar). Its presence proves the shell mounted.
     await waitFor(() => {
-      expect(screen.getByText(/your dashboard will appear/i)).toBeInTheDocument();
+      expect(screen.getByRole('navigation', { name: /main navigation/i })).toBeInTheDocument();
     });
     expect(screen.queryByRole('dialog', { name: /username/i })).toBeNull();
   });

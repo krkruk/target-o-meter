@@ -1,0 +1,170 @@
+# Dockerized dev stack — one ``make dev-container`` brings up the full app
+# against MinIO (S3-compatible parity with prod's Tigris-backed Storage Buckets).
+#
+# Four services share the ``dev`` image (built from Dockerfile's dev stage):
+#   - web:       runserver + dev-seed (migrate + seed first), live-reload via
+#                 bind-mount of the backend Python packages (NOT ./src/frontend,
+#                 which the image bakes — mounting it would shadow the bundle)
+#   - worker:    qcluster (the async worker that runs process_image)
+#   - minio:     S3 API (:9000) + console (:9001)
+#   - create-bucket: one-shot ``mc mb`` against minio (idempotent)
+#
+# USE_S3=True + MinIO vars exercise the django-storages S3 backend against
+# MinIO; VISION_DETECTOR=mock keeps the detector offline. The dev-seed.sh
+# entrypoint runs migrate + the admin/owner/user seed before exec'ing the
+# role command (web → runserver, worker → qcluster).
+#
+# Frontend: this stack runs no Vite dev server. The dev image bakes the bundle
+# (Dockerfile dev stage: npm ci && npm run build) and ``web`` sets
+# DJANGO_VITE_DEV_MODE=False so django-vite serves it from dist/manifest.json
+# (manifest mode) instead of the absent :5173. Native ``make dev`` keeps HMR
+# for live frontend work; HMR-in-container is intentionally not provided.
+#
+# Env is read from ``.env`` (copy .env.example to .env). The compose overrides
+# the storage + detector vars below to flip on the S3/MinIO path; everything
+# else (Auth0, OWNER_SUB_ID, DEV_AUTH_BYPASS_SUB) flows from .env.
+
+services:
+  web:
+    build:
+      context: .
+      target: dev
+    image: target-o-meter-dev
+    command: ["/app/docker/dev-seed.sh"]
+    environment:
+      SERVICE_ROLE: web
+      # The project isn't editable-installed in the image (the [project] name is
+      # a placeholder), so make the package root importable for EVERY process —
+      # including qcluster's spawned workers, which don't re-run manage.py's
+      # sys.path bootstrap. Without this, the worker errors with "Function
+      # src.domains.vision.services.process_image is not defined".
+      PYTHONPATH: /app
+      # S3 against MinIO (flips the USE_S3 swap on).
+      USE_S3: "True"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_STORAGE_BUCKET_NAME: target-o-meter-local
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      AWS_S3_ADDRESSING_STYLE: path
+      # Mocked detector — no API calls, exercises the full round-trip.
+      VISION_DETECTOR: mock
+      DEBUG: "True"
+      # Serve the frontend from the dev image's baked bundle (manifest mode),
+      # NOT the absent :5173 Vite dev server. This stack runs no Vite service,
+      # so the default (dev_mode=DEBUG=True) would emit http://localhost:5173/...
+      # and the browser would import nothing → blank page. The dev image bakes
+      # src/frontend/dist; DJANGO_VITE_DEV_MODE=False makes django-vite read it
+      # via manifest mode. HMR-in-container is intentionally not provided — use
+      # native `make dev` for live frontend work. (S-02 impl-review F11.)
+      DJANGO_VITE_DEV_MODE: "False"
+      # Throwaway DB under the named volume (settings reads RAILWAY_VOLUME_MOUNT_PATH).
+      RAILWAY_VOLUME_MOUNT_PATH: /data
+      # Auth bypass so the app is usable without Auth0 creds.
+      DEV_AUTH_BYPASS_SUB: ${DEV_AUTH_BYPASS_SUB:-dev-bypass-sub}
+      OWNER_SUB_ID: ${OWNER_SUB_ID:-dev-bypass-sub}
+      # The seeded dev admin (dev-seed.sh reads these).
+      DEV_ADMIN_SUB: ${DEV_ADMIN_SUB:-}
+      DEV_ADMIN_NICK: ${DEV_ADMIN_NICK:-dev-admin}
+      DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-}
+      SECRET_KEY: ${AUTH0_SECRET:-}
+      AUTH0_SECRET: ${AUTH0_SECRET:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
+      ALLOWED_HOSTS: localhost,127.0.0.1,fedora-linux.local
+    volumes:
+      # Granular backend mounts (NOT ./src:/app/src). The blanket mount would
+      # shadow the dev image's baked src/frontend/dist with the host's
+      # gitignored-empty dist/, undoing the image-time frontend build → blank
+      # page. Mounting the backend Python packages + manage.py preserves the
+      # live-reload contract (edit a .py → runserver reloads) WITHOUT touching
+      # the frontend bundle. ``src/`` holds only target_o_meter/ bff/ domains/
+      # frontend/ + manage.py (AGENTS.md §4), so this list fully covers backend
+      # live-reload. ``worker`` keeps the blanket ./src mount below — it never
+      # serves the frontend, so shadowing src/frontend there is harmless.
+      #
+      # The :Z suffix lets podman relabel the host path for the container's
+      # SELinux context on Fedora (bind mounts need it; named volumes below
+      # don't — podman labels those automatically). NOTE: podman-compose (unlike
+      # the docker CLI) drops the option when combined with :cached, so :cached
+      # is omitted — it's a Docker-for-Mac no-op on Linux anyway.
+      - ./src/target_o_meter:/app/src/target_o_meter:z
+      - ./src/bff:/app/src/bff:z
+      - ./src/domains:/app/src/domains:z
+      - ./src/manage.py:/app/src/manage.py:z
+      - ./templates:/app/templates:z
+      - ./docker:/app/docker:z
+      # SQLite DB + MinIO data on named volumes (persist across re-up).
+      - db-data:/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  worker:
+    image: target-o-meter-dev
+    build:
+      context: .
+      target: dev
+    command: ["/app/docker/dev-seed.sh"]
+    environment:
+      SERVICE_ROLE: worker
+      # PYTHONPATH=/app — see the web service comment. The worker's spawned
+      # qcluster subprocesses need it to import src.domains.vision.services.
+      PYTHONPATH: /app
+      USE_S3: "True"
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_STORAGE_BUCKET_NAME: target-o-meter-local
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      AWS_S3_ADDRESSING_STYLE: path
+      VISION_DETECTOR: mock
+      DEBUG: "True"
+      RAILWAY_VOLUME_MOUNT_PATH: /data
+      OWNER_SUB_ID: ${OWNER_SUB_ID:-dev-bypass-sub}
+      SECRET_KEY: ${AUTH0_SECRET:-}
+      AUTH0_SECRET: ${AUTH0_SECRET:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
+    volumes:
+      # :Z for SELinux on Fedora bind mounts (see the web service comment).
+      - ./src:/app/src:z
+      - ./templates:/app/templates:z
+      - ./docker:/app/docker:z
+      - db-data:/data
+    depends_on:
+      # migrate (run by web's dev-seed) must complete first so the worker's
+      # qcluster doesn't boot against an unmigrated schema.
+      web:
+        condition: service_started
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # web console
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  create-bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/target-o-meter-local &&
+      echo 'bucket target-o-meter-local ready'
+      "
+
+volumes:
+  db-data:
+  minio-data:

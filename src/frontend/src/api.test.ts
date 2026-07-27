@@ -6,7 +6,7 @@
 //   * login performs a full-page navigation to /login (Phase 5: dropped the
 //     /v1 prefix from the OIDC chain).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getMe, patchMe, postLogout, login } from './api';
+import { getMe, patchMe, postLogout, login, createScoringJob, getScoringJob } from './api';
 
 describe('api client', () => {
   // jsdom's window.location is read-only; replace it with a plain stub for
@@ -77,5 +77,83 @@ describe('api client', () => {
     // side effect (href assignment), which the stub captures.
     expect(() => login()).toThrow();
     expect(window.location.href).toBe('/login');
+  });
+
+  // S-02 Phase 6.4: the multipart upload + poll helpers onto the scoring seam.
+  describe('createScoringJob (multipart upload)', () => {
+    it('POSTs a FormData body to /v1/scoring/jobs with X-CSRFToken and NO Content-Type', async () => {
+      // The browser must set the multipart boundary — the client MUST NOT pin
+      // Content-Type (doing so drops the boundary and the server can't parse
+      // the body). This is the load-bearing difference from the JSON helpers.
+      document.cookie = 'csrftoken=upload-token; path=/';
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ job_id: 'abc', status: 'queued' }), { status: 201 }) as Response
+      );
+      const file = new File([new Uint8Array([1, 2, 3])], 'target.jpg', { type: 'image/jpeg' });
+
+      const result = await createScoringJob(file, 'air_pistol', '9x19mm', 25);
+
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe('/v1/scoring/jobs');
+      expect(init?.method).toBe('POST');
+      expect((init?.headers as Record<string, string>)['X-CSRFToken']).toBe('upload-token');
+      // Content-Type must be absent so the browser sets the multipart boundary.
+      const headers = init?.headers as Record<string, string>;
+      expect(headers['Content-Type']).toBeUndefined();
+      expect(headers['content-type']).toBeUndefined();
+      // The body is a FormData carrying the file + the form fields.
+      expect(init?.body).toBeInstanceOf(FormData);
+      const body = init?.body as FormData;
+      expect(body.get('file')).toBe(file);
+      expect(body.get('target_type')).toBe('air_pistol');
+      expect(body.get('caliber_hint')).toBe('9x19mm');
+      expect(body.get('distance_m')).toBe('25');
+      expect(result).toEqual({ job_id: 'abc', status: 'queued' });
+    });
+
+    it('omits optional form fields when not provided', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ job_id: 'xyz', status: 'queued' }), { status: 201 }) as Response
+      );
+      const file = new File([new Uint8Array([1])], 't.jpg', { type: 'image/jpeg' });
+      await createScoringJob(file, 'precision_pistol');
+      const body = vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as FormData;
+      expect(body.get('target_type')).toBe('precision_pistol');
+      expect(body.has('caliber_hint')).toBe(false);
+      expect(body.has('distance_m')).toBe(false);
+    });
+
+    it('throws when the POST fails (non-2xx)', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(null, { status: 422 }) as Response
+      );
+      const file = new File([new Uint8Array([1])], 't.jpg', { type: 'image/jpeg' });
+      await expect(createScoringJob(file, 'air_pistol')).rejects.toThrow(/422/);
+    });
+  });
+
+  describe('getScoringJob (poll)', () => {
+    it('GETs /v1/scoring/jobs/{jobId} with Accept: application/json', async () => {
+      const body = {
+        job_id: 'abc', status: 'succeeded', target_type: 'air_pistol',
+        result: { holes: [{ x: 512, y: 512, score: 10, confidence: 1 }], target_type: 'air_pistol', detector_name: 'mock' },
+      };
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify(body), { status: 200 }) as Response
+      );
+      const result = await getScoringJob('abc');
+      const [url, init] = fetchSpy.mock.calls[0];
+      expect(url).toBe('/v1/scoring/jobs/abc');
+      expect((init?.headers as Record<string, string>)['Accept']).toBe('application/json');
+      expect(result.status).toBe('succeeded');
+      expect(result.result?.holes).toHaveLength(1);
+    });
+
+    it('throws when the GET fails', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(null, { status: 404 }) as Response
+      );
+      await expect(getScoringJob('missing')).rejects.toThrow(/404/);
+    });
   });
 });

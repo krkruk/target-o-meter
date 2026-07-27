@@ -3,7 +3,7 @@ project: Target-o-meter
 version: 1
 status: draft
 created: 2026-07-19
-updated: 2026-07-26
+updated: 2026-07-27
 prd_version: 1
 main_goal: market-feedback
 top_blocker: skills
@@ -33,7 +33,7 @@ Shooting results are trapped on paper targets; ISSF hobbyist shooters have no ea
 | F-02 | `cv-service-boundary` | (foundation) CV detection service exists alongside Django with a callable I/O contract — photo in, per-hole scores + marked image out; fidelity is downstream | — | NFR (≥90%), FR-007, FR-008 | done |
 | S-01 | `sign-in-empty-dashboard` | sign in via OAuth, set a username on first login, and land on an empty dashboard | F-01 | US-01, FR-001, FR-002, FR-012 | done |
 | S-04 | `owner-user-management` | (as owner) list registered users, remove a user, and toggle registration to invite-only | F-01 | FR-003, FR-004, FR-005 | proposed |
-| S-02 | `photo-detection-review` | photograph an ISSF target, upload it, and see the detected score with holes marked for review | F-02, S-01 | US-01, FR-006, FR-007, FR-008 | proposed |
+| S-02 | `photo-detection-review` | photograph an ISSF target, upload it, and see the detected score with holes marked for review | F-02, S-01 | US-01, FR-006, FR-007, FR-008 | done |
 | S-03 | `accept-persist-dashboard` | confirm shooting parameters, accept or reject a detection result, and see accepted results aggregated on the dashboard | S-02 | US-01, FR-009, FR-010, FR-011, FR-012 | proposed |
 
 ## Streams
@@ -126,7 +126,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Unknowns:**
   - Which CV approach actually hits ≥90% fidelity on real ISSF photos for both supported target types? — Owner: user. Block: no (research-shape unknown resolved inside the plan; this is the question the whole product hinges on).
 - **Risk:** This is the wedge slice — the place where the product's core hypothesis is first tested against real photographs. Under `market-feedback` + `skills`, sequencing biases toward reaching this slice as early as Prerequisites allow; if the ≥90% bar cannot be met, the roadmap must be resequenced (manual-scoring fallback, scope cut, or product rethink) before `S-03` is worth pursuing.
-- **Status:** proposed
+- **Status:** done
 
 ### S-03: Accept scored target + dashboard aggregation
 
@@ -177,3 +177,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **F-02: (foundation) a callable CV detection service exists alongside Django with a documented I/O contract — accepts a target photo, returns per-hole point values (0–10 or X), a total score, and a marked-up image; the underlying detection fidelity is downstream (this foundation establishes the seam, not the accuracy).** — Archived 2026-07-24 → `context/archive/2026-07-19-cv-service-boundary/`. Lesson: —.
 - **F-01: (foundation) third-party OAuth sign-in (Google per `shape-notes.md`) is wired, the user model carries a role flag, and the owner is determinable via a configured designated sub (`OWNER_SUB_ID` env var) — no username flow, no admin UI, no invite-only logic; just enough that downstream slices can require authentication and check role.** — Archived 2026-07-25 → `context/archive/2026-07-24-oauth-roles-scaffold/`. Lesson: —.
 - **S-01: user can sign in via the configured OAuth provider, set a username on first login, and land on an empty dashboard that renders the shell for FR-012 (no aggregated data yet).** — Archived 2026-07-26 → `context/archive/2026-07-25-sign-in-empty-dashboard/`. Lesson: —.
+- **S-02: user can capture a target photo via device camera, upload it, the CV service runs detection, and the user sees the overall score plus the target photo with holes marked — without yet persisting anything.** — Archived 2026-07-27 → `context/archive/2026-07-26-photo-detection-review/`. Lesson: —.

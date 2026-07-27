@@ -75,3 +75,77 @@ export function login(): never {
   window.location.href = '/login';
   throw new Error('navigating to /login');
 }
+
+// S-02: the scoring seam onto POST /v1/scoring/jobs + GET /v1/scoring/jobs/{id}.
+// The SPA's capture/upload wizard calls createScoringJob (multipart), then
+// /waiting/:jobId polls getScoringJob until a terminal status.
+
+export type ScoringJobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface DetectedHole {
+  x: number;
+  y: number;
+  score: number;
+  confidence: number;
+  caliber?: string | null;
+}
+
+export interface ScoringResult {
+  holes: DetectedHole[];
+  target_type: string;
+  notes?: string | null;
+  detector_name: string;
+}
+
+export interface ScoringJob {
+  job_id: string;
+  status: ScoringJobStatus;
+  target_type: string;
+  caliber_hint?: string | null;
+  result?: ScoringResult | null;
+  error?: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+  marked_image_url?: string | null;
+}
+
+export interface CreatedScoringJob {
+  job_id: string;
+  status: string;
+}
+
+function multipartHeaders(): Record<string, string> {
+  // Multipart differs from the JSON helpers: the browser MUST set the
+  // Content-Type (it includes the randomly-generated boundary). Pinning
+  // Content-Type here would strip the boundary and the server couldn't parse
+  // the body — so only X-CSRFToken is sent.
+  return { 'X-CSRFToken': readCsrfToken() };
+}
+
+export async function createScoringJob(
+  file: File,
+  target_type: string,
+  caliber_hint?: string,
+  distance_m?: number,
+): Promise<CreatedScoringJob> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('target_type', target_type);
+  if (caliber_hint) form.append('caliber_hint', caliber_hint);
+  if (distance_m != null) form.append('distance_m', String(distance_m));
+  const res = await fetch('/v1/scoring/jobs', {
+    method: 'POST',
+    headers: multipartHeaders(),
+    body: form,
+  });
+  if (!res.ok) throw new Error(`POST /v1/scoring/jobs failed: ${res.status}`);
+  return (await res.json()) as CreatedScoringJob;
+}
+
+export async function getScoringJob(jobId: string): Promise<ScoringJob> {
+  const res = await fetch(`/v1/scoring/jobs/${jobId}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`GET /v1/scoring/jobs/${jobId} failed: ${res.status}`);
+  return (await res.json()) as ScoringJob;
+}

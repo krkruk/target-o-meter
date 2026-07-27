@@ -48,5 +48,9 @@ export default defineConfig({
     // CSS Modules: return class names as-is so tests can assert on them and
     // components don't crash trying to parse real CSS in jsdom.
     css: { modules: { classNameStrategy: 'non-scoped' } },
+    // Exclude the Playwright acceptance tests (tests-acceptance/*.spec.ts) —
+    // they drive a real browser + live stack, not jsdom. They run via
+    // `npm run test:acceptance` (npx playwright test).
+    exclude: ['node_modules', 'dist', 'tests-acceptance/**'],
   },
 });

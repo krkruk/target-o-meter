@@ -8,3 +8,9 @@ dist/
 # Local npm logs / cache (defense in depth).
 *.log
 npm-debug.log*
+
+# Playwright acceptance test artifacts (screenshots, videos, traces on
+# failure). The live-stack run dir lives under results/ (gitignored at the
+# repo root); these are the per-test-failure captures.
+test-results/
+playwright-report/

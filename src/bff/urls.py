@@ -16,11 +16,12 @@ dashboard (plan Phase 4).
 
 from __future__ import annotations
 
-from django.urls import path
+from django.urls import path, re_path
 
 from src.bff.api import api
 from src.bff.routers.auth_routes import callback, login_view, logout
 from src.bff.routers.owner_routes import router as owner_router
+from src.bff.routers.scoring_routes import router as scoring_router
 from src.bff.routers.session_routes import router as session_router
 from src.bff.views import index
 
@@ -28,6 +29,7 @@ app_name = "bff"
 
 api.add_router("/", session_router)
 api.add_router("/", owner_router)
+api.add_router("/", scoring_router)
 
 
 urlpatterns = [
@@ -40,4 +42,12 @@ urlpatterns = [
     path("v1/", api.urls),
     # Index — SPA shell document (S-01). ``reverse("bff:index")`` → ``/``.
     path("", index, name="index"),
+    # S-02: SPA client-side deep links (/dashboard, /waiting/:jobId, …) must
+    # survive a refresh. A catch-all serves the index document for any non-API,
+    # non-OIDC path so BrowserRouter picks up the route client-side. The
+    # negative lookahead excludes the versioned API + the OIDC chain so a
+    # 404'ing /v1/whatever or /login-typos surfaces as 404 (not a false 200
+    # that masks the routing bug). /admin/ is matched at the ROOT urls.py
+    # level before this include is even consulted.
+    re_path(r"^(?!v1/|login|callback|logout|admin/).*$", index),
 ]

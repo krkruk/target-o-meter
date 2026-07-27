@@ -70,6 +70,69 @@ _MANAGE_PY = _REPO_ROOT / "src" / "manage.py"
 # boot, named by the test + a short UUID so parallel runs never collide.
 _RESULTS_ROOT = _REPO_ROOT / "results"
 
+# Env vars that must NOT leak from the developer's shell / ``.env`` into the
+# spawned ``runserver`` / CLI subprocess. Without this denylist, a ``.env`` on
+# disk (loaded into ``os.environ`` by ``settings.load_dotenv()`` during any
+# earlier ``manage.py`` invocation in the same process tree) silently flips
+# test outcomes — e.g. ``DEV_AUTH_BYPASS_SUB`` activates the dev-auth-bypass
+# middleware, turning the expected 401 on ``/v1/me`` into a 200 and breaking
+# 6 live-server tests. Tests that need a specific value pass it via the
+# fixture's ``extra_env=`` argument, which is applied AFTER the sanitize step
+# and so overrides the denylist cleanly. (S-02 impl-review F10.)
+_SANITIZED_ENV_DENYLIST = frozenset({
+    # Dev-only auth bypass + dev admin seeding.
+    "DEV_AUTH_BYPASS_SUB",
+    "DEV_ADMIN_SUB",
+    "DEV_ADMIN_NICK",
+    "DEV_ADMIN_PASSWORD",
+    # Real credentials — tests must opt in via extra_env, never inherit.
+    "GOOGLE_API_KEY",
+    "AUTH0_CLIENT_ID",
+    "AUTH0_CLIENT_SECRET",
+    "AUTH0_DOMAIN",
+    "AUTH0_SECRET",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_STORAGE_BUCKET_NAME",
+    "AWS_S3_ENDPOINT_URL",
+    "AWS_S3_ADDRESSING_STYLE",
+    # Owner identity — tests set this via the ``owner_sub`` fixture / extra_env.
+    "OWNER_SUB_ID",
+    # Backend selectors — tests that exercise a specific branch pass extra_env.
+    "USE_S3",
+    "VISION_DETECTOR",
+    "OLLAMA_HOST",
+    "OLLAMA_MODEL",
+    # Redirected to an empty file under run_dir by ``_sanitized_env`` so the
+    # subprocess's own ``load_dotenv()`` can't re-introduce the leak.
+    "TOM_ENV_FILE",
+})
+
+
+def _sanitized_env(run_dir: Path) -> dict[str, str]:
+    """``os.environ`` with the denylist above stripped AND ``TOM_ENV_FILE``
+    pointed at an empty file under ``run_dir``.
+
+    The ``TOM_ENV_FILE`` redirect is the load-bearing part: ``settings.py``
+    calls ``load_dotenv()`` at import time, and the no-arg form walks up from
+    the settings file to find the repo-root ``.env``. Without redirecting it,
+    the spawned subprocess re-reads the developer's ``.env`` *itself* and
+    re-introduces every var the denylist just stripped — so the denylist alone
+    is necessary but not sufficient. Pointing ``TOM_ENV_FILE`` at an empty
+    file makes ``load_dotenv`` a clean no-op (returns True on an empty file,
+    no warning, no env pollution).
+
+    ``extra_env=`` overrides land on top of this and so win cleanly.
+    """
+    env = {
+        k: v for k, v in os.environ.items()
+        if k not in _SANITIZED_ENV_DENYLIST
+    }
+    # Empty .env in the run-dir → load_dotenv reads nothing, returns True.
+    (run_dir / ".env").touch()
+    env["TOM_ENV_FILE"] = str(run_dir / ".env")
+    return env
+
 
 def _run_dir_for(test_id: str) -> Path:
     """Allocate a unique ``results/<test-id>-<uuid8>/`` for one boot."""
@@ -169,7 +232,7 @@ def _boot_runserver(
     # blank-page bug fix) without colliding with parallel boots or polluting the
     # developer's ``src/staticfiles``.
     base_env = {
-        **os.environ,
+        **_sanitized_env(run_dir),
         "RAILWAY_VOLUME_MOUNT_PATH": str(run_dir),
         "STATIC_ROOT": str(static_root),
         "DJANGO_SETTINGS_MODULE": "src.target_o_meter.settings",
@@ -340,20 +403,104 @@ def runserver_factory(request: pytest.FixtureRequest, tmp_path: Path):
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_makereport(item, call):
-    """Thread the test outcome onto each ``LiveServer`` so teardown can decide
-    keep-on-failure vs clean-on-success.
+    """Thread the test outcome onto each ``LiveServer`` / ``CliResult`` so
+    teardown can decide keep-on-failure vs clean-on-success.
 
     ``makereport`` runs for setup/call/teardown phases; we only care about the
-    ``call`` phase (the test body). If it did not pass, flag every server
-    attached to the node so ``_teardown_runserver`` keeps the run dir.
+    ``call`` phase (the test body). If it did not pass, flag every server / CLI
+    result attached to the node so teardown keeps the run dir.
     """
     outcome = yield
     report = outcome.get_result()
     if report.when == "call" and report.failed:
-        for attr in ("_live_server", "_live_servers"):
+        for attr in ("_live_server", "_live_servers", "_cli_results"):
             val = getattr(item, attr, None)
             if val is None:
                 continue
             servers = val if isinstance(val, list) else [val]
             for server in servers:
                 server.test_failed = True
+
+
+# ---------------------------------------------------------------------------
+# CLI fixture (S-02): one subprocess per invocation, isolated under results/.
+# ---------------------------------------------------------------------------
+#
+# The sibling of ``runserver`` for one-shot CLI commands (manage.py shell, the
+# vision CLI). Each call gets its own ``results/<test>-<uuid>/`` as cwd AND as
+# the Django DB dir (``RAILWAY_VOLUME_MOUNT_PATH`` points there, mirroring the
+# runserver clean-context contract — never the developer's ``src/db.sqlite3``).
+# Captures stdout + stderr + exit code; keeps the run dir on failure so the
+# captured stderr is the post-mortem oracle.
+
+
+class CliResult:
+    """Outcome of one CLI invocation — the three observable signals."""
+
+    def __init__(self, proc: subprocess.CompletedProcess, run_dir: Path) -> None:
+        self.returncode = proc.returncode
+        self.stdout = proc.stdout
+        self.stderr = proc.stderr
+        self.run_dir = run_dir
+        self.test_failed = False  # set by the makereport hook
+
+    def assert_no_traceback(self) -> None:
+        """Fail if stderr contains a Python traceback (a swallowed exception)."""
+        if b"Traceback (most recent call last)" in self.stderr:
+            raise AssertionError(
+                f"CLI traceback in stderr:\n{self.stderr.decode(errors='replace')}"
+            )
+
+    def assert_success(self) -> None:
+        """rc == 0 AND no traceback. Pair with a stdout/output-file assertion."""
+        assert self.returncode == 0, (
+            f"expected exit 0, got {self.returncode}\n"
+            f"stdout:\n{self.stdout.decode(errors='replace')}\n"
+            f"stderr:\n{self.stderr.decode(errors='replace')}"
+        )
+        self.assert_no_traceback()
+
+
+@pytest.fixture
+def cli(request: pytest.FixtureRequest):
+    """Factory: run a CLI command in a clean run dir under ``results/``.
+
+    Yields ``run(argv, *, extra_env=None, cwd=None) -> CliResult``. Each call
+    gets its own ``results/<test>-<uuid>/`` as cwd and as the Django DB dir
+    (``RAILWAY_VOLUME_MOUNT_PATH``). Like the server fixture, failed runs keep
+    their run dir for post-mortem; successful runs clean up.
+    """
+    runs: list[CliResult] = []
+
+    def run(
+        argv: list[str],
+        *,
+        extra_env: dict[str, str] | None = None,
+        cwd: Path | None = None,
+    ) -> CliResult:
+        run_dir = _run_dir_for(f"{request.node.name}-run{len(runs)}")
+        env = {
+            **_sanitized_env(run_dir),
+            "RAILWAY_VOLUME_MOUNT_PATH": str(run_dir),
+            **(extra_env or {}),
+        }
+        proc = subprocess.run(
+            argv,
+            cwd=str(cwd or run_dir),
+            env=env,
+            capture_output=True,
+            timeout=180,
+        )
+        result = CliResult(proc, run_dir)
+        runs.append(result)
+        return result
+
+    request.node._cli_results = runs  # makereport hook reads this
+    try:
+        yield run
+    finally:
+        for r in runs:
+            if not r.test_failed:
+                shutil.rmtree(r.run_dir, ignore_errors=True)
+            else:
+                print(f"\n[system-test] kept failed-run artifacts at: {r.run_dir}")

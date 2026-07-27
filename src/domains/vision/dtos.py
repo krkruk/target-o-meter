@@ -49,3 +49,12 @@ class ScoringJobDTO(BaseModel):
     error: Optional[str] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
+    # S-02 Phase 4.0: the marked-image deliverable URL, populated from
+    # ``job.marked_image_path`` via ``default_storage.url(...)`` only after
+    # ``process_image`` has written the deliverable and flipped status=SUCCEEDED.
+    # ``None`` for queued/running jobs (no deliverable yet) so the GET doesn't
+    # 500 on the missing path. Under ``USE_S3=False`` dev this is a
+    # ``MEDIA_URL``-rooted URL the SPA fetches directly; under the docker-compose
+    # MinIO path it's a MinIO URL. The Tigris/prod presigned-URL policy is an
+    # S-03 concern (lands alongside the OpenCV+S3 refactor).
+    marked_image_url: Optional[str] = None

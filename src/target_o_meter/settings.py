@@ -154,6 +154,12 @@ INSTALLED_APPS = [
     # Async task queue (AGENTS.md §2: django-q2 with SQLite broker via ORM
     # broker — task records live in the Django DB, which is SQLite here).
     'django_q',
+    # S3-compatible object storage (S-02). django-storages ships the
+    # ``storages.backends.s3.S3Storage`` backend ``STORAGES['default']`` flips to
+    # when ``USE_S3=True`` (Railway Storage Buckets / Tigris in prod, MinIO in
+    # docker-compose dev). Required by django-storages even when the FS fallback
+    # is active (``USE_S3=False``), so it lives here unconditionally.
+    'storages',
     # Bounded Contexts (DDD). Prefixed with `src.` to match the import-linter
     # root package (AGENTS.md \u00a76.1) and the BFF import convention (AGENTS.md \u00a76.2).
     'src.domains.core',
@@ -329,24 +335,60 @@ STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))
 # above (``WhiteNoiseMiddleware``) only becomes load-bearing once
 # ``collectstatic`` has populated ``STATIC_ROOT`` and the storage backend knows
 # how to resolve the hashed manifest. ``whitenoise>=6.12.0`` is a runtime dep.
+#
+# S-02: the default backend is env-driven via ``USE_S3``. False (default) keeps
+# the no-creds host-dev path on ``FileSystemStorage``; True flips to
+# django-storages' S3 backend (Railway Storage Buckets / Tigris in prod, MinIO
+# in docker-compose dev). The AWS_* vars are read with ``os.environ[...]``
+# (not ``.get``) so a missing prod var is a loud ``KeyError`` at boot rather
+# than a silent misconfiguration. MinIO-vs-Tigris is controlled by
+# ``AWS_S3_ENDPOINT_URL`` (set for MinIO, unset for Tigris).
+USE_S3 = _env_bool('USE_S3', False)
+_default_backend = (
+    'storages.backends.s3.S3Storage' if USE_S3
+    else 'django.core.files.storage.FileSystemStorage'
+)
 STORAGES = {
     'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        'BACKEND': _default_backend,
     },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
     },
 }
+if USE_S3:
+    AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
+    AWS_SECRET_ACCESS_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
+    AWS_STORAGE_BUCKET_NAME = os.environ['AWS_STORAGE_BUCKET_NAME']
+    AWS_S3_ENDPOINT_URL = os.environ.get('AWS_S3_ENDPOINT_URL')  # MinIO only; unset for Tigris
+    AWS_S3_ADDRESSING_STYLE = os.environ.get('AWS_S3_ADDRESSING_STYLE', 'auto')
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+
+# S-02 review (impl-review F2): cap multipart upload size so the BFF's
+# ``file.read()`` in ``scoring_routes.create_scoring_job`` can't be driven into
+# a single multi-MB/multi-GB ``bytes`` allocation per request. Django rejects
+# oversized requests with a 413 (RequestDataTooBig) BEFORE the view runs, so
+# the upload path never sees them. ``DATA_UPLOAD_MAX_MEMORY_SIZE`` bounds the
+# in-memory buffered size (Django spills above this to a temp file via
+# ``FILE_UPLOAD_TEMP_DIR``, but the BFF's ``file.read()`` then re-reads the
+# whole thing — so this cap also bounds the re-read). 10 MiB comfortably fits
+# a real ISSF target photo (typically a few MB) while keeping the per-request
+# memory footprint predictable under the §2 3-concurrent-task cap.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MiB; rejects >cap with 413
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # mirror for the disk-spill threshold
 
 # ---------------------------------------------------------------------------
 # Vite + django-vite (S-01 Phase 2).
 # ---------------------------------------------------------------------------
 #
 # django-vite 3.1.0 bridges Vite's dev server (HMR) and its hashed production
-# build to Django's template layer. In DEBUG, ``{% vite_asset %}`` /
-# ``{% vite_react_refresh %}`` emit URLs pointing at the Vite dev server
-# (``http://localhost:5173``); in prod they resolve hashed files from
-# ``dist/manifest.json``.
+# build to Django's template layer. When ``dev_mode`` is True, ``{% vite_asset
+# %}`` / ``{% vite_react_refresh %}`` emit URLs pointing at the Vite dev server
+# (``http://localhost:5173``); when False they resolve hashed files from
+# ``dist/manifest.json``. ``dev_mode`` defaults to ``DEBUG`` (so native
+# ``make dev`` HMR needs no extra env) but is overridable via
+# ``DJANGO_VITE_DEV_MODE`` — see the note on the dict below.
 #
 # ``manifest_path`` is consulted only when ``dev_mode=False``, but pointing it
 # unconditionally is harmless and avoids a dev/prod settings split for S-01's
@@ -354,13 +396,24 @@ STORAGES = {
 # lives under ``src/frontend/dist/`` (``BASE_DIR`` == ``src/``).
 #
 # ``STATICFILES_DIRS`` adds the built bundle so ``collectstatic`` picks it up
-# for prod (WhiteNoise serves it). In dev django-vite proxies to the Vite dev
-# server instead, so the entry is unused-but-harmless in DEBUG.
+# for prod (WhiteNoise serves it). In native dev django-vite proxies to the
+# Vite dev server instead, so the entry is unused-but-harmless there; in the
+# dev container (``DEBUG=True`` + ``DJANGO_VITE_DEV_MODE=False``) the finders
+# serve the baked bundle directly.
 FRONTEND_DIR = BASE_DIR / "frontend"
 
+# ``dev_mode`` is decoupled from ``DEBUG`` so the dev-container posture can
+# serve the built bundle (manifest mode) while keeping ``DEBUG=True`` for
+# backend dev (autoreload, dev-bypass auth, USE_S3 against MinIO).
+# ``docker-compose.dev.yml`` runs no Vite dev server (its only services are
+# web/worker/minio/create-bucket), so the default ``dev_mode=DEBUG=True`` would
+# emit ``http://localhost:5173/...`` with nothing answering → blank page. The
+# compose sets ``DJANGO_VITE_DEV_MODE=False`` to force manifest mode. The
+# default stays ``DEBUG`` so native ``make dev`` (Django :8000 + Vite :5173,
+# HMR) is unchanged. (S-02 impl-review F11.)
 DJANGO_VITE = {
     "default": {
-        "dev_mode": DEBUG,
+        "dev_mode": _env_bool("DJANGO_VITE_DEV_MODE", DEBUG),
         "dev_server_host": "localhost",
         "dev_server_port": 5173,
         "manifest_path": FRONTEND_DIR / "dist" / "manifest.json",

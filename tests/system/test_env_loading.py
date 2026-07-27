@@ -156,3 +156,46 @@ def test_env_example_keys_are_read_somewhere() -> None:
         f"keys declared in .env.example but never read under src/: {unread}. "
         f"Either wire them into settings.py or drop them from .env.example."
     )
+
+
+def test_django_vite_dev_mode_overrides_under_debug_true() -> None:
+    """``DJANGO_VITE_DEV_MODE=False`` makes ``settings.DJANGO_VITE['default']
+    ['dev_mode']`` False even when ``DEBUG=True``.
+
+    Pins the settings-level wiring for the dev-container posture (S-02
+    impl-review F11): ``dev_mode`` was bound directly to ``DEBUG``, so the dev
+    container emitted ``http://localhost:5173/...`` with no Vite answering and
+    served a blank page. The fix decouples them via this env var. The HTML-level
+    regression lives in ``test_spa_pipeline.py::test_dev_container_*``; this is
+    the unit-level resolution guard (a subprocess with both envs set, asserting
+    the resolved ``dev_mode``).
+
+    Default (unset) behavior is covered by the native-dev tests in
+    ``test_spa_pipeline.py`` (``test_index_serves_spa_shell_dev_mode``).
+    """
+    proc = subprocess.run(
+        [
+            sys.executable, str(_MANAGE_PY), "shell", "-c",
+            "from django.conf import settings; "
+            "print('DEVMODE=' + str(settings.DJANGO_VITE['default']['dev_mode'])); "
+            "print('DEBUG=' + str(settings.DEBUG))",
+        ],
+        cwd=str(_REPO_ROOT),
+        # DEBUG=True + the override False = the dev-container posture.
+        env={**os.environ, "DEBUG": "True", "DJANGO_VITE_DEV_MODE": "False"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, (
+        f"manage.py shell failed (rc={proc.returncode}):\n"
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )
+    assert "DEVMODE=False" in proc.stdout, (
+        f"DJANGO_VITE_DEV_MODE=False did not flip dev_mode to False under "
+        f"DEBUG=True (the dev-container bug).\nstdout:\n{proc.stdout}\n"
+        f"stderr:\n{proc.stderr}"
+    )
+    assert "DEBUG=True" in proc.stdout, (
+        f"sanity check failed: DEBUG was not True.\nstdout:\n{proc.stdout}"
+    )

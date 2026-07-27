@@ -1,10 +1,15 @@
-// Phase 3: App — the auth-seam decision point.
+// App — the auth-seam decision point.
 //
 // Single useState: fetch /v1/me on mount, then render Welcome (unauthed) or
 // AppShell (authed). When the authed user hasn't chosen a nick yet
-// (has_set_nick === false), the NickPrompt overlays the shell. No client-side
-// router — two screens selected by one GET. (React Router lands in S-02/S-03.)
+// (has_set_nick === false), the NickPrompt overlays the shell.
+//
+// S-02: React Router landed. The authed branch mounts <BrowserRouter> so the
+// five wizard routes (/dashboard, /capture, /upload, /waiting/:jobId,
+// /results/:jobId) own the AppShell main area. The auth seam (one GET) is
+// unchanged — only the authed branch gained the router.
 import { useEffect, useState } from 'react';
+import { BrowserRouter } from 'react-router-dom';
 import { getMe, login, postLogout, type Me } from './api';
 import { Welcome } from './components/Welcome';
 import { AppShell } from './components/AppShell';
@@ -38,10 +43,10 @@ export function App() {
   const showNickPrompt = me.user ? !me.user.has_set_nick : false;
 
   return (
-    <>
+    <BrowserRouter>
       <AppShell me={me} onLogout={handleLogout} />
       {showNickPrompt && <NickPrompt onNickSet={setMe} />}
-    </>
+    </BrowserRouter>
   );
 
   async function handleLogout() {
