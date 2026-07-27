@@ -1531,8 +1531,8 @@ end-to-end manual flow works before considering this change done.
 
 #### Manual
 
-- [ ] 7.4 1920×1080 viewport: all four regions render with no scroll — the viewport-locked grid (`height: 100%; overflow: hidden; grid-template-areas`) is defined in `Dashboard.module.css`; the structural render (4 regions present) is pinned by `Dashboard.test.tsx::renders the four named regions`, but the no-scroll *visual* assertion needs a browser (jsdom can't compute layout). Deferred to manual browser check.
-- [ ] 7.5 1366×768 viewport: still fits — same CSS Grid scales; visual confirmation deferred to browser.
+- [x] 7.4 1920×1080 viewport: all four regions render with no scroll — automated as `src/frontend/tests-acceptance/dashboard-viewport.spec.ts::7.4 — at 1920x1080 all regions render and the page does not scroll` (Playwright drives Chromium at the real 1920x1080 viewport; asserts each region is visible AND `document.documentElement.scrollHeight <= clientHeight` — the no-scroll invariant jsdom can't compute).
+- [x] 7.5 1366×768 viewport: still fits — automated as `dashboard-viewport.spec.ts::7.5 — at 1366x768 the dashboard still fits` (same no-scroll assertion at the smaller laptop viewport).
 - [x] 7.6 ≤760px viewport: grid switches to scrollable single column — automated as `Dashboard.module.css`'s `@media (max-width: 760px)` block (height: auto; single-column grid-template-areas; overflow: visible) — the load-bearing CSS rules land. The mobile *branch* (add-photos → /capture) is pinned by `Dashboard.test.tsx::routes to /capture when the add-photos button is activated on mobile`. — 8bb3b2a
 - [x] 7.7 Add-photos button routes to /capture (mobile) / /upload (desktop) — automated as `Dashboard.test.tsx::routes to /upload...desktop` + `::routes to /capture...mobile` (matchMedia stub flips the branch; LocationProbe reads the navigated path). — 8bb3b2a
 - [x] 7.8 recharts chart renders with axes + tooltip — automated as `Dashboard.test.tsx::renders the daily-average chart with an accessible role=img + summary` (the chart wrapper renders with CartesianGrid/XAxis/YAxis/Tooltip/Line per `DailyAverageChart.tsx`; jsdom can't paint the SVG, but the component tree + the role=img accessibility wrapper are pinned). — 8bb3b2a
@@ -1548,19 +1548,18 @@ end-to-end manual flow works before considering this change done.
 
 #### Manual
 
-- [x] 8.5 Desktop full flow: dashboard → /upload → caliber+distance → file → /waiting/:jobId → /results/:jobId (5 mocked holes + dropdowns) — automated piecewise: the wizard step (CaliberDistanceStep.test.tsx), the Upload file→createScoringJob→/waiting navigation (CaliberDistanceStep.test.tsx > Upload), the Waiting state machine (Waiting.test.tsx), and the Results render with per-hole dropdowns (Results.test.tsx). The API-level round-trip (POST→201→poll→succeeded with 5 holes) is pinned by tests/system/test_scoring_routes.py. — 1a8835c
-- [x] 8.6 Mobile (≤760px) full flow: dashboard → /capture → camera → waiting → results — automated as CaliberDistanceStep.test.tsx > Capture (renders file input with capture="environment" after the wizard step; createScoringJob → /waiting navigation). The dashboard's mobile add-photos branch → /capture is pinned by Dashboard.test.tsx. — 1a8835c
+- [x] 8.5 Desktop full flow: dashboard → /upload → caliber+distance → file → /waiting/:jobId → /results/:jobId (5 mocked holes + dropdowns) — automated end-to-end as `src/frontend/tests-acceptance/scoring-flow.spec.ts::8.5 — desktop` (Playwright drives Chromium through dashboard → /upload → wizard selects 9x19mm/25m → uploads the vision 12.jpg fixture → /waiting polls → /results renders the marked image + 5 per-hole correction dropdowns; the live qcluster worker drives process_image with MockDetector). Component-level coverage + the API round-trip (test_scoring_routes.py) remain as the unit/integration tier.
+- [x] 8.6 Mobile (≤760px) full flow: dashboard → /capture → camera → waiting → results — automated end-to-end as `scoring-flow.spec.ts::8.6 — mobile` (390x844 viewport; add-photos → /capture; asserts the file input carries `capture="environment"`; same waiting → results chain with 5 holes).
 - [x] 8.7 `failed` state: VISION_DETECTOR=banana (or ollama pointed at a dead port) → /waiting shows role="alert" error — automated as Waiting.test.tsx::renders role=alert on a failed job (the failed-job shape renders role=alert with the error text). The VISION_DETECTOR=banana → process_image marks FAILED backend path is exercised by the existing test_services_q2.py failure tests. — 1a8835c
-- [x] 8.8 Refresh on /waiting/:jobId resumes polling — Waiting reads jobId from useParams on mount and starts polling in useEffect; the mount-poll behavior is pinned by every Waiting test (each renders at /waiting/:jobId and observes the first poll). A refresh re-mounts → re-polls. — 1a8835c
-- [x] 8.9 Refresh on /results/:jobId re-fetches and re-renders — Results reads jobId from useParams and fetches in useEffect on mount; pinned by every Results test (each renders at /results/:jobId and observes the getScoringJob fetch). A refresh re-mounts → re-fetches. — 1a8835c
+- [x] 8.8 Refresh on /waiting/:jobId resumes polling — automated end-to-end as `scoring-flow.spec.ts::8.8 — refresh on /waiting/:jobId resumes polling until terminal` (Playwright navigates to /waiting, reloads mid-poll, asserts the URL still resolves to /results after the refresh). Component-level: Waiting reads jobId from useParams on mount + polls in useEffect; a refresh re-mounts → re-polls.
+- [x] 8.9 Refresh on /results/:jobId re-fetches and re-renders — automated end-to-end as `scoring-flow.spec.ts::8.9 — refresh on /results/:jobId re-fetches and re-renders` (Playwright reloads /results, asserts the marked image + 5 dropdowns re-render). Component-level: Results reads jobId from useParams + fetches in useEffect on mount; a refresh re-mounts → re-fetches.
 
-> **End-to-end acceptance note:** the SPA's full browser flow (a real browser
-> driving dashboard → /upload → file picker → /waiting → /results) is covered
-> piecewise by the component tests + the API-level system test, but a single
-> Playwright acceptance test driving the rendered SPA against the live dev
-> server is NOT in this commit — Playwright isn't set up in the repo (no
-> config, no browsers), and the sandbox has no Docker/server-running path.
-> Each leg of the flow is independently pinned; wiring them into one
-> acceptance test is a follow-up once Playwright is bootstrapped (the
-> component-level coverage is the V-Model's system-tier-of-the-frontend
-> equivalent here).
+> **End-to-end acceptance (Playwright):** the SPA's full browser flow is
+> driven end-to-end by `src/frontend/tests-acceptance/*.spec.ts` (TypeScript,
+> `npx playwright test`). The globalSetup boots Django runserver + Vite + a
+> qcluster worker against a clean DB under `results/playwright-<pid>/`; the
+> tests drive Chromium at real viewport sizes through dashboard → /upload
+> (or /capture on mobile) → wizard → file upload → /waiting (polls) →
+> /results (marked image + 5 per-hole dropdowns). 7 tests green (3 viewport +
+> 4 scoring-flow). The component-level coverage (vitest) + the API system test
+> remain as the faster unit/integration tiers of the V-Model.
