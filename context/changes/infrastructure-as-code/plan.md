@@ -659,17 +659,17 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Manual
 
-- [ ] 4.3 Test PR runs lint → (be-unit ∥ fe-unit) → system in correct order
-- [ ] 4.4 New commit on open PR cancels the in-flight run
-- [ ] 4.5 No `RAILWAY_*` secrets referenced (CI is secret-free)
+- [x] 4.3 Test PR runs lint → (be-unit ∥ fe-unit) → system in correct order — 1c7ff2a
+- [x] 4.4 New commit on open PR cancels the in-flight run — 1c7ff2a
+- [x] 4.5 No `RAILWAY_*` secrets referenced (CI is secret-free) — 1c7ff2a
 
 ### Phase 5: CD Workflow
 
 #### Automated
 
-- [x] 5.1 `cd.yml` parses as valid YAML
-- [x] 5.2 `actionlint` (if available) passes
-- [x] 5.3 Every job has a `needs:` path landing in `deploy` (no bypass)
+- [x] 5.1 `cd.yml` parses as valid YAML — 82f4802
+- [x] 5.2 `actionlint` (if available) passes — 82f4802
+- [x] 5.3 Every job has a `needs:` path landing in `deploy` (no bypass) — 82f4802
 
 #### Manual
 
