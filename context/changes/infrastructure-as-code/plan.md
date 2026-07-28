@@ -654,8 +654,8 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Automated
 
-- [x] 4.1 `ci.yml` parses as valid YAML
-- [x] 4.2 `actionlint` (if available) passes
+- [x] 4.1 `ci.yml` parses as valid YAML — 946bc61
+- [x] 4.2 `actionlint` (if available) passes — 946bc61
 
 #### Manual
 
