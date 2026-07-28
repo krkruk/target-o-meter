@@ -11,6 +11,27 @@
   text-align: center;
 }
 
+.capture input[type="file"] {
+  font: inherit;
+  color: var(--color-muted);
+}
+
+.capture input[type="file"]::file-selector-button {
+  margin: 0 0.75rem 0 0;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.capture input[type="file"]::file-selector-button:hover {
+  opacity: 0.9;
+}
+
 .error {
   color: #b00020;
   font-size: 0.9rem;
