@@ -682,17 +682,17 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Automated
 
-- [ ] 6.1 `.railway/railway.ts` parses (typecheck or visual review)
-- [ ] 6.2 `railway config validate` (if CLI exposes dry-run validation)
-- [ ] 6.3 `uv run python src/manage.py check` passes
+- [x] 6.1 `.railway/railway.ts` parses (typecheck or visual review)
+- [x] 6.2 `railway config validate` (if CLI exposes dry-run validation)
+- [x] 6.3 `uv run python src/manage.py check` passes
 
 #### Manual
 
-- [ ] 6.4 Visual diff against `research.md:190-303`: every `preserve()` present, literals correct, no secret values
-- [ ] 6.5 `BUILDER=railpack` in env block
-- [ ] 6.6 `healthcheck: { path: "/health" }` references Phase 1 view
-- [ ] 6.7 `start` has `--workers 1` and `src.target_o_meter.wsgi:application`
-- [ ] 6.8 No `preDeployCommand` (migrate is in `start`)
+- [x] 6.4 Visual diff against `research.md:190-303`: every `preserve()` present, literals correct, no secret values
+- [x] 6.5 `BUILDER=railpack` in env block
+- [x] 6.6 `healthcheck: { path: "/health" }` references Phase 1 view
+- [x] 6.7 `start` has `--workers 1` and `src.target_o_meter.wsgi:application`
+- [x] 6.8 No `preDeployCommand` (migrate is in `start`)
 
 ### Phase 7: Manual Provisioning Checklist
 
