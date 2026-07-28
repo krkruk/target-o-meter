@@ -89,6 +89,34 @@ def test_dev_compose_create_bucket_depends_on_minio_healthy() -> None:
     assert cb["depends_on"]["minio"]["condition"] == "service_healthy"
 
 
+def test_dev_compose_worker_waits_for_web_migrate_done() -> None:
+    """``worker`` waits on ``web``'s HEALTHCHECK (not just ``service_started``)
+    so the two don't race ``migrate`` against the shared SQLite volume.
+
+    Reproduces the ``duplicate column name: distance`` boot crash: both services
+    ran ``dev-seed.sh`` (→ ``migrate --noinput``) against the same
+    ``/data/db.sqlite3`` on the shared ``db-data`` volume, and ``service_started``
+    only waits for the container to start, NOT for migrate to finish. On the
+    first ``up`` after a column-adding migration (vision.0004), both tried
+    ``ALTER TABLE … ADD COLUMN distance`` concurrently and the loser crashed.
+    The fix is a ``web`` healthcheck probing a sentinel file written AFTER
+    migrate+seed, with ``worker`` depending on ``service_healthy``.
+    """
+    doc = _load_compose("docker-compose.dev.yml")
+    web = doc["services"]["web"]
+    assert "healthcheck" in web, (
+        "web has no healthcheck — worker can't wait for migrate to finish "
+        "(service_started only means the container started, not that migrate "
+        "completed). Add a healthcheck probing a post-migrate sentinel."
+    )
+    worker_depends = doc["services"]["worker"]["depends_on"]
+    assert worker_depends.get("web", {}).get("condition") == "service_healthy", (
+        f"worker depends_on.web.condition is {worker_depends.get('web')!r}, not "
+        f"'service_healthy' — worker would race web's migrate against the shared "
+        f"DB volume (the duplicate-column boot crash)."
+    )
+
+
 def test_dev_compose_web_runs_dev_seed_entrypoint() -> None:
     """``web`` + ``worker`` run the dev-seed.sh entrypoint (migrate + seed,
     then exec runserver / qcluster via $SERVICE_ROLE)."""

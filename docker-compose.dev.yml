@@ -99,6 +99,18 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    # Healthcheck probing the post-migrate sentinel (written by dev-seed.sh
+    # AFTER migrate+seed, BEFORE runserver). "healthy" = the shared-volume DB
+    # schema is migrated, which is exactly the guarantee the worker needs
+    # before booting qcluster — so worker.depends_on uses service_healthy, not
+    # service_started (the latter raced worker's migrate against web's against
+    # the same SQLite volume → ``duplicate column name`` on vision.0004).
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /data/.dev-seed-complete"]
+      interval: 3s
+      timeout: 2s
+      start_period: 10s
+      retries: 40
 
   worker:
     image: target-o-meter-dev
@@ -131,10 +143,13 @@ services:
       - ./docker:/app/docker:z
       - db-data:/data
     depends_on:
-      # migrate (run by web's dev-seed) must complete first so the worker's
-      # qcluster doesn't boot against an unmigrated schema.
+      # Wait for web's healthcheck (the post-migrate sentinel) — NOT just
+      # service_started. Only web migrates + seeds; the worker does neither
+      # (running migrate here too raced web's migrate against the shared DB
+      # volume → ``duplicate column name`` on vision.0004). service_healthy
+      # guarantees the schema is migrated before qcluster boots.
       web:
-        condition: service_started
+        condition: service_healthy
 
   minio:
     image: minio/minio:latest
