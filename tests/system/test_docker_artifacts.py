@@ -129,6 +129,33 @@ def test_prod_compose_debug_false_and_no_bypass() -> None:
     )
 
 
+def test_prod_compose_does_not_shadow_baked_staticfiles() -> None:
+    """``web`` must NOT mount a volume over ``/app/src/staticfiles``.
+
+    The Dockerfile prod stage runs ``collectstatic`` into ``/app/src/staticfiles``
+    at image-build time (its comment explicitly says this lets the image boot
+    standalone). A named volume mounted there is NOT auto-populated from the
+    image on first attach under podman-compose; on subsequent boots it PERSISTS
+    a STALE ``collectstatic`` output whose ``staticfiles.json`` manifest hashes
+    drift from the freshly-built bundle + vite manifest baked into the image.
+    django-vite resolves ``{% vite_asset %}`` against the current vite manifest
+    (e.g. ``assets/main-D2I6y11G.js``), but WhiteNoise's
+    ``CompressedManifestStaticFilesStorage`` looks the name up in the STALE
+    volume manifest → ``ValueError: Missing staticfiles manifest entry for …``
+    → HTTP 500 on ``GET /`` (the prod-stack bug). The fix is to drop the volume;
+    the image's baked copy is the source of truth.
+    """
+    doc = _load_compose("docker-compose.prod.yml")
+    web_volumes = doc["services"]["web"].get("volumes", [])
+    shadowing = [v for v in web_volumes if v.split(":")[-1] == "/app/src/staticfiles"]
+    assert not shadowing, (
+        f"web mounts a volume over /app/src/staticfiles ({shadowing}), which "
+        f"shadows the image's baked collectstatic output → stale manifest → "
+        f"'Missing staticfiles manifest entry' HTTP 500 on GET /. Drop the "
+        f"mount; the Dockerfile bakes the bundle at build time."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Makefile targets
 # ---------------------------------------------------------------------------
