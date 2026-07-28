@@ -63,3 +63,22 @@ class ScoringJobDTO(BaseModel):
     # MinIO path it's a MinIO URL. The Tigris/prod presigned-URL policy is an
     # S-03 concern (lands alongside the OpenCV+S3 refactor).
     marked_image_url: Optional[str] = None
+
+
+class AcceptedResultDTO(BaseModel):
+    """The wire contract for an accepted detection result (S-03 Phase 2).
+
+    Returned by ``POST /v1/scoring/results`` on both first-accept (201) and
+    idempotent re-POST (200). Snapshots the confirmed params + corrected-hole
+    list + the mean score (the value aggregation reads).
+    """
+
+    result_id: UUID
+    source_job: UUID
+    target_type: TargetType
+    caliber_hint: Optional[str] = None
+    distance: Optional[int] = None
+    weapon_type: Optional[str] = None
+    holes: list[DetectedHoleDTO]
+    score_average: float
+    created_at: Optional[str] = None

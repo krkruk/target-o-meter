@@ -1396,11 +1396,11 @@ considering this change done.
 
 #### Automated
 
-- [x] 1.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration
-- [x] 1.2 `uv run python src/manage.py migrate` applies cleanly
-- [x] 1.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. new distance/weapon_type test)
-- [x] 1.4 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new forwarding test)
-- [x] 1.5 `make check` passes
+- [x] 1.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration — 553cef5
+- [x] 1.2 `uv run python src/manage.py migrate` applies cleanly — 553cef5
+- [x] 1.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. new distance/weapon_type test) — 553cef5
+- [x] 1.4 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new forwarding test) — 553cef5
+- [x] 1.5 `make check` passes — 553cef5
 
 #### Manual
 
@@ -1411,11 +1411,11 @@ considering this change done.
 
 #### Automated
 
-- [ ] 2.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration
-- [ ] 2.2 `uv run python src/manage.py migrate` applies cleanly
-- [ ] 2.3 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new accept-contract tests)
-- [ ] 2.4 `make check` passes
-- [ ] 2.5 `make be-test` passes (no regressions)
+- [x] 2.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration
+- [x] 2.2 `uv run python src/manage.py migrate` applies cleanly
+- [x] 2.3 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new accept-contract tests)
+- [x] 2.4 `make check` passes
+- [x] 2.5 `make be-test` passes (no regressions)
 
 #### Manual
 

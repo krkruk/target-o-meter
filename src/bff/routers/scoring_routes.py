@@ -32,18 +32,21 @@ via ``func.__globals__`` — but ``@transaction.atomic`` wraps the view, so
 downgraded to query params). Real annotations sidestep the lookup entirely.
 """
 from typing import Literal
+from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from ninja import File, Form, Router, Schema
-from ninja.errors import HttpError
+from ninja import Field, File, Form, Router, Schema, Status
 from ninja.files import UploadedFile
+from ninja.errors import HttpError
 
 from src.bff.api import session_auth
 from src.domains.identity.services import get_user_context
-from src.domains.vision.dtos import ScoringJobDTO
+from src.domains.vision.dtos import AcceptedResultDTO, DetectedHoleDTO, ScoringJobDTO
 from src.domains.vision.pipeline.storage import ScoringStorage
 from src.domains.vision.services import (
+    StateError,
+    accept_job,
     get_job,
     schedule_image_processing,
 )
@@ -132,3 +135,67 @@ def get_scoring_job(request, job_id: str) -> ScoringJobDTO:
     except PermissionError:
         # ID-probers can't distinguish "exists, not mine" from "doesn't exist".
         raise HttpError(404, "Not found") from None
+
+
+class AcceptResultIn(Schema):
+    """Request body for ``POST /v1/scoring/results`` (S-03 Phase 2).
+
+    JSON, not multipart — this route accepts a detection result, it doesn't
+    upload an image. ``job_id`` rides in the body because the resource-named
+    route (``/scoring/results``, the accepted-result resource per the API-
+    design lesson) has no ``{job_id}`` path param. ``holes`` requires ≥1 entry
+    (a score snapshot of zero holes is meaningless for aggregation).
+    """
+
+    job_id: UUID
+    target_type: Literal["air_pistol", "precision_pistol"] = "air_pistol"
+    caliber_hint: str | None = None
+    distance: int | None = None
+    weapon_type: str | None = None
+    holes: list[DetectedHoleDTO] = Field(min_length=1)
+
+
+@router.post(
+    "/scoring/results",
+    auth=session_auth,
+    response={201: AcceptedResultDTO, 200: AcceptedResultDTO},
+)
+@transaction.atomic
+def accept_scoring_result(request, payload: AcceptResultIn):
+    """Accept a succeeded job's detection result → create an immutable
+    ``AcceptedResult`` snapshotting the confirmed params + corrected holes +
+    computed score (FR-010). Idempotent: re-POST for the same job returns the
+    existing row (200) instead of a duplicate (201).
+
+    Error mapping mirrors the existing routes (service owns the rule, route
+    translates the exception to HTTP):
+      - ``PermissionError`` (missing / ownership mismatch) → 404 (identical to
+        ``GET /scoring/jobs/{id}`` so an ID-prober learns nothing).
+      - ``StateError`` (job not SUCCEEDED) → 409 Conflict.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    try:
+        dto, created = accept_job(
+            job_id=payload.job_id,
+            user_uuid=user_dto.user_uuid,
+            target_type=payload.target_type,
+            caliber_hint=payload.caliber_hint,
+            distance=payload.distance,
+            weapon_type=payload.weapon_type,
+            holes=payload.holes,
+        )
+    except PermissionError:
+        raise HttpError(404, "Not found") from None
+    except StateError:
+        raise HttpError(409, "Job not succeeded") from None
+
+    # 201 on first accept (a new row was inserted); 200 on idempotent re-POST
+    # or race-loser (an existing row was returned). ``created`` is signalled by
+    # the service from the create-vs-refetch branch — no fragile timestamp
+    # comparison. ``Status(...)`` is django-ninja's non-deprecated multi-code
+    # response form (a bare tuple is deprecated).
+    return Status(201 if created else 200, dto)

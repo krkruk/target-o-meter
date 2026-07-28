@@ -70,3 +70,52 @@ class ScoringJob(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover — cosmetic
         return f"ScoringJob(id={self.id}, status={self.status})"
+
+
+class AcceptedResult(models.Model):
+    """A user-confirmed, persisted score — sibling to ``ScoringJob`` (not a
+    flag on it) so the CV-pipeline lifecycle and the user-accept lifecycle stay
+    clean. This is what the dashboard's aggregation queries read from.
+
+    S-03 (FR-010/011/012). One row per accepted detection result:
+
+      - ``source_job`` is the ``ScoringJob.id`` the result was accepted from —
+        a plain UUID (no FK per AGENTS.md §5), so the CV row can be reclaimed
+        independently if ever needed.
+      - ``holes`` is the corrected-hole snapshot (detector output + any pre-
+        accept user corrections), stored as JSON.
+      - ``score_average`` is the mean of the holes' scores — the "result" for
+        hero-stats + chart aggregation.
+      - ``unique_together = ("source_job", "user_uuid")`` DB-enforces
+        idempotency for the accept path: a second concurrent accept for the
+        same job raises ``IntegrityError``, caught in ``accept_job`` and
+        converted to the 200 re-fetch path (the canonical insert-or-return-
+        existing idiom — safer than a check-then-create sequence, which under
+        SQLite's default isolation lets both transactions pass the check).
+
+    Immutable after create (PRD FR-010 Socrates: "editing saved results is v2");
+    corrections happen pre-accept on the ``/results/:jobId`` screen and are
+    snapshotted here at accept.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user_uuid = models.UUIDField(db_index=True)
+    source_job = models.UUIDField()
+
+    target_type = models.CharField(max_length=32)
+    caliber_hint = models.CharField(max_length=64, null=True, blank=True)
+    distance = models.PositiveIntegerField(null=True, blank=True)
+    weapon_type = models.CharField(max_length=32, null=True, blank=True)
+
+    holes = models.JSONField()
+    score_average = models.FloatField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "vision"
+        db_table = "vision_acceptedresult"
+        unique_together = ("source_job", "user_uuid")
+
+    def __str__(self) -> str:  # pragma: no cover — cosmetic
+        return f"AcceptedResult(id={self.id}, source_job={self.source_job})"

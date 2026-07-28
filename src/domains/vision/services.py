@@ -27,23 +27,35 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from src.domains.vision.dtos import (
+    AcceptedResultDTO,
     DetectedHoleDTO,
     ScoringJobDTO,
     ScoringResultDTO,
 )
 from src.domains.vision.detectors.detection_result import DetectionResult
 from src.domains.vision.detectors.factory import DetectorFactory
-from src.domains.vision.models import ScoringJob
+from src.domains.vision.models import AcceptedResult, ScoringJob
 from src.domains.vision.pipeline.pipeline_runner import PipelineRunner
 from src.domains.vision.pipeline.storage import ScoringStorage
 from src.domains.vision.ports import TargetType
 
 
 logger = logging.getLogger(__name__)
+
+
+class StateError(Exception):
+    """Raised when a domain operation is attempted on a row in the wrong state.
+
+    Mirrors the existing ``PermissionError`` convention: a typed domain
+    exception the BFF translates to an HTTP status (409 Conflict for
+    ``StateError``). Used by ``accept_job`` to refuse accepting a
+    ``ScoringJob`` that is not yet ``SUCCEEDED`` (FR-010 — only a completed
+    detection can be accepted).
+    """
 
 
 def _sanitize_nan_inf(obj):
@@ -267,6 +279,119 @@ def get_job(job_id: str | UUID, user_uuid: UUID) -> ScoringJobDTO:
             f"user_uuid {user_uuid} does not own ScoringJob {job_id}"
         )
     return _job_to_dto(job)
+
+
+def accept_job(
+    *,
+    job_id: str | UUID,
+    user_uuid: UUID,
+    target_type: TargetType,
+    caliber_hint: Optional[str],
+    distance: Optional[int],
+    weapon_type: Optional[str],
+    holes: list[DetectedHoleDTO],
+) -> tuple[AcceptedResultDTO, bool]:
+    """Accept a succeeded ``ScoringJob``'s detection result, persisting an
+    immutable ``AcceptedResult`` snapshotting the confirmed params + corrected
+    holes + computed score (S-03 Phase 2, FR-010).
+
+    Guarantees (mirroring ``get_job``):
+
+      - **Ownership** — raises ``PermissionError`` if the job is missing or
+        owned by another user (both look identical to the caller → 404).
+      - **State** — raises ``StateError`` if ``job.status != SUCCEEDED``; a
+        queued/running/failed job cannot be accepted (the route maps to 409).
+      - **Idempotency + race-safety** — DB-enforced via
+        ``unique_together = ("source_job", "user_uuid")``. A concurrent accept
+        for the same job raises ``IntegrityError``; this is caught and the
+        existing ``AcceptedResult`` is re-fetched + returned (the 200 path).
+        This is the canonical insert-or-return-existing idiom — safer than a
+        check-then-create sequence, which under SQLite's default isolation lets
+        two transactions both pass the check and both insert.
+
+    Returns ``(dto, created)`` — ``created`` is ``True`` when this call inserted
+    a new row (HTTP 201), ``False`` when an existing row was returned (HTTP
+    200, the idempotent / race-loser path). Returning the flag directly avoids
+    a fragile timestamp-based 201/200 split in the route.
+
+    The ``ScoringJob`` row is NOT deleted (FR-011: reject is the absence of an
+    ``AcceptedResult``; the CV row stays as an audit record).
+
+    ``score_average`` is the mean of the holes' scores (the value hero-stats
+    + the daily-average chart read).
+    """
+    with transaction.atomic():
+        try:
+            job = ScoringJob.objects.get(id=job_id)
+        except ScoringJob.DoesNotExist as exc:
+            raise PermissionError(
+                f"ScoringJob {job_id} not visible to user_uuid {user_uuid}"
+            ) from exc
+        if job.user_uuid != user_uuid:
+            raise PermissionError(
+                f"user_uuid {user_uuid} does not own ScoringJob {job_id}"
+            )
+        if job.status != ScoringJob.Status.SUCCEEDED:
+            raise StateError(
+                f"ScoringJob {job_id} is {job.status}, not succeeded — cannot accept"
+            )
+
+        holes_payload = [
+            {"x": h.x, "y": h.y, "score": h.score,
+             "confidence": h.confidence, "caliber": h.caliber}
+            for h in holes
+        ]
+        score_average = sum(h.score for h in holes) / len(holes)
+
+        # The create is attempted inside a SAVEPOINT (not the outer atomic
+        # block) so that on the unique_together IntegrityError we can roll
+        # back to the savepoint and still issue the re-fetch query. Catching
+        # an IntegrityError inside the SAME atomic block without a savepoint
+        # poisons the whole transaction (Django raises
+        # TransactionManagementError on the next query) — the savepoint is the
+        # standard fix for insert-or-return-existing under a real constraint.
+        created = True
+        try:
+            with transaction.atomic():
+                ar = AcceptedResult.objects.create(
+                    user_uuid=user_uuid,
+                    source_job=job.id,
+                    target_type=target_type,
+                    caliber_hint=caliber_hint,
+                    distance=distance,
+                    weapon_type=weapon_type,
+                    holes=holes_payload,
+                    score_average=score_average,
+                )
+        except IntegrityError:
+            # A concurrent accept won the unique_together race — the savepoint
+            # rolled back, the outer transaction is still valid, re-fetch the
+            # existing row (200 idempotent path). The IntegrityError must be
+            # caught so it never surfaces as a 500.
+            ar = AcceptedResult.objects.get(source_job=job.id, user_uuid=user_uuid)
+            created = False
+        return _accepted_result_to_dto(ar), created
+
+
+def _accepted_result_to_dto(ar: AcceptedResult) -> AcceptedResultDTO:
+    """Map an ``AcceptedResult`` ORM row → ``AcceptedResultDTO``."""
+    return AcceptedResultDTO(
+        result_id=ar.id,
+        source_job=ar.source_job,
+        target_type=ar.target_type,
+        caliber_hint=ar.caliber_hint,
+        distance=ar.distance,
+        weapon_type=ar.weapon_type,
+        holes=[
+            DetectedHoleDTO(
+                x=h["x"], y=h["y"], score=h["score"],
+                confidence=h.get("confidence", 1.0), caliber=h.get("caliber"),
+            )
+            for h in ar.holes
+        ],
+        score_average=ar.score_average,
+        created_at=ar.created_at.isoformat() if ar.created_at else None,
+    )
 
 
 def _to_result_dto(result: DetectionResult) -> ScoringResultDTO:
