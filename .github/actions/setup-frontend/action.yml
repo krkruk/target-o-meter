@@ -1,0 +1,28 @@
+name: Setup Frontend
+description: |
+  Set up Node 20 LTS and run `npm ci` in src/frontend/. Reused by the FE unit
+  test job and the acceptance job. Node 20 LTS is the CI pin; the Dockerfile
+  uses Debian's bundled Node (18) for the image build, but CI pins newer.
+
+  `npm ci` (not `npm install`) — CI-grade reproducibility: it deletes
+  node_modules, reads package-lock.json exactly, and fails if it is out of sync
+  with package.json.
+inputs:
+  node-version:
+    description: Node version to install.
+    required: false
+    default: "20"
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+        cache-dependency-path: src/frontend/package-lock.json
+
+    - name: Install frontend deps
+      shell: bash
+      working-directory: src/frontend
+      run: npm ci

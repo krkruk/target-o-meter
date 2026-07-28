@@ -625,30 +625,30 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Automated
 
-- [x] 2.1 `railpack.json` parses as valid JSON
-- [x] 2.2 Schema validation against `https://schema.railpack.com` (or visual review)
-- [x] 2.3 `uv run python src/manage.py check` passes (Django still boots)
-- [x] 2.4 (If Docker + BuildKit available) `railpack build .` succeeds end-to-end — SKIPPED: Docker/BuildKit + `railpack` CLI unavailable in this env; Phase 8's first Railway build is the end-to-end signal (plan explicitly permits this skip)
+- [x] 2.1 `railpack.json` parses as valid JSON — 1dc12a9
+- [x] 2.2 Schema validation against `https://schema.railpack.com` (or visual review) — 1dc12a9
+- [x] 2.3 `uv run python src/manage.py check` passes (Django still boots) — 1dc12a9
+- [x] 2.4 (If Docker + BuildKit available) `railpack build .` succeeds end-to-end — SKIPPED: Docker/BuildKit + `railpack` CLI unavailable in this env; Phase 8's first Railway build is the end-to-end signal (plan explicitly permits this skip) — 1dc12a9
 
 #### Manual
 
-- [x] 2.5 Visual review: every required field present, apt list matches `Dockerfile:31-43`
-- [x] 2.6 `RAILPACK_DJANGO_APP_NAME=target_o_meter.wsgi` present and correctly spelled
-- [x] 2.7 `BUILDER=railpack` is NOT in railpack.json (lands in IaC in Phase 6)
+- [x] 2.5 Visual review: every required field present, apt list matches `Dockerfile:31-43` — 1dc12a9
+- [x] 2.6 `RAILPACK_DJANGO_APP_NAME=target_o_meter.wsgi` present and correctly spelled — 1dc12a9
+- [x] 2.7 `BUILDER=railpack` is NOT in railpack.json (lands in IaC in Phase 6) — 1dc12a9
 
 ### Phase 3: CI Composite Actions
 
 #### Automated
 
-- [ ] 3.1 All 8 `action.yml` files parse as valid YAML
-- [ ] 3.2 `actionlint` (if available) passes on every composite
+- [x] 3.1 All 8 `action.yml` files parse as valid YAML
+- [x] 3.2 `actionlint` (if available) passes on every composite
 
 #### Manual
 
-- [ ] 3.3 `setup-backend/action.yml` pins `astral-sh/setup-uv@v6` (not v3)
-- [ ] 3.4 opencv apt list in `setup-backend/action.yml` matches `Dockerfile:31-43`
-- [ ] 3.5 `deploy-railway/action.yml` does NOT call `railway config apply`
-- [ ] 3.6 `run-acceptance-tests/action.yml` passes no `AUTH0_*` / `GOOGLE_API_KEY` env
+- [x] 3.3 `setup-backend/action.yml` pins `astral-sh/setup-uv@v6` (not v3)
+- [x] 3.4 opencv apt list in `setup-backend/action.yml` matches `Dockerfile:31-43`
+- [x] 3.5 `deploy-railway/action.yml` does NOT call `railway config apply`
+- [x] 3.6 `run-acceptance-tests/action.yml` passes no `AUTH0_*` / `GOOGLE_API_KEY` env
 
 ### Phase 4: CI Workflow
 

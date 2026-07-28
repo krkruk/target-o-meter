@@ -1,0 +1,34 @@
+name: Deploy to Railway
+description: |
+  Deploy the current commit to Railway via the CLI. Runs `railway up` ONLY —
+  NEVER `railway config apply`. IaC reconciliation (config apply) is a manual
+  one-shot by the human (plan Phase 8) once the project/Volume/Bucket/secrets
+  are provisioned; CI never reconciles IaC, only ships new builds against the
+  already-reconciled topology. Rationale: `config apply` against a partially-
+  provisioned project can clobber manually-set secrets (the preserve()
+  placeholders protect against this, but the risk is unnecessary in CI); `railway
+  up` just builds + deploys and is the safe per-merge operation.
+
+  Required env (passed by the calling workflow job from GitHub secrets/vars):
+    - RAILWAY_TOKEN         (secret) — scoped project token (Deploy + Variables
+                              read/edit; NO project delete / billing).
+    - RAILWAY_PROJECT_ID    (var)    — the target project's UUID.
+    - RAILWAY_ENVIRONMENT_ID (var)   — the target environment's UUID (prod).
+
+  `railway up` returns when the build is TRIGGERED, not when it completes —
+  callers MUST use concurrency cancel-in-progress: false (plan Phase 5) so a
+  new master push never cancels a build Railway is still compiling.
+runs:
+  using: composite
+  steps:
+    - name: Install Railway CLI
+      shell: bash
+      run: curl -fsSL https://cli.new | sh
+
+    - name: Deploy (railway up)
+      shell: bash
+      env:
+        RAILWAY_TOKEN: ${{ env.RAILWAY_TOKEN }}
+        RAILWAY_PROJECT_ID: ${{ env.RAILWAY_PROJECT_ID }}
+        RAILWAY_ENVIRONMENT_ID: ${{ env.RAILWAY_ENVIRONMENT_ID }}
+      run: railway up

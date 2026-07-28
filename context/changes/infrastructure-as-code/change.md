@@ -3,7 +3,7 @@ change_id: infrastructure-as-code
 title: GitHub Actions CI/CD pipeline for build, test, and deploy
 status: implementing
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-07-28  # Phase 2 landed (railpack.json)
 archived_at: null
 ---
 
