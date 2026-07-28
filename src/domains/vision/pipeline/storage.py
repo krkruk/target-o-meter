@@ -115,9 +115,58 @@ class ScoringStorage:
         return str(full.relative_to(self._root))
 
     def read_upload(self, stored_path: str) -> bytes:
-        """Read an upload back as bytes (the q2 task body uses this)."""
+        """Read an upload back as bytes (the q2 task body uses this).
+
+        FS-only — raises ``NotImplementedError`` under S3. The byte-oriented
+        ``read_upload_bytes`` is the S3-safe replacement; this stays for the
+        CLI / FS-test path.
+        """
         return self._safe_join(stored_path).read_bytes()
 
     def absolute_path(self, stored_path: str) -> Path:
-        """Resolve a stored path relative to the storage root."""
+        """Resolve a stored path relative to the storage root.
+
+        FS-only — raises ``NotImplementedError`` under S3. ``process_image``
+        no longer calls this (S-03 Phase 4 switched it to the byte-oriented
+        surface + a tempfile dance for ``cv2.imread``); it stays for the CLI.
+        """
         return self._safe_join(stored_path)
+
+    # ------------------------------------------------------------------
+    # S-03 Phase 4: byte-oriented surface that works under BOTH FS and S3.
+    # ``process_image`` switched to these so the S3 path no longer raises
+    # (cv2.imread cannot read an S3 key; the upload bytes are downloaded to a
+    # tempfile before the pipeline runs, and deliverables are uploaded back).
+    # ------------------------------------------------------------------
+
+    def read_upload_bytes(self, stored_path: str) -> bytes:
+        """Read an upload back as bytes, under either backend.
+
+        Under FS this is the existing ``read_upload`` body (``_safe_join`` +
+        ``read_bytes``); under S3 it streams via ``self._storage.open(...).read()``
+        — the only S3-safe way to get the upload's bytes for the tempfile dance.
+        """
+        if self._is_s3:
+            return self._storage.open(stored_path, "rb").read()
+        return self._safe_join(stored_path).read_bytes()
+
+    def write_deliverable_bytes(self, job_id: UUID, name: str, data: bytes) -> str:
+        """Write a deliverable (``{stem}_marked.png`` etc.) and return its stored
+        key, under either backend.
+
+        Under FS this is the existing ``write_deliverable`` body (mkdir + write +
+        relative path); under S3 it stores via ``self._storage.save(name, ...)``
+        under ``jobs/{job_id}/{name}`` and returns that key. The key is what
+        ``ScoringJob.llm_input_path`` / ``marked_image_path`` / ``result_json_path``
+        store, and what ``_job_to_dto``'s ``storage._storage.url(...)`` resolves.
+        """
+        from django.core.files.base import ContentFile
+        key = f"jobs/{job_id}/{name}"
+        if self._is_s3:
+            self._storage.save(key, ContentFile(data))
+            return key
+        out_dir = self._safe_join(f"jobs/{job_id}")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        full = out_dir / name
+        full.write_bytes(data)
+        return str(full.relative_to(self._root))

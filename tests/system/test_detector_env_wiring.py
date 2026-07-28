@@ -84,11 +84,14 @@ if raised:
 
 def test_vision_detector_mock_runs_mockdetector_via_factory(cli) -> None:
     """Manual 3.4: VISION_DETECTOR=mock → process_image builds MockDetector via
-    DetectorFactory.build and returns the fixed 5-hole pattern."""
+    DetectorFactory.build. S-03: the mock now emits a random N-hole pattern; the
+    count is pinned to 5 via MOCK_DETECTOR_HOLE_COUNT so this assertion is stable."""
     result = cli(
         [sys.executable, str(_MANAGE_PY), "shell", "-c", _PROCESS_SCRIPT],
         extra_env={
             "VISION_DETECTOR": "mock",
+            "MOCK_DETECTOR_HOLE_COUNT": "5",
+            "MOCK_DETECTOR_SEED": "42",
             "DJANGO_SETTINGS_MODULE": "src.target_o_meter.settings",
             "TOM_FIXTURE_IMG": str(_FIXTURE_IMG),
             "GOOGLE_API_KEY": "",  # mock needs no creds; blanked to keep it honest
@@ -97,7 +100,7 @@ def test_vision_detector_mock_runs_mockdetector_via_factory(cli) -> None:
     )
     result.assert_success()
     assert b"RESULT ok=True count=5" in result.stdout, (
-        f"expected the mock detector's 5-hole pattern via the factory; got:\n"
+        f"expected the mock detector's pinned 5-hole pattern via the factory; got:\n"
         f"stdout:\n{result.stdout.decode(errors='replace')}\n"
         f"stderr:\n{result.stderr.decode(errors='replace')}"
     )

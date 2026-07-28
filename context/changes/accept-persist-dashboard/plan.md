@@ -1426,11 +1426,11 @@ considering this change done.
 
 #### Automated
 
-- [x] 3.1 `uv run pytest src/domains/vision/tests/test_mock_detector.py` passes (new random-N shape)
-- [x] 3.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (migrated)
-- [x] 3.3 `uv run pytest tests/system/test_scoring_routes.py` passes (migrated)
-- [x] 3.4 `cd src/frontend && npx playwright test` passes (migrated scoring-flow.spec)
-- [x] 3.5 `make check` passes
+- [x] 3.1 `uv run pytest src/domains/vision/tests/test_mock_detector.py` passes (new random-N shape) — ae9a085
+- [x] 3.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (migrated) — ae9a085
+- [x] 3.3 `uv run pytest tests/system/test_scoring_routes.py` passes (migrated) — ae9a085
+- [x] 3.4 `cd src/frontend && npx playwright test` passes (migrated scoring-flow.spec) — ae9a085
+- [x] 3.5 `make check` passes — ae9a085
 
 #### Manual
 
@@ -1440,10 +1440,10 @@ considering this change done.
 
 #### Automated
 
-- [ ] 4.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes (new S3-path tests)
-- [ ] 4.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (process_image under mocked S3 completes)
-- [ ] 4.3 `make check` passes
-- [ ] 4.4 `make be-test` passes (no regressions in the FS path)
+- [x] 4.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes (new S3-path tests)
+- [x] 4.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (process_image under mocked S3 completes)
+- [x] 4.3 `make check` passes
+- [x] 4.4 `make be-test` passes (no regressions in the FS path)
 
 #### Manual
 

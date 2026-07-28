@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
@@ -158,36 +159,51 @@ def process_image(job_id: str | UUID) -> dict:
         runner = PipelineRunner(detector)
         storage = ScoringStorage()
 
-        # Materialize the input as a temp file for PipelineRunner (which takes
-        # a path). The upload is already on disk; resolve to absolute path.
-        input_abspath = storage.absolute_path(job.input_path)
-
-        # Deliverables go into a per-job bucket; PipelineRunner writes via
-        # its own out_dir, then we record the relative paths on the job.
+        # S-03 Phase 4: ``cv2.imread`` cannot read an S3 key, and S3 has no
+        # directories. The byte-oriented surface (``read_upload_bytes`` +
+        # ``write_deliverable_bytes``) works under both backends: download the
+        # upload to a tempfile (so the path-based pipeline + cv2 can read it),
+        # write deliverables to a temp dir, then upload each one back. The
+        # detector + PipelineRunner internals are untouched — only the storage
+        # surface + these call sites change.
         job_uuid = job.id
-        out_dir = storage.deliverable_dir(job_uuid)
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        stem = Path(job.input_path).stem
-        result_dict = runner.run(
-            input_abspath,
-            target_type=job.target_type,
-            caliber_hint=job.caliber_hint,
-            out_dir=out_dir,
-        )
-
-        # Move/capture the 3 deliverable paths (relative to storage root).
-        # PipelineRunner wrote them as <stem>_llm_input.png etc.
-        storage_root = Path(storage.absolute_path(".")).resolve()
-        def _rel(p: Path) -> str:
-            try:
-                return str(p.resolve().relative_to(storage_root))
-            except ValueError:
-                return str(p)
-
-        llm_path = out_dir / f"{stem}_llm_input.png"
-        marked_path = out_dir / f"{stem}_marked.png"
-        result_json_path = out_dir / f"{stem}_result.json"
+        orig_stem = Path(job.input_path).stem
+        orig_suffix = Path(job.input_path).suffix
+        upload_bytes = storage.read_upload_bytes(job.input_path)
+        with tempfile.NamedTemporaryFile(
+            prefix=f"{orig_stem}_", suffix=orig_suffix, delete=False,
+        ) as tf:
+            tf.write(upload_bytes)
+            input_abspath = Path(tf.name)
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                out_dir = Path(tmp_dir)
+                result_dict = runner.run(
+                    input_abspath,
+                    target_type=job.target_type,
+                    caliber_hint=job.caliber_hint,
+                    out_dir=out_dir,
+                )
+                # PipelineRunner names deliverables after ``image_path.stem``
+                # (the tempfile's stem here). Derive the names from the actual
+                # temp path so they match what the runner wrote, then upload
+                # each back; the returned keys are stored on the job (replacing
+                # the old ``_rel(out_dir / name)`` values).
+                stem = input_abspath.stem
+                job.llm_input_path = storage.write_deliverable_bytes(
+                    job_uuid, f"{stem}_llm_input.png",
+                    (out_dir / f"{stem}_llm_input.png").read_bytes(),
+                )
+                job.marked_image_path = storage.write_deliverable_bytes(
+                    job_uuid, f"{stem}_marked.png",
+                    (out_dir / f"{stem}_marked.png").read_bytes(),
+                )
+                job.result_json_path = storage.write_deliverable_bytes(
+                    job_uuid, f"{stem}_result.json",
+                    (out_dir / f"{stem}_result.json").read_bytes(),
+                )
+        finally:
+            input_abspath.unlink(missing_ok=True)
 
         # Normalize numpy types AND NaN/Infinity out — SQLite's JSON_VALID is
         # strict (Python's ``json.dumps`` emits bare ``NaN`` / ``Infinity``
@@ -201,9 +217,6 @@ def process_image(job_id: str | UUID) -> dict:
                 allow_nan=False,
             )
         )
-        job.llm_input_path = _rel(llm_path)
-        job.marked_image_path = _rel(marked_path)
-        job.result_json_path = _rel(result_json_path)
         job.status = ScoringJob.Status.SUCCEEDED
         job.completed_at = timezone.now()
         job.save(update_fields=[

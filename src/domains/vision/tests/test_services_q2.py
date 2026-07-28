@@ -98,6 +98,78 @@ def test_process_image_writes_deliverables_and_marks_succeeded(
     assert (bucket / job.result_json_path).exists()
 
 
+def test_process_image_completes_under_s3_shaped_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """S-03 Phase 4 (load-bearing regression): under ``USE_S3=True`` the
+    ``process_image`` body must complete WITHOUT ``NotImplementedError``.
+
+    S-02's FS-only path called ``storage.absolute_path(...)`` (→ raises under
+    S3) + ``storage.deliverable_dir(...).mkdir(...)`` (no dirs under S3). Phase
+    4 swapped the storage surface to byte-oriented (``read_upload_bytes`` +
+    ``write_deliverable_bytes``) + a tempfile dance for ``cv2.imread``. This
+    test patches ``ScoringStorage`` to an S3-shaped fake (``_is_s3=True``,
+    in-memory backend) and asserts the pipeline runs end-to-end and the job
+    row carries the 3 deliverable keys (not filesystem paths).
+
+    The MockDetector is seeded so the hole count is deterministic.
+    """
+    import io
+
+    class _FakeS3:
+        def __init__(self) -> None:
+            self.files: dict[str, bytes] = {}
+
+        def save(self, name, content):
+            self.files[name] = content.read()
+            return name
+
+        def open(self, name, mode="rb"):
+            return io.BytesIO(self.files[name])
+
+        def url(self, name):
+            return f"https://fake-s3.example/{name}"
+
+    storage, rel_input = storage_with_upload
+    fake_s3 = _FakeS3()
+    # Seed the upload into the fake backend under the same key save_upload produced.
+    fake_s3.files[rel_input] = FIXTURE_12.read_bytes()
+
+    fake = ScoringStorage.__new__(ScoringStorage)
+    fake._storage = fake_s3
+    fake._is_s3 = True
+    fake._root = None
+
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
+
+    job = ScoringJob.objects.create(
+        user_uuid=uuid4(),
+        status=ScoringJob.Status.QUEUED,
+        input_path=rel_input,
+        target_type="air_pistol",
+        caliber_hint="9mm",
+    )
+
+    with patch(
+        "src.domains.vision.services.DetectorFactory.build",
+        return_value=MockDetector(),
+    ), patch("src.domains.vision.services.ScoringStorage", lambda *a, **kw: fake):
+        result = process_image(str(job.id))
+
+    # The pipeline ran (no NotImplementedError) and the job succeeded.
+    assert result["ok"] is True
+    job.refresh_from_db()
+    assert job.status == ScoringJob.Status.SUCCEEDED
+    # The 3 deliverable keys are S3 keys (jobs/<id>/<name>), not FS paths.
+    assert job.llm_input_path.startswith(f"jobs/{job.id}/")
+    assert job.marked_image_path.startswith(f"jobs/{job.id}/")
+    assert job.result_json_path.startswith(f"jobs/{job.id}/")
+    # The deliverable bytes landed in the fake S3 backend.
+    assert job.marked_image_path in fake_s3.files
+
+
 def test_get_job_enforces_owner_only(
     storage_with_upload: tuple[ScoringStorage, str],
 ) -> None:
