@@ -1396,11 +1396,11 @@ considering this change done.
 
 #### Automated
 
-- [ ] 1.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration
-- [ ] 1.2 `uv run python src/manage.py migrate` applies cleanly
-- [ ] 1.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. new distance/weapon_type test)
-- [ ] 1.4 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new forwarding test)
-- [ ] 1.5 `make check` passes
+- [x] 1.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration
+- [x] 1.2 `uv run python src/manage.py migrate` applies cleanly
+- [x] 1.3 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (incl. new distance/weapon_type test)
+- [x] 1.4 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new forwarding test)
+- [x] 1.5 `make check` passes
 
 #### Manual
 

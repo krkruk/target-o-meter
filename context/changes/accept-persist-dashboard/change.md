@@ -1,7 +1,7 @@
 ---
 change_id: accept-persist-dashboard
 title: Accept scored target and persist it to the dashboard
-status: plan_reviewed
+status: implementing
 created: 2026-07-28
 updated: 2026-07-28
 archived_at: null

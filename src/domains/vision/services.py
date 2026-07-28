@@ -73,11 +73,19 @@ def schedule_image_processing(
     input_path: str,
     target_type: TargetType = "air_pistol",
     caliber_hint: Optional[str] = None,
+    distance: Optional[int] = None,
+    weapon_type: Optional[str] = None,
 ) -> str:
     """Create a ``ScoringJob(status="queued")`` and enqueue ``process_image``
     on django-q2. Returns ``job.id`` (the cross-domain safe key per AGENTS.md §5).
 
     Atomic: the job row + the q2 enqueue land together (or neither does).
+
+    ``distance`` + ``weapon_type`` are S-03 FR-009 confirmation params persisted
+    on the row (and snapshotted onto ``AcceptedResult`` at accept). They are
+    metadata only — NOT forwarded to the detector; ``process_image`` calls
+    ``PipelineRunner.run`` with ``target_type`` + ``caliber_hint`` alone (the
+    detector ignores distance/weapon_type today).
     """
     with transaction.atomic():
         job = ScoringJob.objects.create(
@@ -86,6 +94,8 @@ def schedule_image_processing(
             input_path=input_path,
             target_type=target_type,
             caliber_hint=caliber_hint,
+            distance=distance,
+            weapon_type=weapon_type,
         )
         # Lazy import so the module loads cleanly even if django_q isn't in
         # INSTALLED_APPS yet (the BFF orchestration change wires q2 + config).
@@ -331,6 +341,8 @@ def _job_to_dto(job: ScoringJob) -> ScoringJobDTO:
         status=job.status,
         target_type=job.target_type,
         caliber_hint=job.caliber_hint,
+        distance=job.distance,
+        weapon_type=job.weapon_type,
         result=result_dto,
         error=job.error,
         created_at=job.created_at.isoformat() if job.created_at else None,

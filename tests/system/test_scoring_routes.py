@@ -55,13 +55,16 @@ def _seed_csrf(client) -> str:
 
 def _multipart_post(client, path: str, *, file_bytes: bytes, file_name: str = "12.jpg",
                     target_type: str = "air_pistol", caliber_hint: str | None = None,
-                    distance_m: int | None = None, csrf: str | None = None):
+                    distance: int | None = None, weapon_type: str | None = None,
+                    csrf: str | None = None):
     """POST a multipart form. Mirrors what the SPA's ``createScoringJob`` does:
     a real ``multipart/form-data`` body with the file + form fields + X-CSRFToken.
 
     Form field names are flat (``target_type``, NOT ``details.target_type``) —
     ninja's ``Form[Schema]`` flattens the schema's fields to their alias names
-    (see ``ninja/signature/details.py::_model_flatten_map``)."""
+    (see ``ninja/signature/details.py::_model_flatten_map``). S-03 renamed the
+    S-02 mock field ``distance_m`` → ``distance`` (now a real column) and added
+    ``weapon_type`` (FR-009)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
     data: dict = {
@@ -70,8 +73,10 @@ def _multipart_post(client, path: str, *, file_bytes: bytes, file_name: str = "1
     }
     if caliber_hint is not None:
         data["caliber_hint"] = caliber_hint
-    if distance_m is not None:
-        data["distance_m"] = str(distance_m)
+    if distance is not None:
+        data["distance"] = str(distance)
+    if weapon_type is not None:
+        data["weapon_type"] = weapon_type
 
     kw: dict = {"data": data}
     if csrf is not None:
@@ -106,7 +111,8 @@ def test_post_scoring_jobs_creates_job_for_user_role(
             file_bytes=FIXTURE_12.read_bytes(),
             target_type="air_pistol",
             caliber_hint="9x19mm",
-            distance_m=25,
+            distance=25,
+            weapon_type="sport_pistol",
             csrf=csrf,
         )
 
@@ -120,6 +126,9 @@ def test_post_scoring_jobs_creates_job_for_user_role(
     assert job.user_uuid == user.id
     assert job.target_type == "air_pistol"
     assert job.caliber_hint == "9x19mm"
+    # S-03 FR-009: distance + weapon_type forwarded onto the ScoringJob row.
+    assert job.distance == 25
+    assert job.weapon_type == "sport_pistol"
 
 
 def test_post_scoring_jobs_allows_owner_role(

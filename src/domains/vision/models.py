@@ -38,6 +38,13 @@ class ScoringJob(models.Model):
     input_path = models.CharField(max_length=512)
     target_type = models.CharField(max_length=32, default="air_pistol")
     caliber_hint = models.CharField(max_length=64, null=True, blank=True)
+    # S-03 FR-009 confirmation params. Collected in the wizard pre-upload,
+    # persisted on the pipeline request, and snapshotted onto AcceptedResult
+    # at accept. Both nullable: pre-existing rows + the mock path may omit
+    # them. ``distance`` is meters (the wizard's DISTANCES_M span 7–500);
+    # ``weapon_type`` is free-text (ISSF-appropriate values live client-side).
+    distance = models.PositiveIntegerField(null=True, blank=True)
+    weapon_type = models.CharField(max_length=32, null=True, blank=True)
 
     # Outputs (set by process_image on success).
     result = models.JSONField(null=True, blank=True)

@@ -166,6 +166,57 @@ def test_schedule_image_processing_rolls_back_if_enqueue_fails(
     assert ScoringJob.objects.filter(input_path=rel_input).count() == 0
 
 
+def test_schedule_image_processing_persists_distance_and_weapon_type(
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """S-03 FR-009: ``distance`` + ``weapon_type`` (the two confirmation params
+    missing from S-02) MUST be accepted by ``schedule_image_processing`` and
+    persisted on the ``ScoringJob`` row so the accept snapshot can carry them.
+
+    The detector ignores these today (they're metadata for the accepted-result
+    snapshot); the service contract is only that they survive the enqueue.
+    """
+    _, rel_input = storage_with_upload
+
+    with patch("django_q.tasks.async_task"):
+        job_id = schedule_image_processing(
+            user_uuid=uuid4(),
+            input_path=rel_input,
+            target_type="air_pistol",
+            caliber_hint="9x19mm",
+            distance=25,
+            weapon_type="air_pistol",
+        )
+
+    job = ScoringJob.objects.get(id=job_id)
+    assert job.distance == 25
+    assert job.weapon_type == "air_pistol"
+
+
+def test_get_job_surfaces_distance_and_weapon_type_on_dto(
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """The DTO read path exposes ``distance`` + ``weapon_type`` so the SPA's
+    ``/results/:jobId`` screen can pre-fill the accept form with the wizard's
+    selections."""
+    storage, rel_input = storage_with_upload
+    user_uuid = uuid4()
+    with patch("django_q.tasks.async_task"):
+        job_id = schedule_image_processing(
+            user_uuid=user_uuid,
+            input_path=rel_input,
+            target_type="precision_pistol",
+            caliber_hint=".22LR",
+            distance=50,
+            weapon_type="free_pistol",
+        )
+
+    dto = get_job(job_id, user_uuid)
+    assert dto.distance == 50
+    assert dto.weapon_type == "free_pistol"
+    assert dto.target_type == "precision_pistol"
+
+
 def test_q_cluster_uses_orm_default_broker() -> None:
     """Pin the broker config that the atomicity contract above depends on.
 

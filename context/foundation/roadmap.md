@@ -125,7 +125,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Blockers:** —
 - **Unknowns:**
   - Which CV approach actually hits ≥90% fidelity on real ISSF photos for both supported target types? — Owner: user. Block: no (research-shape unknown resolved inside the plan; this is the question the whole product hinges on).
-- **Risk:** This is the wedge slice — the place where the product's core hypothesis is first tested against real photographs. Under `market-feedback` + `skills`, sequencing biases toward reaching this slice as early as Prerequisites allow; if the ≥90% bar cannot be met, the roadmap must be resequenced (manual-scoring fallback, scope cut, or product rethink) before `S-03` is worth pursuing.
+- **Risk:** This is the wedge slice — the place where the product's core hypothesis is first tested against real photographs. Under `market-feedback` + `skills`, sequencing biases toward reaching this slice as early as Prerequisites allow; if the ≥90% bar cannot be met, the roadmap must be resequenced (manual-scoring fallback, scope cut, or product rethink) before `S-03` is worth pursuing. **Update (2026-07-28): the wedge was confronted — the ≥90% bar was lowered to ~70% for MVP (measured 0.638–0.799 Jaccard in F-02) rather than the gap being closed in code; see Open Roadmap Question #1 (RESOLVED).**
 - **Status:** done
 
 ### S-03: Accept scored target + dashboard aggregation
@@ -138,7 +138,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Blockers:** —
 - **Unknowns:**
   - What is the fixed parameter list for caliber / distance / weapon type, and is free-text entry allowed alongside it? — Owner: user. Block: no (PRD Socrates note on FR-009: "initial list covers common ISSF setups; manual entry option covers the rest").
-- **Risk:** Closes the US-01 vertical and is therefore the validation milestone for the `market-feedback` goal. Sequenced strictly after `S-02` (no persistence before detection is trusted) — but does not carry the wedge risk itself, so it can absorb scope adjustments (e.g. simplest-possible aggregation) without threatening the product hypothesis.
+- **Risk:** Closes the US-01 vertical and is therefore the validation milestone for the `market-feedback` goal. Sequenced strictly after `S-02` (no persistence before detection is trusted) — but does not carry the wedge risk itself, so it can absorb scope adjustments (e.g. simplest-possible aggregation) without threatening the product hypothesis. **Update (2026-07-28): the S-02 wedge was resolved by lowering the ≥90% fidelity bar to ~70% for MVP (see Open Roadmap Question #1, RESOLVED), so this slice proceeds without resequencing.**
 - **Status:** proposed
 
 ## Backlog Handoff
@@ -154,7 +154,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 
 ## Open Roadmap Questions
 
-1. **Is the CV ≥90% fidelity bar achievable on real ISSF photos for both target types, and what is the fallback if it isn't?** — Owner: user. Block: `S-02`, `S-03` (wedge chain). If research shows the bar is unreachable, the roadmap must be resequenced before these slices are worth planning.
+1. **RESOLVED (2026-07-28): MVP ships at ~70% hole-detection fidelity (measured 0.638–0.799 Jaccard in F-02).** The original ≥90% bar is **deferred to a post-MVP iteration, not abandoned** — a future iteration can pick it up. The decision: the bar was lowered (the gap was not closed in code). Originally: *"Is the CV ≥90% fidelity bar achievable on real ISSF photos for both target types, and what is the fallback if it isn't?"* — Owner: user. Block: `S-02`, `S-03` (wedge chain). If research shows the bar is unreachable, the roadmap must be resequenced before these slices are worth planning.
 2. **Are uploaded target images stored long-term, or only the computed score + marked image?** — Owner: user. Block: roadmap-wide (privacy posture per PRD §Guardrails and storage cost both ride on this; the infrastructure choice between Railway Volume and external object storage follows from it).
 3. **Is a "session" concept modeled (multiple targets per session), or does each target persist as its own result?** — Owner: user. Block: `S-03` (FR-012 references "last session" but no FR defines what a session is).
 

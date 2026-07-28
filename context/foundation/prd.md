@@ -25,7 +25,9 @@ Shooting results are trapped on paper targets — ISSF competitive shooters have
 
 ### Primary
 
-User authenticates via third-party OAuth, photographs an ISSF paper target, the app detects and scores bullet holes (≥90% fidelity), user reviews and confirms the result (selecting caliber, distance, weapon type), result persists, and the dashboard shows aggregated stats (total shots, last session, best result).
+User authenticates via third-party OAuth, photographs an ISSF paper target, the app detects and scores bullet holes, user reviews and confirms the result (selecting caliber, distance, weapon type), result persists, and the dashboard shows aggregated stats (total shots, last session, best result).
+
+> **Fidelity posture (decided 2026-07-28):** the MVP ships at ~70% hole-detection fidelity (measured 0.638–0.799 Jaccard in F-02). The original ≥90% bar is **deferred to a post-MVP iteration**, not abandoned — a future iteration can pick it up. The decision is recorded in `roadmap.md` Open Roadmap Question #1.
 
 ### Secondary
 
@@ -35,7 +37,7 @@ User authenticates via third-party OAuth, photographs an ISSF paper target, the 
 
 - **Privacy**: no email address stored directly — only an OAuth association. Minimal personal data collected.
 - **Reliability**: no dead-end or hang during processing — the waiting page always resolves or reports a clear error.
-- **Accuracy**: hole detection fidelity ≥90% as stated in draft.
+- **Accuracy**: hole detection fidelity ≥90% as stated in draft (deferred — see fidelity posture above; MVP ships at ~70%).
 
 ## User Stories
 
@@ -46,7 +48,7 @@ User authenticates via third-party OAuth, photographs an ISSF paper target, the 
 - **Then** they see the overall score, the photo with marked holes, and a form to confirm caliber, distance, and weapon type
 
 #### Acceptance Criteria
-- Hole detection fidelity ≥90%
+- Hole detection fidelity ≥90% (deferred — MVP ships at ~70%; see fidelity posture in Success Criteria)
 - User can accept or reject the result
 - Accepted result is persisted and dashboard updates immediately
 
@@ -86,7 +88,7 @@ User authenticates via third-party OAuth, photographs an ISSF paper target, the 
 
 - FR-008: User can view detection results showing overall score and the target photo with marked holes. Priority: must-have
   > Socrates: Counter-argument considered: "no partial correction — all or nothing."
-  > Resolution: kept for MVP; manual correction of individual holes is a v2 concern.
+  > Resolution: kept for MVP; manual correction of individual holes is a v2 concern. The detection fidelity that feeds this view is ~70% at MVP (see fidelity posture in Success Criteria); the ≥90% bar is deferred.
 
 - FR-009: User can confirm shooting parameters (caliber, distance, weapon type) for a detection result. Priority: must-have
   > Socrates: Counter-argument considered: "fixed parameter list too rigid."
@@ -108,7 +110,7 @@ User authenticates via third-party OAuth, photographs an ISSF paper target, the 
 
 ## Non-Functional Requirements
 
-- The application detects bullet holes with ≥90% fidelity compared to manual scoring.
+- The application detects bullet holes with ≥90% fidelity compared to manual scoring (deferred — MVP ships at ~70%; see fidelity posture in Success Criteria).
 - No email address is stored directly; only an OAuth association links identity to user data. Minimal personal data collected.
 - Up to 3 target images are processed concurrently; additional requests queue rather than overwhelm processing capacity. This cap is adjustable once infrastructure is chosen.
 - The waiting page always resolves to a result or a clear error message — no dead-end states where the user is stuck without feedback.

@@ -19,9 +19,10 @@ Both roles can upload (PRD FR-006/FR-007): the POST uses ``session_auth`` only
 — ``require_owner`` is NOT applied. Per-job ownership is enforced on read by
 ``get_job``.
 
-``distance_m`` is intentionally NOT forwarded to ``schedule_image_processing``
-(which has no such param) — it is a BFF-level mock field, dropped on the floor
-in S-02, promoted to a real ``ScoringJob.distance`` column in S-03 (FR-009).
+``distance`` + ``weapon_type`` are the S-03 FR-009 confirmation params,
+collected in the wizard pre-upload and forwarded to
+``schedule_image_processing`` (which persists them on the ``ScoringJob`` row).
+They are metadata for the accept snapshot, not detector inputs.
 
 Note: this module deliberately does NOT use ``from __future__ import
 annotations``. With PEP 563 string annotations, ninja resolves forward refs
@@ -63,7 +64,8 @@ class ScoringJobIn(Schema):
 
     target_type: Literal["air_pistol", "precision_pistol"] = "air_pistol"
     caliber_hint: str | None = None  # free-text; the UI taxonomy lives client-side
-    distance_m: int | None = None     # BFF-level mock field; vision has no distance concept
+    distance: int | None = None      # S-03 FR-009 confirmation param (meters)
+    weapon_type: str | None = None   # S-03 FR-009 confirmation param (free-text; ISSF values client-side)
 
 
 class ScoringJobOut(Schema):
@@ -101,6 +103,8 @@ def create_scoring_job(
         input_path=input_path,
         target_type=details.target_type,  # narrowed by vision's TargetType
         caliber_hint=details.caliber_hint,
+        distance=details.distance,
+        weapon_type=details.weapon_type,
     )
     return ScoringJobOut(job_id=job_id, status="queued")
 

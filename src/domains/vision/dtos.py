@@ -45,6 +45,11 @@ class ScoringJobDTO(BaseModel):
     status: str
     target_type: TargetType
     caliber_hint: Optional[str] = None
+    # S-03 FR-009 confirmation params (mirror of ScoringJob's columns). Surfaced
+    # so the SPA's ``/results/:jobId`` screen can pre-fill the accept form with
+    # the wizard's selections before the user accepts.
+    distance: Optional[int] = None
+    weapon_type: Optional[str] = None
     result: Optional[ScoringResultDTO] = None
     error: Optional[str] = None
     created_at: Optional[str] = None
