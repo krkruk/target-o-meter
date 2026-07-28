@@ -1502,17 +1502,17 @@ Follow-on fixes for bugs surfaced after Phase 7. Each reproduced first, then
 fixed red→green. See the in-conversation plan for full detail.
 
 #### Automated
-- [x] 8.1 `ScoringStorage.read_deliverable_bytes` round-trips under FS + S3 (unit)
-- [x] 8.2 `_job_to_dto` emits BFF-relative `marked_image_url` (no presigned URL / no creds) (unit)
-- [x] 8.3 BFF proxy route `GET /v1/scoring/jobs/{id}/marked-image` streams PNG bytes; 404 non-owner / no-marked-image; JSON URL has no creds (system)
-- [ ] 8.4 Blackbox repro: bare-metal `make dev` leaves job stuck `queued` (system)
-- [ ] 8.5 Fix `make dev` to start a qcluster; job transitions `queued → succeeded`
-- [ ] 8.6 Reproduce prod-`make prod-container` HTTP 500 (surface the gunicorn traceback)
-- [ ] 8.7 Fix prod 500 root cause (branch on the traceback; likely staticfiles-volume shadow)
-- [ ] 8.8 Concurrent-`migrate` race fix: only `web` migrates (sentinel); worker `service_healthy`
-- [ ] 8.9 Playwright acceptance: marked image loads in a real browser (DEV stack) — red→green
+- [x] 8.1 `ScoringStorage.read_deliverable_bytes` round-trips under FS + S3 (unit) — dbf31b6
+- [x] 8.2 `_job_to_dto` emits BFF-relative `marked_image_url` (no presigned URL / no creds) (unit) — dbf31b6
+- [x] 8.3 BFF proxy route `GET /v1/scoring/jobs/{id}/marked-image` streams PNG bytes; 404 non-owner / no-marked-image; JSON URL has no creds (system) — dbf31b6
+- [x] 8.4 Blackbox repro: bare-metal `make dev` leaves job stuck `queued` (system) — 84c1826
+- [x] 8.5 Fix `make dev` to start a qcluster; job transitions `queued → succeeded` — 84c1826
+- [x] 8.6 Reproduce prod-`make prod-container` HTTP 500 (surface the gunicorn traceback) — e9ed92a
+- [x] 8.7 Fix prod 500 root cause (staticfiles volume shadowed the baked bundle) — e9ed92a
+- [x] 8.8 Concurrent-`migrate` race fix: only `web` migrates (sentinel); worker `service_healthy` — bbf05d4
+- [x] 8.9 Playwright acceptance: marked image loads in a real browser (DEV stack) — red→green — baaf610
 
 #### Manual
 - [ ] 8.10 `make dev` uploads an image; job leaves `queued` → `succeeded`; Ctrl-C stops runserver + Vite + qcluster
-- [ ] 8.11 `make prod-container`; `curl -i http://localhost:8000/` → 200 (SPA shell)
-- [ ] 8.12 `make dev-container`; on the results screen the marked image renders (no `minio:9000`, no `AWSAccessKeyId`)
+- [x] 8.11 `make prod-container`; `curl -i http://localhost:8000/` → 200 (SPA shell) — verified during 8.7 (fresh-volume bring-up after the staticfiles-volume fix: GET / → 200, SPA shell + bundle served, no traceback)
+- [x] 8.12 `make dev-container`; on the results screen the marked image renders (no `minio:9000`, no `AWSAccessKeyId`) — verified by the Playwright acceptance spec (8.9: SPA fetched `/v1/scoring/jobs/{id}/marked-image` HTTP 200 ~1.2MB, `naturalWidth>0`, no leaky/failed requests)
