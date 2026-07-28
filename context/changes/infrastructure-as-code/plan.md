@@ -667,9 +667,9 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Automated
 
-- [ ] 5.1 `cd.yml` parses as valid YAML
-- [ ] 5.2 `actionlint` (if available) passes
-- [ ] 5.3 Every job has a `needs:` path landing in `deploy` (no bypass)
+- [x] 5.1 `cd.yml` parses as valid YAML
+- [x] 5.2 `actionlint` (if available) passes
+- [x] 5.3 Every job has a `needs:` path landing in `deploy` (no bypass)
 
 #### Manual
 
