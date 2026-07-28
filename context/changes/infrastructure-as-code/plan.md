@@ -608,12 +608,12 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Automated
 
-- [ ] 1.1 `uv run pytest` passes after `/health` view + `Q_CLUSTER` env change
-- [ ] 1.2 `uv run ruff check .` passes on the new view + settings edit
-- [ ] 1.3 `uv run python src/manage.py check` passes (incl. E001/E002/W001/W002)
-- [ ] 1.4 `uv run python src/manage.py migrate --no-input` applies cleanly
-- [ ] 1.5 Local curl smoke check: `curl -fsS http://127.0.0.1:8000/health` returns `ok` / 200
-- [ ] 1.6 `Q2_WORKERS=1 uv run python src/manage.py check` passes
+- [x] 1.1 `uv run pytest` passes after `/health` view + `Q_CLUSTER` env change
+- [x] 1.2 `uv run ruff check .` passes on the new view + settings edit
+- [x] 1.3 `uv run python src/manage.py check` passes (incl. E001/E002/W001/W002)
+- [x] 1.4 `uv run python src/manage.py migrate --no-input` applies cleanly
+- [x] 1.5 Local curl smoke check: `curl -fsS http://127.0.0.1:8000/health` returns `ok` / 200
+- [x] 1.6 `Q2_WORKERS=1 uv run python src/manage.py check` passes
 
 #### Manual
 

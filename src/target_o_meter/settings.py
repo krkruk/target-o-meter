@@ -279,7 +279,10 @@ DATABASES = {
 # queue plumbing schedule_image_processing uses.
 Q_CLUSTER = {
     'name': 'targetometer',
-    'workers': 3,            # AGENTS.md §2 cap: Max 3 concurrent processing tasks
+    # AGENTS.md §2 cap: Max 3 concurrent processing tasks (the local/dev
+    # default). Railway Free tier narrows to 1 worker via Q2_WORKERS to fit
+    # the 512MB RAM budget (infrastructure-as-code P1 + IaC env block).
+    'workers': int(os.environ.get('Q2_WORKERS', '3')),
     'recycle': 500,
     'timeout': 600,          # CV pipeline can take ~30s/image; allow generous headroom
     'retry': 1200,
