@@ -44,7 +44,6 @@ services:
       SECURE_COOKIES: ${SECURE_COOKIES:-True}
     volumes:
       - db-data:/data
-      - staticfiles:/app/src/staticfiles
     ports:
       - "8000:8000"
 
@@ -79,4 +78,3 @@ services:
 
 volumes:
   db-data:
-  staticfiles:

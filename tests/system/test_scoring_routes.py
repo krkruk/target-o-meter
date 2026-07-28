@@ -23,8 +23,10 @@ developer's ``src/``.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 from django.test import override_settings
@@ -55,13 +57,16 @@ def _seed_csrf(client) -> str:
 
 def _multipart_post(client, path: str, *, file_bytes: bytes, file_name: str = "12.jpg",
                     target_type: str = "air_pistol", caliber_hint: str | None = None,
-                    distance_m: int | None = None, csrf: str | None = None):
+                    distance: int | None = None, weapon_type: str | None = None,
+                    csrf: str | None = None):
     """POST a multipart form. Mirrors what the SPA's ``createScoringJob`` does:
     a real ``multipart/form-data`` body with the file + form fields + X-CSRFToken.
 
     Form field names are flat (``target_type``, NOT ``details.target_type``) —
     ninja's ``Form[Schema]`` flattens the schema's fields to their alias names
-    (see ``ninja/signature/details.py::_model_flatten_map``)."""
+    (see ``ninja/signature/details.py::_model_flatten_map``). S-03 renamed the
+    S-02 mock field ``distance_m`` → ``distance`` (now a real column) and added
+    ``weapon_type`` (FR-009)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
     data: dict = {
@@ -70,8 +75,10 @@ def _multipart_post(client, path: str, *, file_bytes: bytes, file_name: str = "1
     }
     if caliber_hint is not None:
         data["caliber_hint"] = caliber_hint
-    if distance_m is not None:
-        data["distance_m"] = str(distance_m)
+    if distance is not None:
+        data["distance"] = str(distance)
+    if weapon_type is not None:
+        data["weapon_type"] = weapon_type
 
     kw: dict = {"data": data}
     if csrf is not None:
@@ -106,7 +113,8 @@ def test_post_scoring_jobs_creates_job_for_user_role(
             file_bytes=FIXTURE_12.read_bytes(),
             target_type="air_pistol",
             caliber_hint="9x19mm",
-            distance_m=25,
+            distance=25,
+            weapon_type="sport_pistol",
             csrf=csrf,
         )
 
@@ -120,6 +128,9 @@ def test_post_scoring_jobs_creates_job_for_user_role(
     assert job.user_uuid == user.id
     assert job.target_type == "air_pistol"
     assert job.caliber_hint == "9x19mm"
+    # S-03 FR-009: distance + weapon_type forwarded onto the ScoringJob row.
+    assert job.distance == 25
+    assert job.weapon_type == "sport_pistol"
 
 
 def test_post_scoring_jobs_allows_owner_role(
@@ -261,7 +272,7 @@ def test_get_scoring_job_404_for_other_users_job(
 
 
 def test_get_scoring_job_returns_marked_image_url_when_succeeded(
-    client, user_sub, tmp_path
+    client, user_sub, tmp_path, monkeypatch
 ) -> None:
     """After ``process_image`` succeeds, the GET response carries
     ``marked_image_url`` populated from ``job.marked_image_path`` via
@@ -271,6 +282,10 @@ def test_get_scoring_job_returns_marked_image_url_when_succeeded(
     in ``services._job_to_dto``). Pins Phase 4.0's DTO field surfacing."""
     from src.domains.vision.detectors.mock_detector import MockDetector
     from src.domains.vision.services import process_image
+
+    # S-03: pin the mock's random pattern so the hole-count assertion is stable.
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
 
     user = make_user(sub=user_sub, nick="grace")
     _login_as(client, user)
@@ -369,3 +384,376 @@ def test_post_scoring_jobs_works_on_live_runserver(
     assert response.json()["status"] == "queued"
     assert "job_id" in response.json()
     server.assert_no_traceback()
+
+
+# ---------------------------------------------------------------------------
+# POST /v1/scoring/results — accept a detection result (S-03 Phase 2)
+# ---------------------------------------------------------------------------
+#
+# Resource-named per the API-design lesson (the accepted-result resource, NOT
+# ``/scoring/accept``). Idempotent on re-POST via a unique_together constraint
+# (the F1 fix from plan-review). Body is JSON ``AcceptResultIn`` carrying the
+# ``job_id`` + confirmed params + the corrected-hole snapshot.
+
+from src.domains.vision.models import AcceptedResult  # noqa: E402
+
+
+def _seed_succeeded_job(user_uuid, *, target_type="air_pistol",
+                        caliber_hint="9x19mm", distance=25,
+                        weapon_type="sport_pistol") -> ScoringJob:
+    """Construct a SUCCEEDED ScoringJob directly (no detector / no q2). The
+    accept path only reads the row + enforces status==SUCCEEDED, so a hand-built
+    succeeded row is the cleanest isolation seed (mirrors the plan's
+    "directly construct a ScoringJob(status=SUCCEEDED)" option)."""
+    return ScoringJob.objects.create(
+        user_uuid=user_uuid,
+        status=ScoringJob.Status.SUCCEEDED,
+        input_path="uploads/seed.jpg",
+        target_type=target_type,
+        caliber_hint=caliber_hint,
+        distance=distance,
+        weapon_type=weapon_type,
+        result={
+            "ok": True,
+            "holes": [
+                {"x": 500, "y": 510, "score": 9, "confidence": 0.95},
+                {"x": 520, "y": 500, "score": 10, "confidence": 0.97},
+            ],
+            "target_type": target_type,
+            "detector": "mock",
+            "notes": "seed",
+        },
+        marked_image_path="uploads/seed_marked.png",
+    )
+
+
+def _accept_payload(job_id, *, holes=None, target_type="air_pistol",
+                    distance=25, weapon_type="sport_pistol",
+                    caliber_hint="9x19mm") -> dict:
+    """Build the JSON body for POST /v1/scoring/results (AcceptResultIn)."""
+    return {
+        "job_id": str(job_id),
+        "target_type": target_type,
+        "caliber_hint": caliber_hint,
+        "distance": distance,
+        "weapon_type": weapon_type,
+        "holes": holes if holes is not None else [
+            {"x": 500, "y": 510, "score": 9, "confidence": 0.95},
+            {"x": 520, "y": 500, "score": 10, "confidence": 0.97},
+        ],
+    }
+
+
+def test_post_scoring_results_returns_401_anonymous(client) -> None:
+    """No session → session_auth falsy → 401 before the body runs."""
+    response = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(uuid4())),
+        content_type="application/json",
+    )
+    assert response.status_code == 401
+
+
+def test_post_scoring_results_creates_accepted_result(client, user_sub) -> None:
+    """First accept of a succeeded job owned by the user → 201, returns
+    AcceptedResultDTO with the snapshot holes + score_average = mean of the
+    sent holes (9.5 here). Exactly one AcceptedResult row exists."""
+    user = make_user(sub=user_sub, nick="ivy")
+    _login_as(client, user)
+    csrf = _seed_csrf(client)
+
+    job = _seed_succeeded_job(user.id, target_type="precision_pistol")
+
+    response = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(
+            job.id, target_type="precision_pistol",
+            holes=[
+                {"x": 100, "y": 100, "score": 8, "confidence": 0.9},
+                {"x": 200, "y": 200, "score": 10, "confidence": 0.95},
+            ],
+        )),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert response.status_code == 201, response.content
+    body = response.json()
+    assert body["source_job"] == str(job.id)
+    assert body["target_type"] == "precision_pistol"
+    assert len(body["holes"]) == 2
+    assert body["score_average"] == pytest.approx(9.0)  # mean(8, 10)
+    assert body["result_id"]
+
+    # Exactly one AcceptedResult row, snapshotting the confirmed params.
+    assert AcceptedResult.objects.filter(source_job=job.id).count() == 1
+    ar = AcceptedResult.objects.get(source_job=job.id)
+    assert ar.user_uuid == user.id
+    assert ar.target_type == "precision_pistol"
+    assert ar.distance == 25
+    assert ar.weapon_type == "sport_pistol"
+    assert ar.score_average == pytest.approx(9.0)
+    assert len(ar.holes) == 2
+
+
+def test_post_scoring_results_idempotent_on_repost(client, user_sub) -> None:
+    """Re-POST for the same job → 200, returns the SAME result_id (idempotent).
+    No duplicate row is created."""
+    user = make_user(sub=user_sub, nick="jack")
+    _login_as(client, user)
+    csrf = _seed_csrf(client)
+    job = _seed_succeeded_job(user.id)
+
+    first = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(job.id)),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert first.status_code == 201, first.content
+    first_id = first.json()["result_id"]
+
+    second = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(job.id)),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert second.status_code == 200, second.content
+    assert second.json()["result_id"] == first_id
+    assert AcceptedResult.objects.filter(source_job=job.id).count() == 1
+
+
+def test_post_scoring_results_preexisting_row_returns_existing(
+    client, user_sub,
+) -> None:
+    """Race regression (plan-review F1) — savepoint recovery path: when an
+    ``AcceptedResult`` already exists for the job, ``accept_job`` hits the
+    ``unique_together`` IntegrityError, the savepoint rolls back, and the
+    service re-fetches + returns the existing row (the 200 idempotent path)
+    WITHOUT poisoning the transaction (no ``TransactionManagementError``).
+
+    This is the single-threaded, deterministic expression of the concurrent-
+    accept race: the load-bearing guarantee is that the IntegrityError is
+    caught *after a savepoint* (so the outer transaction stays queryable) and
+    the existing row is returned. The full concurrent HTTP round-trip is
+    covered by the blackbox system test against the live ``runserver``
+    subprocess (real parallelism under SQLite's busy timeout)."""
+    from src.domains.vision.dtos import DetectedHoleDTO
+    from src.domains.vision.services import accept_job
+
+    user = make_user(sub=user_sub, nick="kate")
+    _login_as(client, user)
+    csrf = _seed_csrf(client)
+    job = _seed_succeeded_job(user.id)
+
+    # Pre-create the row (simulates the race-winner having already committed).
+    AcceptedResult.objects.create(
+        user_uuid=user.id, source_job=job.id, target_type="air_pistol",
+        caliber_hint="9x19mm", distance=25, weapon_type="sport_pistol",
+        holes=[{"x": 1, "y": 1, "score": 7, "confidence": 0.9}],
+        score_average=7.0,
+    )
+    preexisting_id = AcceptedResult.objects.get(source_job=job.id).id
+
+    # Re-POST via the route → must return 200 + the SAME row, no 500.
+    response = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(job.id)),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["result_id"] == str(preexisting_id)
+    # Still exactly one row.
+    assert AcceptedResult.objects.filter(source_job=job.id).count() == 1
+
+    # And calling the service directly also recovers (no TransactionManagementError).
+    dto, created = accept_job(
+        job_id=job.id, user_uuid=user.id, target_type="air_pistol",
+        caliber_hint="9x19mm", distance=25, weapon_type="sport_pistol",
+        holes=[DetectedHoleDTO(x=2, y=2, score=8, confidence=0.9)],
+    )
+    assert created is False
+    assert dto.result_id == preexisting_id
+
+
+def test_post_scoring_results_404_for_other_users_job(client, user_sub) -> None:
+    """Accept a job owned by another user → 404 (ownership via PermissionError,
+    identical to the existing GET ownership map)."""
+    owner = make_user(sub="auth0|other-owner", nick="leo")
+    intruder = make_user(sub=user_sub, nick="mia")
+    job = _seed_succeeded_job(owner.id)  # owned by leo
+
+    _login_as(client, intruder)
+    csrf = _seed_csrf(client)
+    response = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(job.id)),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert response.status_code == 404
+    assert not AcceptedResult.objects.filter(source_job=job.id).exists()
+
+
+def test_post_scoring_results_404_for_nonexistent_job(client, user_sub) -> None:
+    user = make_user(sub=user_sub, nick="nina")
+    _login_as(client, user)
+    csrf = _seed_csrf(client)
+    response = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(uuid4())),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert response.status_code == 404
+
+
+def test_post_scoring_results_409_for_non_succeeded_job(client, user_sub) -> None:
+    """Accept a job still in queued/running/failed → 409 Conflict. The service
+    raises StateError when job.status != SUCCEEDED; the route maps it to 409."""
+    from src.domains.vision.models import ScoringJob as SJ
+    user = make_user(sub=user_sub, nick="oscar")
+    _login_as(client, user)
+    csrf = _seed_csrf(client)
+    job = SJ.objects.create(
+        user_uuid=user.id, status=SJ.Status.RUNNING,
+        input_path="uploads/seed.jpg", target_type="air_pistol",
+    )
+    response = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(job.id)),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert response.status_code == 409
+
+
+def test_post_scoring_results_422_for_empty_holes(client, user_sub) -> None:
+    """Empty holes list → 422 (validation; the score snapshot must have >=1
+    hole for aggregation to be meaningful)."""
+    user = make_user(sub=user_sub, nick="paul")
+    _login_as(client, user)
+    csrf = _seed_csrf(client)
+    job = _seed_succeeded_job(user.id)
+    response = client.post(
+        "/v1/scoring/results",
+        data=json.dumps(_accept_payload(job.id, holes=[])),
+        content_type="application/json",
+        HTTP_X_CSRFTOKEN=csrf,
+    )
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/scoring/jobs/{job_id}/marked-image — BFF proxy for the marked image.
+# ---------------------------------------------------------------------------
+#
+# Resource-named per the API-design lesson (the job's marked-image ARTIFACT, a
+# noun — not a verb like /get-image or /serve). Streams the bytes server-side as
+# ``image/png`` so the browser never receives a presigned S3 URL (which would
+# expose ``AWSAccessKeyId``/``Signature`` and bake in an internal ``minio:9000``
+# host). Ownership mirrors ``GET /v1/scoring/jobs/{id}``: 404 on mismatch OR
+# missing (ID-prober learns nothing), 404 when the job has no marked image yet.
+
+from src.domains.vision.pipeline.storage import ScoringStorage  # noqa: E402
+
+
+def _seed_succeeded_job_with_marked_image(
+    user_uuid, tmp_path, *, png_bytes=b"\x89PNG\r\n\x1a\nMARKED-BYTES"
+) -> ScoringJob:
+    """A SUCCEEDED job whose ``marked_image_path`` points at a real deliverable
+    written under ``MEDIA_ROOT/scoring`` (the default ``ScoringStorage()`` root
+    the proxy route reads from — no explicit ``location=`` so the seed + route
+    share the same root under ``override_settings(MEDIA_ROOT=...)``)."""
+    storage = ScoringStorage()
+    job = ScoringJob.objects.create(
+        user_uuid=user_uuid,
+        status=ScoringJob.Status.SUCCEEDED,
+        input_path="uploads/seed.jpg",
+        target_type="air_pistol",
+        result={
+            "ok": True,
+            "holes": [{"x": 500, "y": 500, "score": 9, "confidence": 0.95}],
+            "target_type": "air_pistol",
+            "detector": "mock",
+        },
+        marked_image_path=None,
+    )
+    job.marked_image_path = storage.write_deliverable_bytes(
+        job.id, "marked.png", png_bytes
+    )
+    job.save()
+    return job
+
+
+def test_get_marked_image_streams_png_bytes_for_owner(
+    client, user_sub, tmp_path
+) -> None:
+    """The job's owner GETs ``/marked-image`` and receives the PNG bytes
+    (``Content-Type: image/png``), read server-side — never a presigned URL."""
+
+    user = make_user(sub=user_sub, nick="quinn")
+    _login_as(client, user)
+    png = b"\x89PNG\r\n\x1a\nMARKED-BYTES"
+    with override_settings(MEDIA_ROOT=str(tmp_path)):
+        job = _seed_succeeded_job_with_marked_image(user.id, tmp_path, png_bytes=png)
+        response = client.get(f"/v1/scoring/jobs/{job.id}/marked-image")
+
+    assert response.status_code == 200, response.content
+    assert response.headers["Content-Type"] == "image/png"
+    assert response.content == png
+    # No S3 creds leak in any response header (defense-in-depth for the proxy).
+    for header_value in response.headers.values():
+        assert "AWSAccessKeyId" not in header_value
+        assert "Signature=" not in header_value
+
+
+def test_get_marked_image_404_for_non_owner(client, user_sub) -> None:
+    """Another user's job → 404 (same shape as ``GET /v1/scoring/jobs/{id}`` —
+    an ID-prober can't distinguish "exists, not mine" from "doesn't exist")."""
+
+    intruder = make_user(sub="auth0|intruder-sub", nick="rita")
+    owner = make_user(sub=user_sub, nick="sam")
+    _login_as(client, intruder)
+
+    job = _seed_succeeded_job(owner.id)
+    job.marked_image_path = "jobs/x/marked.png"
+    job.save()
+
+    response = client.get(f"/v1/scoring/jobs/{job.id}/marked-image")
+    assert response.status_code == 404
+
+
+def test_get_marked_image_404_when_no_marked_image_yet(client, user_sub) -> None:
+    """A queued/running job (no ``marked_image_path``) → 404, not 500."""
+    user = make_user(sub=user_sub, nick="tom")
+    _login_as(client, user)
+    job = ScoringJob.objects.create(
+        user_uuid=user.id,
+        status=ScoringJob.Status.QUEUED,
+        input_path="uploads/seed.jpg",
+        target_type="air_pistol",
+        marked_image_path=None,
+    )
+    response = client.get(f"/v1/scoring/jobs/{job.id}/marked-image")
+    assert response.status_code == 404
+
+
+def test_get_scoring_job_json_marked_image_url_is_bff_path_no_creds(
+    client, user_sub, tmp_path
+) -> None:
+    """Regression for the leak: ``GET /v1/scoring/jobs/{id}`` JSON's
+    ``marked_image_url`` is the BFF path and carries no S3 creds/host."""
+    user = make_user(sub=user_sub, nick="uma")
+    _login_as(client, user)
+    with override_settings(MEDIA_ROOT=str(tmp_path)):
+        job = _seed_succeeded_job_with_marked_image(user.id, tmp_path)
+        response = client.get(f"/v1/scoring/jobs/{job.id}")
+
+    assert response.status_code == 200, response.content
+    url = response.json()["marked_image_url"]
+    assert url == f"/v1/scoring/jobs/{job.id}/marked-image"
+    assert "AWSAccessKeyId" not in url
+    assert "Signature" not in url
+    assert "minio" not in url

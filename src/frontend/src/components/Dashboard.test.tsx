@@ -1,14 +1,14 @@
-// S-02 Phase 7: Dashboard contract. Single-screen CSS Grid dashboard — hero
-// stats, add-photos button (branches to /capture on mobile, /upload on
-// desktop), results list, and a daily-average recharts chart. The chart +
-// results use mocked fixtures (aggregation is S-03). Accessibility-first:
-// each region carries role="region" + aria-label; the chart wrapper is
-// role="img" with a summarizing aria-label (recharts SVGs aren't screen-
-// reader-friendly by default).
+// S-02 Phase 7 + S-03: Dashboard contract. Single-screen CSS Grid dashboard —
+// hero stats, add-photos button (branches to /capture on mobile, /upload on
+// desktop), results list, and a daily-average recharts chart. S-03 swapped the
+// mocked fixtures for real getAggregations() calls (loading → role=status,
+// error → role=alert). Accessibility-first: each region carries role="region"
+// + aria-label; the chart wrapper is role="img" with a summarizing aria-label.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import * as api from '../api';
 import { Dashboard } from './Dashboard';
 
 // jsdom doesn't implement window.matchMedia — the dashboard uses it to branch
@@ -55,6 +55,17 @@ describe('Dashboard', () => {
       removeListener: () => {},
       dispatchEvent: () => false,
     }));
+    // S-03: default the aggregation spy to a populated payload so the
+    // structural tests (regions, add-photos, chart) don't depend on fetch.
+    // Per-test overrides replace this with their own spy.
+    vi.spyOn(api, 'getAggregations').mockResolvedValue({
+      hero: { total_shots: 19, last_session_average: 6.0, best_result: 10.0 },
+      recent: [{
+        result_id: 'r1', source_job: 'job-1', created_at: '2026-07-28T12:00:00Z',
+        score_average: 8.4, hole_count: 5, target_type: 'air_pistol',
+      }],
+      daily_averages: [{ date: '2026-07-28', average: 8.4 }],
+    });
   });
 
   afterEach(() => {
@@ -62,10 +73,11 @@ describe('Dashboard', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the four named regions (hero, add-photos, results, chart)', () => {
+  it('renders the four named regions (hero, add-photos, results, chart)', async () => {
     renderAt('/dashboard');
-    // Each region is an accessible landmark with a discernible aria-label.
-    expect(screen.getByRole('region', { name: /hero stats/i })).toBeInTheDocument();
+    // The hero region renders after getAggregations resolves; results + chart
+    // are always present (they handle null props). Await the hero region.
+    expect(await screen.findByRole('region', { name: /hero stats/i })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: /results/i })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: /daily average/i })).toBeInTheDocument();
     // The add-photos button is the affordance that branches capture/upload.
@@ -123,18 +135,45 @@ describe('Dashboard', () => {
     expect(chart).toBeInTheDocument();
   });
 
-  it('renders hero stat values from the mocked fixture', () => {
+  it('renders hero stat values from getAggregations', async () => {
+    // S-03: the dashboard fetches real aggregations (not the S-02 mocked fixture).
+    vi.spyOn(api, 'getAggregations').mockResolvedValue({
+      hero: { total_shots: 19, last_session_average: 6.0, best_result: 10.0 },
+      recent: [],
+      daily_averages: [],
+    });
     renderAt('/dashboard');
-    const hero = screen.getByRole('region', { name: /hero stats/i });
-    // The mocked fixture carries deterministic values (total shots, last
-    // session, best result). Assert the region is populated (not empty).
-    expect(hero.textContent?.trim().length).toBeGreaterThan(0);
+    // The hero region populates with the fetched total_shots (19).
+    const hero = await screen.findByRole('region', { name: /hero stats/i });
+    expect(hero).toHaveTextContent('19');
   });
 
-  it('renders results-list rows from the mocked fixture', () => {
+  it('renders results-list rows from getAggregations', async () => {
+    vi.spyOn(api, 'getAggregations').mockResolvedValue({
+      hero: { total_shots: 0, last_session_average: null, best_result: null },
+      recent: [{
+        result_id: 'r1', source_job: 'job-1', created_at: '2026-07-28T12:00:00Z',
+        score_average: 8.4, hole_count: 5, target_type: 'air_pistol',
+      }],
+      daily_averages: [],
+    });
     renderAt('/dashboard');
-    const results = screen.getByRole('region', { name: /results/i });
-    // The mocked fixture seeds at least one result row.
-    expect(results.textContent?.trim().length).toBeGreaterThan(0);
+    const results = await screen.findByRole('region', { name: /results/i });
+    // The fetched recent row renders (date + score_average + hole_count).
+    expect(results).toHaveTextContent('8.4');
+    expect(results).toHaveTextContent('5 holes');
+  });
+
+  it('renders a role=status loading state before aggregations resolve', () => {
+    // Never-resolving spy so the loading state stays mounted.
+    vi.spyOn(api, 'getAggregations').mockReturnValue(new Promise(() => {}));
+    renderAt('/dashboard');
+    expect(screen.getByRole('status', { name: /loading hero stats/i })).toBeInTheDocument();
+  });
+
+  it('renders a role=alert error state when getAggregations fails', async () => {
+    vi.spyOn(api, 'getAggregations').mockRejectedValue(new Error('GET /v1/scores/aggregations failed: 500'));
+    renderAt('/dashboard');
+    expect(await screen.findByRole('alert')).toHaveTextContent(/unable to load dashboard/i);
   });
 });

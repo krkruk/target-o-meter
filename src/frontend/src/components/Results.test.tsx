@@ -1,11 +1,11 @@
-// S-02 Phase 8: Results route contract. Fetches the ScoringJob and renders the
-// marked image with per-hole correction dropdowns (UI-only in S-02 —
-// persistence is S-03). If result is null OR marked_image_url is null/empty,
-// render an "unable to load results" fallback (the _job_to_dto fragility can
-// produce a null result even on succeeded).
+// S-02 Phase 8 + S-03: Results route contract. Fetches the ScoringJob, renders
+// the marked image + per-hole correction dropdowns, and (S-03) the confirm-
+// parameters form + Accept/Reject buttons. Accept → POST /v1/scoring/results
+// with the corrected holes + params → /dashboard. Reject → /dashboard (no POST).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import * as api from '../api';
 import type { ScoringJob } from '../api';
 import { Results } from './Results';
@@ -20,11 +20,30 @@ function renderAt(path: string) {
   );
 }
 
+// Renders with a Probe that exposes the current pathname (for navigation asserts).
+function renderAtWithProbe(path: string) {
+  let currentPath = '';
+  function Probe() { currentPath = useLocation().pathname; return null; }
+  const utils = render(
+    <MemoryRouter initialEntries={[path]}>
+      <Probe />
+      <Routes>
+        <Route path="/results/:jobId" element={<Results />} />
+        <Route path="/dashboard" element={<div>dashboard-sentinel</div>} />
+      </Routes>
+    </MemoryRouter>
+  );
+  return { ...utils, getPath: () => currentPath };
+}
+
 function makeJob(overrides: Partial<ScoringJob> = {}): ScoringJob {
   return {
     job_id: 'abc',
     status: 'succeeded',
     target_type: 'air_pistol',
+    caliber_hint: '9x19mm',
+    distance: 25,
+    weapon_type: 'sport_pistol',
     marked_image_url: '/media/jobs/abc/marked.png',
     result: {
       holes: [
@@ -61,9 +80,12 @@ describe('Results', () => {
     await waitFor(() => {
       expect(screen.getByRole('img', { name: /marked target/i })).toHaveAttribute('src', job.marked_image_url!);
     });
-    // One correction <select> per hole, plus accessible labels.
+    // One correction <select> per hole + 4 confirm-params selects (caliber,
+    // distance, weapon_type, target_type) + the Accept/Reject buttons (S-03).
     const selects = screen.getAllByRole('combobox');
-    expect(selects).toHaveLength(job.result!.holes.length);
+    expect(selects).toHaveLength(job.result!.holes.length + 4);
+    expect(screen.getByRole('button', { name: /accept result/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reject result/i })).toBeInTheDocument();
   });
 
   it('renders an "unable to load results" fallback when result is null', async () => {
@@ -89,16 +111,66 @@ describe('Results', () => {
     });
   });
 
-  it('changes a hole score via the dropdown (local state only — no API call in S-02)', async () => {
-    const spy = vi.spyOn(api, 'getScoringJob').mockResolvedValue(makeJob());
-    const { container } = renderAt('/results/abc');
-    await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(2));
-    // getScoringJob is called only on mount (S-02: corrections are local, no save).
-    const callsBefore = spy.mock.calls.length;
-    // Selecting a new score must not trigger another getScoringJob.
-    const firstSelect = screen.getAllByRole('combobox')[0];
-    firstSelect.setAttribute('value', '9');
-    expect(spy.mock.calls.length).toBe(callsBefore);
-    expect(container).toBeTruthy();
+  it('changes a hole score via the dropdown (corrections flow into the accept payload on Accept)', async () => {
+    vi.spyOn(api, 'getScoringJob').mockResolvedValue(makeJob());
+    const acceptSpy = vi.spyOn(api, 'acceptResult').mockResolvedValue({
+      result_id: 'r1', source_job: 'abc', target_type: 'air_pistol',
+      holes: [], score_average: 9.0,
+    });
+    renderAt('/results/abc');
+    await waitFor(() => expect(screen.getAllByRole('combobox')).toHaveLength(6));
+    // The 2 hole-correction selects are the first two comboboxes.
+    const holeSelects = screen.getAllByRole('combobox').slice(0, 2);
+    await userEvent.selectOptions(holeSelects[0], '9');
+    // Accept → acceptResult called with the corrected score (9 for hole 0).
+    await userEvent.click(screen.getByRole('button', { name: /accept result/i }));
+    await waitFor(() => expect(acceptSpy).toHaveBeenCalledTimes(1));
+    const payload = acceptSpy.mock.calls[0][1];
+    expect(payload.holes[0].score).toBe(9);
+  });
+
+  it('Accept calls acceptResult with the params + corrected holes, then navigates to /dashboard', async () => {
+    vi.spyOn(api, 'getScoringJob').mockResolvedValue(makeJob({
+      caliber_hint: '9x19mm', distance: 25, weapon_type: 'sport_pistol',
+    }));
+    const acceptSpy = vi.spyOn(api, 'acceptResult').mockResolvedValue({
+      result_id: 'r1', source_job: 'abc', target_type: 'air_pistol',
+      holes: [], score_average: 8.5,
+    });
+    const { getPath } = renderAtWithProbe('/results/abc');
+    await waitFor(() => expect(screen.getByRole('button', { name: /accept result/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /accept result/i }));
+    await waitFor(() => expect(acceptSpy).toHaveBeenCalledTimes(1));
+    expect(acceptSpy.mock.calls[0][0]).toBe('abc'); // jobId from the route
+    const payload = acceptSpy.mock.calls[0][1];
+    expect(payload.target_type).toBe('air_pistol');
+    expect(payload.caliber_hint).toBe('9x19mm');
+    expect(payload.distance).toBe(25);
+    expect(payload.weapon_type).toBe('sport_pistol');
+    expect(getPath()).toBe('/dashboard');
+  });
+
+  it('Reject navigates to /dashboard WITHOUT calling acceptResult', async () => {
+    vi.spyOn(api, 'getScoringJob').mockResolvedValue(makeJob());
+    const acceptSpy = vi.spyOn(api, 'acceptResult').mockResolvedValue({
+      result_id: 'r1', source_job: 'abc', target_type: 'air_pistol',
+      holes: [], score_average: 8.5,
+    });
+    const { getPath } = renderAtWithProbe('/results/abc');
+    await waitFor(() => expect(screen.getByRole('button', { name: /reject result/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /reject result/i }));
+    expect(acceptSpy).not.toHaveBeenCalled();
+    expect(getPath()).toBe('/dashboard');
+  });
+
+  it('shows a role=alert when acceptResult fails', async () => {
+    vi.spyOn(api, 'getScoringJob').mockResolvedValue(makeJob());
+    vi.spyOn(api, 'acceptResult').mockRejectedValue(new Error('POST /v1/scoring/results failed: 409'));
+    renderAt('/results/abc');
+    await waitFor(() => expect(screen.getByRole('button', { name: /accept result/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole('button', { name: /accept result/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/accept failed/i);
+    });
   });
 });

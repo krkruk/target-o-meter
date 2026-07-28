@@ -364,6 +364,13 @@ if USE_S3:
     AWS_S3_ADDRESSING_STYLE = os.environ.get('AWS_S3_ADDRESSING_STYLE', 'auto')
     AWS_S3_FILE_OVERWRITE = False
     AWS_DEFAULT_ACL = None
+    # S-03 Phase 4: Tigris has no public bucket access, so the SPA's
+    # ``<img src={marked_image_url}>`` would 403 on a plain key URL. Presigned
+    # (query-string-auth) URLs are time-limited + signed, browser-fetchable under
+    # both Tigris (prod) and MinIO (docker-compose dev). 3600s is well over the
+    # results-screen view time; django-storages honors these from ``.url(...)``.
+    AWS_QUERYSTRING_AUTH = True
+    AWS_QUERYSTRING_EXPIRE = 3600
 
 # S-02 review (impl-review F2): cap multipart upload size so the BFF's
 # ``file.read()`` in ``scoring_routes.create_scoring_job`` can't be driven into

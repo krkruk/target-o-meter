@@ -53,10 +53,16 @@ def storage_with_upload(tmp_path: Path) -> tuple[ScoringStorage, str]:
 
 
 def test_process_image_writes_deliverables_and_marks_succeeded(
+    monkeypatch: pytest.MonkeyPatch,
     storage_with_upload: tuple[ScoringStorage, str],
 ) -> None:
     """End-to-end: create a ScoringJob, run process_image (mock detector),
-    assert success + 3 deliverables stored."""
+    assert success + 3 deliverables stored.
+
+    S-03: the MockDetector now emits a random N-hole pattern; the count is
+    pinned via env so the assertion is deterministic."""
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
     storage, rel_input = storage_with_upload
 
     user_uuid = uuid4()
@@ -90,6 +96,78 @@ def test_process_image_writes_deliverables_and_marks_succeeded(
     assert (bucket / job.llm_input_path).exists()
     assert (bucket / job.marked_image_path).exists()
     assert (bucket / job.result_json_path).exists()
+
+
+def test_process_image_completes_under_s3_shaped_storage(
+    monkeypatch: pytest.MonkeyPatch,
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """S-03 Phase 4 (load-bearing regression): under ``USE_S3=True`` the
+    ``process_image`` body must complete WITHOUT ``NotImplementedError``.
+
+    S-02's FS-only path called ``storage.absolute_path(...)`` (→ raises under
+    S3) + ``storage.deliverable_dir(...).mkdir(...)`` (no dirs under S3). Phase
+    4 swapped the storage surface to byte-oriented (``read_upload_bytes`` +
+    ``write_deliverable_bytes``) + a tempfile dance for ``cv2.imread``. This
+    test patches ``ScoringStorage`` to an S3-shaped fake (``_is_s3=True``,
+    in-memory backend) and asserts the pipeline runs end-to-end and the job
+    row carries the 3 deliverable keys (not filesystem paths).
+
+    The MockDetector is seeded so the hole count is deterministic.
+    """
+    import io
+
+    class _FakeS3:
+        def __init__(self) -> None:
+            self.files: dict[str, bytes] = {}
+
+        def save(self, name, content):
+            self.files[name] = content.read()
+            return name
+
+        def open(self, name, mode="rb"):
+            return io.BytesIO(self.files[name])
+
+        def url(self, name):
+            return f"https://fake-s3.example/{name}"
+
+    storage, rel_input = storage_with_upload
+    fake_s3 = _FakeS3()
+    # Seed the upload into the fake backend under the same key save_upload produced.
+    fake_s3.files[rel_input] = FIXTURE_12.read_bytes()
+
+    fake = ScoringStorage.__new__(ScoringStorage)
+    fake._storage = fake_s3
+    fake._is_s3 = True
+    fake._root = None
+
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
+
+    job = ScoringJob.objects.create(
+        user_uuid=uuid4(),
+        status=ScoringJob.Status.QUEUED,
+        input_path=rel_input,
+        target_type="air_pistol",
+        caliber_hint="9mm",
+    )
+
+    with patch(
+        "src.domains.vision.services.DetectorFactory.build",
+        return_value=MockDetector(),
+    ), patch("src.domains.vision.services.ScoringStorage", lambda *a, **kw: fake):
+        result = process_image(str(job.id))
+
+    # The pipeline ran (no NotImplementedError) and the job succeeded.
+    assert result["ok"] is True
+    job.refresh_from_db()
+    assert job.status == ScoringJob.Status.SUCCEEDED
+    # The 3 deliverable keys are S3 keys (jobs/<id>/<name>), not FS paths.
+    assert job.llm_input_path.startswith(f"jobs/{job.id}/")
+    assert job.marked_image_path.startswith(f"jobs/{job.id}/")
+    assert job.result_json_path.startswith(f"jobs/{job.id}/")
+    # The deliverable bytes landed in the fake S3 backend.
+    assert job.marked_image_path in fake_s3.files
 
 
 def test_get_job_enforces_owner_only(
@@ -164,6 +242,100 @@ def test_schedule_image_processing_rolls_back_if_enqueue_fails(
 
     # Row must have rolled back — no orphan queued jobs left behind.
     assert ScoringJob.objects.filter(input_path=rel_input).count() == 0
+
+
+def test_schedule_image_processing_persists_distance_and_weapon_type(
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """S-03 FR-009: ``distance`` + ``weapon_type`` (the two confirmation params
+    missing from S-02) MUST be accepted by ``schedule_image_processing`` and
+    persisted on the ``ScoringJob`` row so the accept snapshot can carry them.
+
+    The detector ignores these today (they're metadata for the accepted-result
+    snapshot); the service contract is only that they survive the enqueue.
+    """
+    _, rel_input = storage_with_upload
+
+    with patch("django_q.tasks.async_task"):
+        job_id = schedule_image_processing(
+            user_uuid=uuid4(),
+            input_path=rel_input,
+            target_type="air_pistol",
+            caliber_hint="9x19mm",
+            distance=25,
+            weapon_type="air_pistol",
+        )
+
+    job = ScoringJob.objects.get(id=job_id)
+    assert job.distance == 25
+    assert job.weapon_type == "air_pistol"
+
+
+def test_get_job_surfaces_distance_and_weapon_type_on_dto(
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """The DTO read path exposes ``distance`` + ``weapon_type`` so the SPA's
+    ``/results/:jobId`` screen can pre-fill the accept form with the wizard's
+    selections."""
+    storage, rel_input = storage_with_upload
+    user_uuid = uuid4()
+    with patch("django_q.tasks.async_task"):
+        job_id = schedule_image_processing(
+            user_uuid=user_uuid,
+            input_path=rel_input,
+            target_type="precision_pistol",
+            caliber_hint=".22LR",
+            distance=50,
+            weapon_type="free_pistol",
+        )
+
+    dto = get_job(job_id, user_uuid)
+    assert dto.distance == 50
+    assert dto.weapon_type == "free_pistol"
+    assert dto.target_type == "precision_pistol"
+
+
+def test_get_job_marked_image_url_is_bff_path_not_presigned(
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """``marked_image_url`` is a BFF-relative path
+    (``/v1/scoring/jobs/{id}/marked-image``), NOT a presigned S3 URL.
+
+    The browser must never receive a URL carrying ``AWSAccessKeyId``/``Signature``
+    (leaks the storage creds) or an internal endpoint host like ``minio:9000``
+    (unresolvable from the host browser). The BFF proxies the bytes through a
+    same-origin route instead. The value is ``None`` until a marked image
+    exists on the job.
+    """
+    storage, rel_input = storage_with_upload
+    user_uuid = uuid4()
+    with patch("django_q.tasks.async_task"):
+        job_id = schedule_image_processing(
+            user_uuid=user_uuid,
+            input_path=rel_input,
+            target_type="air_pistol",
+        )
+
+    # No marked image yet → None (the queued/running state).
+    dto_before = get_job(job_id, user_uuid)
+    assert dto_before.marked_image_url is None
+
+    # Write a marked-image deliverable + flip to SUCCEEDED, the state in which
+    # ``_job_to_dto`` surfaces the URL.
+    job = ScoringJob.objects.get(id=job_id)
+    job.marked_image_path = storage.write_deliverable_bytes(
+        job.id, "66666666-7777-8888-9999-aaaaaaaaaaaa_marked.png", b"\x89PNG-r\r\n"
+    )
+    job.status = ScoringJob.Status.SUCCEEDED
+    job.save()
+
+    dto = get_job(job_id, user_uuid)
+    expected = f"/v1/scoring/jobs/{job.id}/marked-image"
+    assert dto.marked_image_url == expected
+    # The leak / host bugs the proxy route fixes:
+    assert "AWSAccessKeyId" not in dto.marked_image_url
+    assert "Signature" not in dto.marked_image_url
+    assert "minio" not in dto.marked_image_url
 
 
 def test_q_cluster_uses_orm_default_broker() -> None:
@@ -272,9 +444,12 @@ def test_process_image_reads_vision_detector_env(
     hardcoded ``GoogleAIStudioDetector()``.
 
     With ``VISION_DETECTOR=mock`` the factory spy must be called with ``"mock"``
-    and the job must succeed with MockDetector's 5-hole pattern. The spy makes
-    the test deterministic regardless of the google detector's offline behavior.
+    and the job must succeed with MockDetector's pattern. The mock hole count is
+    pinned via env so the assertion is deterministic; the spy makes the test
+    deterministic regardless of the google detector's offline behavior.
     """
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
     storage, rel_input = storage_with_upload
     job = ScoringJob.objects.create(
         user_uuid=uuid4(),

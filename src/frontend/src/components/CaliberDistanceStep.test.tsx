@@ -16,21 +16,28 @@ import { Capture } from './Capture';
 import { Upload } from './Upload';
 
 describe('CaliberDistanceStep', () => {
-  it('renders accessible caliber + distance selects with labels', () => {
+  it('renders accessible caliber + distance + weapon_type + target_type selects with labels', () => {
     render(
       <CaliberDistanceStep onNext={() => {}} />
     );
     expect(screen.getByRole('combobox', { name: /caliber/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /distance/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /weapon type/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /target type/i })).toBeInTheDocument();
   });
 
-  it('calls onNext with the selected caliber + distance when Next is activated', async () => {
+  it('calls onNext with all four selections when Next is activated', async () => {
     const onNext = vi.fn();
     render(<CaliberDistanceStep onNext={onNext} />);
     await userEvent.selectOptions(screen.getByRole('combobox', { name: /caliber/i }), '9x19mm');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: /distance/i }), '25');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /weapon type/i }), 'sport_pistol');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /target type/i }), 'precision_pistol');
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
-    expect(onNext).toHaveBeenCalledWith({ caliber: '9x19mm', distance_m: 25 });
+    expect(onNext).toHaveBeenCalledWith({
+      caliber: '9x19mm', distance_m: 25,
+      weapon_type: 'sport_pistol', target_type: 'precision_pistol',
+    });
   });
 });
 

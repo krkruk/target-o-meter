@@ -1,22 +1,30 @@
-"""Mock hole detector — fixed 5-hole pattern for deterministic plumbing tests.
+"""Mock hole detector — random N-hole pattern (S-03).
 
-Ported verbatim from ``cv/mock_detector.py`` (commit 76f6fc4). The pattern is a
-5-hole "bullseye + cardinals" arrangement in 1024x1024 coords:
+Replaces the S-02 fixed 5-hole bullseye+cardinals pattern. The mock now emits
+a configurable count of random holes so the accept→persist→aggregate round-trip
+exercises varied data (multi-hole sums, max scores) instead of a constant
+pattern.
 
-    - 1 hole at the bullseye (512, 512)         score 10
-    - 4 holes at d=200 in cardinal directions   score 7
-        (712, 512) (312, 512) (512, 312) (512, 712)
+Configuration (read at detect-time from the environment, NOT ``__init__``, so
+``DetectorFactory.build("mock")`` stays parameterless — the factory is called
+in ``process_image`` with no args):
 
-The mock always returns this same pattern regardless of input image, so the
-pipeline's job is to:
+  - ``MOCK_DETECTOR_HOLE_COUNT`` (default 10) — how many holes to emit.
+  - ``MOCK_DETECTOR_SEED`` — if set, the pattern is deterministic (seeded
+    ``random.Random(seed)``); if unset, the module-level RNG varies per run.
+    Tests set a seed for stable assertions; the dev path leaves it unset so two
+    consecutive jobs differ.
 
-  1. Produce a 1024x1024 image where this pattern would visually make sense
-     (bullseye at center, ring 1 at radius 500).
-  2. Invert these 5 points back to source-image coordinates.
-  3. Draw magenta dots at the inverted positions on the source image.
+Each hole:
+  - ``x``, ``y`` random in ``[50, 974]`` (inset so holes land on the target
+    face, not the edge of the 1024×1024 frame),
+  - ``score`` random in ``[0, 10]`` (the PRD's 0–10 scoring domain),
+  - ``confidence`` random in ``[0.5, 0.99]``.
 """
 from __future__ import annotations
 
+import os
+import random
 from typing import Optional
 
 import numpy as np
@@ -26,17 +34,15 @@ from src.domains.vision.detectors.detection_result import DetectionResult
 from src.domains.vision.ports import HoleDetector, TargetType
 
 
-_MOCK_HOLES = [
-    DetectedHole(x=512, y=512, score=10, confidence=1.00),
-    DetectedHole(x=712, y=512, score=7, confidence=0.90),
-    DetectedHole(x=312, y=512, score=7, confidence=0.90),
-    DetectedHole(x=512, y=312, score=7, confidence=0.90),
-    DetectedHole(x=512, y=712, score=7, confidence=0.90),
-]
+_DEFAULT_HOLE_COUNT = 10
+# Inset so holes land on the target face, not the frame edge.
+_XY_MIN, _XY_MAX = 50, 974
+_CONF_MIN, _CONF_MAX = 0.5, 0.99
+_SCORE_MIN, _SCORE_MAX = 0, 10
 
 
 class MockDetector(HoleDetector):
-    """Returns the same fixed 5-hole pattern for any input."""
+    """Random N-hole pattern; seedable for deterministic tests."""
 
     @property
     def name(self) -> str:
@@ -49,21 +55,32 @@ class MockDetector(HoleDetector):
         caliber_hint: Optional[str] = None,
         target_ring1_px: Optional[float] = None,
     ) -> DetectionResult:
-        # target_ring1_px is accepted and ignored — the mock returns a fixed
-        # pattern and needs no ring geometry. (Phase 3 Step 2 signature extension.)
+        # target_ring1_px is accepted and ignored — the mock needs no ring
+        # geometry. (Phase 3 Step 2 signature extension.)
         del image_1024, caliber_hint, target_ring1_px  # accepted but unused
+
+        # Read config at detect-time so the factory stays parameterless.
+        count = int(os.environ.get("MOCK_DETECTOR_HOLE_COUNT", _DEFAULT_HOLE_COUNT))
+        seed = os.environ.get("MOCK_DETECTOR_SEED")
+        rng = random.Random(seed) if seed is not None else random
+
+        holes = [
+            DetectedHole(
+                x=rng.randint(_XY_MIN, _XY_MAX),
+                y=rng.randint(_XY_MIN, _XY_MAX),
+                score=rng.randint(_SCORE_MIN, _SCORE_MAX),
+                confidence=round(rng.uniform(_CONF_MIN, _CONF_MAX), 4),
+            )
+            for _ in range(count)
+        ]
+
         return DetectionResult(
-            holes=[
-                DetectedHole(
-                    x=h.x,
-                    y=h.y,
-                    score=h.score,
-                    confidence=h.confidence,
-                )
-                for h in _MOCK_HOLES
-            ],
+            holes=holes,
             target_type=target_type,
             detector_name=self.name,
-            notes="Mock detector: fixed 5-hole pattern (1 bullseye + 4 cardinals at d=200, ring ~7).",
-            raw={"pattern": "bullseye+cardinals", "n": len(_MOCK_HOLES)},
+            notes=(
+                f"Mock detector: random N-hole pattern "
+                f"(seed={seed or 'unseeded'}, count={count})."
+            ),
+            raw={"pattern": "random-n", "n": count, "seed": seed},
         )

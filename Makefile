@@ -34,14 +34,15 @@ run: migrate  ## Start Django dev server (:8000) in DEBUG mode (migrate first)
 # the shell's DEBUG env. Requires src/frontend/node_modules (run `npm install`
 # in src/frontend/ first if absent).
 
-dev: migrate  ## Start Django (:8000) + Vite (:5173) together for full SPA dev with HMR
+dev: migrate  ## Start Django (:8000) + Vite (:5173) + qcluster (async worker) for full SPA dev with HMR
 	@if [ ! -d "$(FE_DIR)/node_modules" ]; then \
 		echo "src/frontend/node_modules missing — run \`cd $(FE_DIR) && npm install\` first."; \
 		exit 1; \
 	fi
-	@echo "Starting Django (:8000) + Vite (:5173). Ctrl-C stops both."
+	@echo "Starting Django (:8000) + Vite (:5173) + qcluster. Ctrl-C stops all three."
 	@trap 'kill 0' INT; \
 	DEBUG=true uv run python src/manage.py runserver --noreload & \
+	DEBUG=true uv run python src/manage.py qcluster & \
 	( cd $(FE_DIR) && npm run dev ) & \
 	wait
 

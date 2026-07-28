@@ -22,6 +22,32 @@
   color: var(--color-muted);
 }
 
+.params {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.params label {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.params select {
+  padding: 0.6rem 0.8rem;
+  font-size: 1rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.params select:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
 .holes {
   list-style: none;
   margin: 0;
@@ -52,14 +78,72 @@
 }
 
 .hole select {
-  padding: 0.35rem;
-  border: 1px solid var(--color-border);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--color-primary);
   border-radius: 4px;
   background: #fff;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.hole select:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
 }
 
 .fallback {
   padding: 2rem 1rem;
   text-align: center;
   color: #b00020;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.accept {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.accept:hover {
+  opacity: 0.9;
+}
+
+.accept:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reject {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  background: #fff;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.reject:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.error {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: #fde8e8;
+  color: #b00020;
+  border: 1px solid #f1c0c0;
 }

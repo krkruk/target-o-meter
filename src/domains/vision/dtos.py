@@ -45,6 +45,11 @@ class ScoringJobDTO(BaseModel):
     status: str
     target_type: TargetType
     caliber_hint: Optional[str] = None
+    # S-03 FR-009 confirmation params (mirror of ScoringJob's columns). Surfaced
+    # so the SPA's ``/results/:jobId`` screen can pre-fill the accept form with
+    # the wizard's selections before the user accepts.
+    distance: Optional[int] = None
+    weapon_type: Optional[str] = None
     result: Optional[ScoringResultDTO] = None
     error: Optional[str] = None
     created_at: Optional[str] = None
@@ -58,3 +63,66 @@ class ScoringJobDTO(BaseModel):
     # MinIO path it's a MinIO URL. The Tigris/prod presigned-URL policy is an
     # S-03 concern (lands alongside the OpenCV+S3 refactor).
     marked_image_url: Optional[str] = None
+
+
+class AcceptedResultDTO(BaseModel):
+    """The wire contract for an accepted detection result (S-03 Phase 2).
+
+    Returned by ``POST /v1/scoring/results`` on both first-accept (201) and
+    idempotent re-POST (200). Snapshots the confirmed params + corrected-hole
+    list + the mean score (the value aggregation reads).
+    """
+
+    result_id: UUID
+    source_job: UUID
+    target_type: TargetType
+    caliber_hint: Optional[str] = None
+    distance: Optional[int] = None
+    weapon_type: Optional[str] = None
+    holes: list[DetectedHoleDTO]
+    score_average: float
+    created_at: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# S-03 Phase 5: aggregation DTOs (the dashboard's wire contract).
+#
+# These are the NEW canonical shapes — the S-02 ``mocks/dashboard.ts`` fixture
+# used different field names + a 0-100 score scale; the DTOs use 0-10 to match
+# the PRD's 0-10 scoring domain (the mock's 0-100 was arbitrary). Phase 6.6
+# rewrites the three dashboard child components to consume these.
+# ---------------------------------------------------------------------------
+
+
+class HeroStatsDTO(BaseModel):
+    """The dashboard's headline stats."""
+
+    total_shots: int
+    last_session_average: Optional[float] = None
+    best_result: Optional[float] = None
+
+
+class ResultSummaryDTO(BaseModel):
+    """One row in the dashboard's recent-results list."""
+
+    result_id: UUID
+    source_job: UUID  # the ScoringJob the result was accepted from (for re-view links)
+    created_at: str
+    score_average: float
+    hole_count: int
+    target_type: str
+
+
+class DailyAverageDTO(BaseModel):
+    """One point on the dashboard's daily-average chart."""
+
+    date: str
+    average: float
+
+
+class AggregationDTO(BaseModel):
+    """The dashboard's single aggregation response."""
+
+    hero: HeroStatsDTO
+    recent: list[ResultSummaryDTO]
+    daily_averages: list[DailyAverageDTO]

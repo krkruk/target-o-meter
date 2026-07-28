@@ -23,27 +23,44 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from src.domains.vision.dtos import (
+    AcceptedResultDTO,
+    AggregationDTO,
+    DailyAverageDTO,
     DetectedHoleDTO,
+    HeroStatsDTO,
+    ResultSummaryDTO,
     ScoringJobDTO,
     ScoringResultDTO,
 )
 from src.domains.vision.detectors.detection_result import DetectionResult
 from src.domains.vision.detectors.factory import DetectorFactory
-from src.domains.vision.models import ScoringJob
+from src.domains.vision.models import AcceptedResult, ScoringJob
 from src.domains.vision.pipeline.pipeline_runner import PipelineRunner
 from src.domains.vision.pipeline.storage import ScoringStorage
 from src.domains.vision.ports import TargetType
 
 
 logger = logging.getLogger(__name__)
+
+
+class StateError(Exception):
+    """Raised when a domain operation is attempted on a row in the wrong state.
+
+    Mirrors the existing ``PermissionError`` convention: a typed domain
+    exception the BFF translates to an HTTP status (409 Conflict for
+    ``StateError``). Used by ``accept_job`` to refuse accepting a
+    ``ScoringJob`` that is not yet ``SUCCEEDED`` (FR-010 — only a completed
+    detection can be accepted).
+    """
 
 
 def _sanitize_nan_inf(obj):
@@ -73,11 +90,19 @@ def schedule_image_processing(
     input_path: str,
     target_type: TargetType = "air_pistol",
     caliber_hint: Optional[str] = None,
+    distance: Optional[int] = None,
+    weapon_type: Optional[str] = None,
 ) -> str:
     """Create a ``ScoringJob(status="queued")`` and enqueue ``process_image``
     on django-q2. Returns ``job.id`` (the cross-domain safe key per AGENTS.md §5).
 
     Atomic: the job row + the q2 enqueue land together (or neither does).
+
+    ``distance`` + ``weapon_type`` are S-03 FR-009 confirmation params persisted
+    on the row (and snapshotted onto ``AcceptedResult`` at accept). They are
+    metadata only — NOT forwarded to the detector; ``process_image`` calls
+    ``PipelineRunner.run`` with ``target_type`` + ``caliber_hint`` alone (the
+    detector ignores distance/weapon_type today).
     """
     with transaction.atomic():
         job = ScoringJob.objects.create(
@@ -86,6 +111,8 @@ def schedule_image_processing(
             input_path=input_path,
             target_type=target_type,
             caliber_hint=caliber_hint,
+            distance=distance,
+            weapon_type=weapon_type,
         )
         # Lazy import so the module loads cleanly even if django_q isn't in
         # INSTALLED_APPS yet (the BFF orchestration change wires q2 + config).
@@ -136,36 +163,51 @@ def process_image(job_id: str | UUID) -> dict:
         runner = PipelineRunner(detector)
         storage = ScoringStorage()
 
-        # Materialize the input as a temp file for PipelineRunner (which takes
-        # a path). The upload is already on disk; resolve to absolute path.
-        input_abspath = storage.absolute_path(job.input_path)
-
-        # Deliverables go into a per-job bucket; PipelineRunner writes via
-        # its own out_dir, then we record the relative paths on the job.
+        # S-03 Phase 4: ``cv2.imread`` cannot read an S3 key, and S3 has no
+        # directories. The byte-oriented surface (``read_upload_bytes`` +
+        # ``write_deliverable_bytes``) works under both backends: download the
+        # upload to a tempfile (so the path-based pipeline + cv2 can read it),
+        # write deliverables to a temp dir, then upload each one back. The
+        # detector + PipelineRunner internals are untouched — only the storage
+        # surface + these call sites change.
         job_uuid = job.id
-        out_dir = storage.deliverable_dir(job_uuid)
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-        stem = Path(job.input_path).stem
-        result_dict = runner.run(
-            input_abspath,
-            target_type=job.target_type,
-            caliber_hint=job.caliber_hint,
-            out_dir=out_dir,
-        )
-
-        # Move/capture the 3 deliverable paths (relative to storage root).
-        # PipelineRunner wrote them as <stem>_llm_input.png etc.
-        storage_root = Path(storage.absolute_path(".")).resolve()
-        def _rel(p: Path) -> str:
-            try:
-                return str(p.resolve().relative_to(storage_root))
-            except ValueError:
-                return str(p)
-
-        llm_path = out_dir / f"{stem}_llm_input.png"
-        marked_path = out_dir / f"{stem}_marked.png"
-        result_json_path = out_dir / f"{stem}_result.json"
+        orig_stem = Path(job.input_path).stem
+        orig_suffix = Path(job.input_path).suffix
+        upload_bytes = storage.read_upload_bytes(job.input_path)
+        with tempfile.NamedTemporaryFile(
+            prefix=f"{orig_stem}_", suffix=orig_suffix, delete=False,
+        ) as tf:
+            tf.write(upload_bytes)
+            input_abspath = Path(tf.name)
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                out_dir = Path(tmp_dir)
+                result_dict = runner.run(
+                    input_abspath,
+                    target_type=job.target_type,
+                    caliber_hint=job.caliber_hint,
+                    out_dir=out_dir,
+                )
+                # PipelineRunner names deliverables after ``image_path.stem``
+                # (the tempfile's stem here). Derive the names from the actual
+                # temp path so they match what the runner wrote, then upload
+                # each back; the returned keys are stored on the job (replacing
+                # the old ``_rel(out_dir / name)`` values).
+                stem = input_abspath.stem
+                job.llm_input_path = storage.write_deliverable_bytes(
+                    job_uuid, f"{stem}_llm_input.png",
+                    (out_dir / f"{stem}_llm_input.png").read_bytes(),
+                )
+                job.marked_image_path = storage.write_deliverable_bytes(
+                    job_uuid, f"{stem}_marked.png",
+                    (out_dir / f"{stem}_marked.png").read_bytes(),
+                )
+                job.result_json_path = storage.write_deliverable_bytes(
+                    job_uuid, f"{stem}_result.json",
+                    (out_dir / f"{stem}_result.json").read_bytes(),
+                )
+        finally:
+            input_abspath.unlink(missing_ok=True)
 
         # Normalize numpy types AND NaN/Infinity out — SQLite's JSON_VALID is
         # strict (Python's ``json.dumps`` emits bare ``NaN`` / ``Infinity``
@@ -179,9 +221,6 @@ def process_image(job_id: str | UUID) -> dict:
                 allow_nan=False,
             )
         )
-        job.llm_input_path = _rel(llm_path)
-        job.marked_image_path = _rel(marked_path)
-        job.result_json_path = _rel(result_json_path)
         job.status = ScoringJob.Status.SUCCEEDED
         job.completed_at = timezone.now()
         job.save(update_fields=[
@@ -259,6 +298,250 @@ def get_job(job_id: str | UUID, user_uuid: UUID) -> ScoringJobDTO:
     return _job_to_dto(job)
 
 
+def get_job_for_user(job_id: str | UUID, user_uuid: UUID) -> ScoringJob:
+    """Owner-checked raw-row accessor (the DTO path is ``get_job``).
+
+    The marked-image proxy route needs the raw ``ScoringJob`` (to read
+    ``marked_image_path`` and stream the bytes), not the DTO. The ownership +
+    missing-row semantics are identical to ``get_job`` so an ID-prober still
+    can't distinguish "exists, not mine" from "doesn't exist" (both 404).
+    """
+    try:
+        job = ScoringJob.objects.get(id=job_id)
+    except ScoringJob.DoesNotExist as exc:
+        raise PermissionError(f"ScoringJob {job_id} not visible to user_uuid {user_uuid}") from exc
+    if job.user_uuid != user_uuid:
+        raise PermissionError(
+            f"user_uuid {user_uuid} does not own ScoringJob {job_id}"
+        )
+    return job
+
+
+def accept_job(
+    *,
+    job_id: str | UUID,
+    user_uuid: UUID,
+    target_type: TargetType,
+    caliber_hint: Optional[str],
+    distance: Optional[int],
+    weapon_type: Optional[str],
+    holes: list[DetectedHoleDTO],
+) -> tuple[AcceptedResultDTO, bool]:
+    """Accept a succeeded ``ScoringJob``'s detection result, persisting an
+    immutable ``AcceptedResult`` snapshotting the confirmed params + corrected
+    holes + computed score (S-03 Phase 2, FR-010).
+
+    Guarantees (mirroring ``get_job``):
+
+      - **Ownership** — raises ``PermissionError`` if the job is missing or
+        owned by another user (both look identical to the caller → 404).
+      - **State** — raises ``StateError`` if ``job.status != SUCCEEDED``; a
+        queued/running/failed job cannot be accepted (the route maps to 409).
+      - **Idempotency + race-safety** — DB-enforced via
+        ``unique_together = ("source_job", "user_uuid")``. A concurrent accept
+        for the same job raises ``IntegrityError``; this is caught and the
+        existing ``AcceptedResult`` is re-fetched + returned (the 200 path).
+        This is the canonical insert-or-return-existing idiom — safer than a
+        check-then-create sequence, which under SQLite's default isolation lets
+        two transactions both pass the check and both insert.
+
+    Returns ``(dto, created)`` — ``created`` is ``True`` when this call inserted
+    a new row (HTTP 201), ``False`` when an existing row was returned (HTTP
+    200, the idempotent / race-loser path). Returning the flag directly avoids
+    a fragile timestamp-based 201/200 split in the route.
+
+    The ``ScoringJob`` row is NOT deleted (FR-011: reject is the absence of an
+    ``AcceptedResult``; the CV row stays as an audit record).
+
+    ``score_average`` is the mean of the holes' scores (the value hero-stats
+    + the daily-average chart read).
+    """
+    with transaction.atomic():
+        try:
+            job = ScoringJob.objects.get(id=job_id)
+        except ScoringJob.DoesNotExist as exc:
+            raise PermissionError(
+                f"ScoringJob {job_id} not visible to user_uuid {user_uuid}"
+            ) from exc
+        if job.user_uuid != user_uuid:
+            raise PermissionError(
+                f"user_uuid {user_uuid} does not own ScoringJob {job_id}"
+            )
+        if job.status != ScoringJob.Status.SUCCEEDED:
+            raise StateError(
+                f"ScoringJob {job_id} is {job.status}, not succeeded — cannot accept"
+            )
+
+        holes_payload = [
+            {"x": h.x, "y": h.y, "score": h.score,
+             "confidence": h.confidence, "caliber": h.caliber}
+            for h in holes
+        ]
+        score_average = sum(h.score for h in holes) / len(holes)
+
+        # The create is attempted inside a SAVEPOINT (not the outer atomic
+        # block) so that on the unique_together IntegrityError we can roll
+        # back to the savepoint and still issue the re-fetch query. Catching
+        # an IntegrityError inside the SAME atomic block without a savepoint
+        # poisons the whole transaction (Django raises
+        # TransactionManagementError on the next query) — the savepoint is the
+        # standard fix for insert-or-return-existing under a real constraint.
+        created = True
+        try:
+            with transaction.atomic():
+                ar = AcceptedResult.objects.create(
+                    user_uuid=user_uuid,
+                    source_job=job.id,
+                    target_type=target_type,
+                    caliber_hint=caliber_hint,
+                    distance=distance,
+                    weapon_type=weapon_type,
+                    holes=holes_payload,
+                    score_average=score_average,
+                )
+        except IntegrityError as integrity_exc:
+            # A concurrent accept won the unique_together race — the savepoint
+            # rolled back, the outer transaction is still valid, re-fetch the
+            # existing row (200 idempotent path). The IntegrityError must be
+            # caught so it never surfaces as a 500.
+            #
+            # Today the unique_together is the ONLY IntegrityError source the
+            # create() can raise (every other field is nullable, defaulted, or
+            # guaranteed non-null by the route contract), so the re-fetch always
+            # finds the row. Guard the re-fetch anyway: a future NOT NULL / CHECK
+            # constraint could make the IntegrityError come from a different
+            # cause, in which case the re-fetch would miss and we must NOT mask
+            # that with an unrelated 500 — re-raise the original so it surfaces
+            # honestly (the outer transaction is still valid thanks to the
+            # savepoint).
+            try:
+                ar = AcceptedResult.objects.get(
+                    source_job=job.id, user_uuid=user_uuid,
+                )
+            except AcceptedResult.DoesNotExist:
+                raise integrity_exc from None
+            created = False
+        return _accepted_result_to_dto(ar), created
+
+
+def _accepted_result_to_dto(ar: AcceptedResult) -> AcceptedResultDTO:
+    """Map an ``AcceptedResult`` ORM row → ``AcceptedResultDTO``."""
+    return AcceptedResultDTO(
+        result_id=ar.id,
+        source_job=ar.source_job,
+        target_type=ar.target_type,
+        caliber_hint=ar.caliber_hint,
+        distance=ar.distance,
+        weapon_type=ar.weapon_type,
+        holes=[
+            DetectedHoleDTO(
+                x=h["x"], y=h["y"], score=h["score"],
+                confidence=h.get("confidence", 1.0), caliber=h.get("caliber"),
+            )
+            for h in ar.holes
+        ],
+        score_average=ar.score_average,
+        created_at=ar.created_at.isoformat() if ar.created_at else None,
+    )
+
+
+def aggregate_for_user(
+    *,
+    user_uuid: UUID,
+    recent_limit: int = 10,
+    days: int = 30,
+) -> AggregationDTO:
+    """Compute the dashboard's hero stats + recent results + daily averages from
+    the user's ``AcceptedResult`` rows (S-03 Phase 5).
+
+    Pure-query logic; no HTTP. Three computations (per the plan's pinned
+    semantics):
+
+      - ``total_shots`` = the SUM of hole counts across the user's accepted
+        results (NOT the count of result rows). A shooter who accepts one
+        result with 10 holes has 10 shots, not 1.
+      - ``last_session_average`` = the mean ``score_average`` across the most
+        recent calendar day (server-local) with >=1 accepted result. Derived
+        session = calendar day (the user's decision — morning + evening accepts
+        on the same day are one session). ``None`` if no accepted results.
+      - ``best_result`` = ``max(score_average)`` across the user's results.
+        ``None`` if none.
+      - ``recent`` = the ``recent_limit`` newest results as ``ResultSummaryDTO``.
+      - ``daily_averages`` = for each of the last ``days`` days that has >=1
+        accepted result, the mean ``score_average`` of that day's results
+        (zero-result days omitted, matching the mocked fixture's chart shape).
+
+    The dataset is small at MVP scale, so the hole-count sum is computed
+    Python-side from the result rows already fetched for ``recent`` + the date
+    group, rather than a JSON-length annotation (SQLite has no native
+    JSON array-length).
+    """
+    user_results = AcceptedResult.objects.filter(user_uuid=user_uuid)
+
+    # All of the user's results (small set at MVP scale), newest first, for
+    # total_shots + best_result + the date grouping.
+    all_rows = list(user_results.order_by("-created_at"))
+    if not all_rows:
+        return AggregationDTO(
+            hero=HeroStatsDTO(
+                total_shots=0,
+                last_session_average=None,
+                best_result=None,
+            ),
+            recent=[],
+            daily_averages=[],
+        )
+
+    # total_shots = sum of hole counts across the user's results.
+    total_shots = sum(len(r.holes) for r in all_rows)
+    best_result = max(r.score_average for r in all_rows)
+
+    # Derived session: the most recent calendar day with >=1 result.
+    last_day = all_rows[0].created_at.date()
+    last_day_rows = [r for r in all_rows if r.created_at.date() == last_day]
+    last_session_average = (
+        sum(r.score_average for r in last_day_rows) / len(last_day_rows)
+    )
+
+    # recent: newest recent_limit rows.
+    recent = [
+        ResultSummaryDTO(
+            result_id=r.id,
+            source_job=r.source_job,
+            created_at=r.created_at.isoformat(),
+            score_average=r.score_average,
+            hole_count=len(r.holes),
+            target_type=r.target_type,
+        )
+        for r in all_rows[:recent_limit]
+    ]
+
+    # daily_averages: mean score_average per calendar day, for the last `days`
+    # days, omitting zero-result days. Built oldest-first so the chart reads
+    # left-to-right chronologically.
+    by_date: dict = {}
+    for r in all_rows:
+        d = r.created_at.date()
+        by_date.setdefault(d, []).append(r.score_average)
+    cutoff = (all_rows[0].created_at - timezone.timedelta(days=days)).date()
+    daily = []
+    for d in sorted(by_date.keys()):
+        if d < cutoff:
+            continue
+        scores = by_date[d]
+        daily.append(DailyAverageDTO(date=d.isoformat(), average=sum(scores) / len(scores)))
+
+    return AggregationDTO(
+        hero=HeroStatsDTO(
+            total_shots=total_shots,
+            last_session_average=last_session_average,
+            best_result=best_result,
+        ),
+        recent=recent,
+        daily_averages=daily,
+    )
+
+
 def _to_result_dto(result: DetectionResult) -> ScoringResultDTO:
     """Map internal ``DetectionResult`` → ``ScoringResultDTO``.
 
@@ -316,21 +599,26 @@ def _job_to_dto(job: ScoringJob) -> ScoringJobDTO:
 
     marked_image_url = None
     if job.marked_image_path:
-        # Resolve the deliverable URL via the SAME storage that wrote it. The
-        # marked-image path on the job is relative to ``ScoringStorage``'s root
-        # (``MEDIA_ROOT/scoring`` under ``USE_S3=False``, or the S3 backend
-        # under ``USE_S3=True``). Using the global ``default_storage`` here
-        # would resolve against the wrong root under FS dev (default_storage
-        # is rooted at ``MEDIA_ROOT``, not ``MEDIA_ROOT/scoring``). Under S3
-        # ``ScoringStorage`` IS ``default_storage`` so the two coincide.
-        storage = ScoringStorage()
-        marked_image_url = storage._storage.url(job.marked_image_path)
+        # The browser fetches the marked image through the BFF's same-origin
+        # proxy route (``GET /v1/scoring/jobs/{id}/marked-image``), which reads
+        # the bytes server-side via ``ScoringStorage.read_deliverable_bytes``
+        # and streams them back as ``image/png``. This deliberately does NOT
+        # use ``storage._storage.url(...)``: that would hand the browser a
+        # presigned S3 URL (``AWS_QUERYSTRING_AUTH=True``), exposing
+        # ``AWSAccessKeyId`` + ``Signature`` in the query string AND baking in
+        # an internal endpoint host (e.g. ``http://minio:9000``) the host
+        # browser can't resolve. The proxy keeps storage creds + topology on
+        # the backend; the SPA's ``<img src={marked_image_url}>`` is unchanged
+        # because the relative URL resolves against the same origin.
+        marked_image_url = f"/v1/scoring/jobs/{job.id}/marked-image"
 
     return ScoringJobDTO(
         job_id=job.id,
         status=job.status,
         target_type=job.target_type,
         caliber_hint=job.caliber_hint,
+        distance=job.distance,
+        weapon_type=job.weapon_type,
         result=result_dto,
         error=job.error,
         created_at=job.created_at.isoformat() if job.created_at else None,

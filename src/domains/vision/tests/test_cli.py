@@ -21,6 +21,9 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 def test_cli_smoke_mock_detector(tmp_path: Path, monkeypatch) -> None:
     out_dir = tmp_path / "vision_out"
     image_path = FIXTURES / "12.jpg"
+    # S-03: pin the mock's random pattern so the count assertion is stable.
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
     monkeypatch.setattr(
         sys, "argv",
         [
@@ -82,6 +85,8 @@ def test_cli_skips_missing_path_and_continues(tmp_path: Path, monkeypatch) -> No
     out_dir = tmp_path / "vision_out_skip"
     image_path = FIXTURES / "12.jpg"
     missing = tmp_path / "does_not_exist.jpg"
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
     monkeypatch.setattr(
         sys, "argv",
         [

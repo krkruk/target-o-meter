@@ -19,9 +19,10 @@ Both roles can upload (PRD FR-006/FR-007): the POST uses ``session_auth`` only
 — ``require_owner`` is NOT applied. Per-job ownership is enforced on read by
 ``get_job``.
 
-``distance_m`` is intentionally NOT forwarded to ``schedule_image_processing``
-(which has no such param) — it is a BFF-level mock field, dropped on the floor
-in S-02, promoted to a real ``ScoringJob.distance`` column in S-03 (FR-009).
+``distance`` + ``weapon_type`` are the S-03 FR-009 confirmation params,
+collected in the wizard pre-upload and forwarded to
+``schedule_image_processing`` (which persists them on the ``ScoringJob`` row).
+They are metadata for the accept snapshot, not detector inputs.
 
 Note: this module deliberately does NOT use ``from __future__ import
 annotations``. With PEP 563 string annotations, ninja resolves forward refs
@@ -31,19 +32,30 @@ via ``func.__globals__`` — but ``@transaction.atomic`` wraps the view, so
 downgraded to query params). Real annotations sidestep the lookup entirely.
 """
 from typing import Literal
+from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from ninja import File, Form, Router, Schema
-from ninja.errors import HttpError
+from django.http import HttpResponse
+from ninja import Field, File, Form, Router, Schema, Status
 from ninja.files import UploadedFile
+from ninja.errors import HttpError
 
 from src.bff.api import session_auth
 from src.domains.identity.services import get_user_context
-from src.domains.vision.dtos import ScoringJobDTO
+from src.domains.vision.dtos import (
+    AcceptedResultDTO,
+    AggregationDTO,
+    DetectedHoleDTO,
+    ScoringJobDTO,
+)
 from src.domains.vision.pipeline.storage import ScoringStorage
 from src.domains.vision.services import (
+    StateError,
+    accept_job,
+    aggregate_for_user,
     get_job,
+    get_job_for_user,
     schedule_image_processing,
 )
 
@@ -63,7 +75,8 @@ class ScoringJobIn(Schema):
 
     target_type: Literal["air_pistol", "precision_pistol"] = "air_pistol"
     caliber_hint: str | None = None  # free-text; the UI taxonomy lives client-side
-    distance_m: int | None = None     # BFF-level mock field; vision has no distance concept
+    distance: int | None = None      # S-03 FR-009 confirmation param (meters)
+    weapon_type: str | None = None   # S-03 FR-009 confirmation param (free-text; ISSF values client-side)
 
 
 class ScoringJobOut(Schema):
@@ -101,6 +114,8 @@ def create_scoring_job(
         input_path=input_path,
         target_type=details.target_type,  # narrowed by vision's TargetType
         caliber_hint=details.caliber_hint,
+        distance=details.distance,
+        weapon_type=details.weapon_type,
     )
     return ScoringJobOut(job_id=job_id, status="queued")
 
@@ -128,3 +143,125 @@ def get_scoring_job(request, job_id: str) -> ScoringJobDTO:
     except PermissionError:
         # ID-probers can't distinguish "exists, not mine" from "doesn't exist".
         raise HttpError(404, "Not found") from None
+
+
+@router.get("/scoring/jobs/{job_id}/marked-image", auth=session_auth)
+def get_scoring_job_marked_image(request, job_id: str):
+    """Stream a job's marked-image artifact back as ``image/png`` (S-03 Phase 7).
+
+    Resource-named per the API-design lesson: the job's marked-image ARTIFACT
+    (a noun), NOT a verb. The browser fetches this same-origin route instead of
+    a presigned S3 URL — so ``AWSAccessKeyId``/``Signature`` and the internal
+    ``minio:9000`` endpoint never reach the client. The bytes are read
+    server-side via ``ScoringStorage.read_deliverable_bytes`` and streamed
+    through an ``HttpResponse`` (the house style from ``dev_vite_proxy``).
+
+    Ownership mirrors ``GET /v1/scoring/jobs/{id}``: 404 on mismatch OR missing
+    (ID-prober learns nothing). 404 when the job has no marked image yet
+    (queued/running), not 500. No Pydantic ``response=``: this route returns
+    raw bytes, not a JSON DTO.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    try:
+        job = get_job_for_user(job_id, user_dto.user_uuid)
+    except PermissionError:
+        raise HttpError(404, "Not found") from None
+
+    if not job.marked_image_path:
+        # Queued/running — no marked image written yet.
+        raise HttpError(404, "Not found") from None
+
+    storage = ScoringStorage()
+    data = storage.read_deliverable_bytes(job.marked_image_path)
+    return HttpResponse(data, content_type="image/png")
+
+
+class AcceptResultIn(Schema):
+    """Request body for ``POST /v1/scoring/results`` (S-03 Phase 2).
+
+    JSON, not multipart — this route accepts a detection result, it doesn't
+    upload an image. ``job_id`` rides in the body because the resource-named
+    route (``/scoring/results``, the accepted-result resource per the API-
+    design lesson) has no ``{job_id}`` path param. ``holes`` requires ≥1 entry
+    (a score snapshot of zero holes is meaningless for aggregation).
+    """
+
+    job_id: UUID
+    target_type: Literal["air_pistol", "precision_pistol"] = "air_pistol"
+    caliber_hint: str | None = None
+    distance: int | None = None
+    weapon_type: str | None = None
+    holes: list[DetectedHoleDTO] = Field(min_length=1)
+
+
+@router.post(
+    "/scoring/results",
+    auth=session_auth,
+    response={201: AcceptedResultDTO, 200: AcceptedResultDTO},
+)
+@transaction.atomic
+def accept_scoring_result(request, payload: AcceptResultIn):
+    """Accept a succeeded job's detection result → create an immutable
+    ``AcceptedResult`` snapshotting the confirmed params + corrected holes +
+    computed score (FR-010). Idempotent: re-POST for the same job returns the
+    existing row (200) instead of a duplicate (201).
+
+    Error mapping mirrors the existing routes (service owns the rule, route
+    translates the exception to HTTP):
+      - ``PermissionError`` (missing / ownership mismatch) → 404 (identical to
+        ``GET /scoring/jobs/{id}`` so an ID-prober learns nothing).
+      - ``StateError`` (job not SUCCEEDED) → 409 Conflict.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    try:
+        dto, created = accept_job(
+            job_id=payload.job_id,
+            user_uuid=user_dto.user_uuid,
+            target_type=payload.target_type,
+            caliber_hint=payload.caliber_hint,
+            distance=payload.distance,
+            weapon_type=payload.weapon_type,
+            holes=payload.holes,
+        )
+    except PermissionError:
+        raise HttpError(404, "Not found") from None
+    except StateError:
+        raise HttpError(409, "Job not succeeded") from None
+
+    # 201 on first accept (a new row was inserted); 200 on idempotent re-POST
+    # or race-loser (an existing row was returned). ``created`` is signalled by
+    # the service from the create-vs-refetch branch — no fragile timestamp
+    # comparison. ``Status(...)`` is django-ninja's non-deprecated multi-code
+    # response form (a bare tuple is deprecated).
+    return Status(201 if created else 200, dto)
+
+
+@router.get(
+    "/scores/aggregations", auth=session_auth, response={200: AggregationDTO}
+)
+def get_aggregations(request) -> AggregationDTO:
+    """The dashboard's single aggregation endpoint (S-03 Phase 5, FR-012).
+
+    Resource-named per the API-design lesson (``/scores/aggregations``, plural
+    noun, NOT ``/scoring/aggregate``). Lives under ``/v1/scores/`` to distinguish
+    the aggregated-result resource from the ``/v1/scoring/jobs`` pipeline
+    resource. Returns hero stats + a recent-results list + a daily-average
+    chart, computed on read from the user's ``AcceptedResult`` rows.
+
+    An owner sees their own aggregations (the owner is also a shooter per PRD
+    §Access Control) — no special owner path.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    return aggregate_for_user(user_uuid=user_dto.user_uuid)

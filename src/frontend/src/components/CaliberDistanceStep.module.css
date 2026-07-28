@@ -22,21 +22,28 @@
 }
 
 .field select {
-  padding: 0.5rem;
+  padding: 0.6rem 0.8rem;
   font-size: 1rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-primary);
   border-radius: 6px;
   background: #fff;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.field select:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
 }
 
 .next {
-  padding: 0.6rem 1.25rem;
+  padding: 0.75rem 1.5rem;
   font-size: 1rem;
   font-weight: 500;
   background: var(--color-primary);
   color: #fff;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
 }
 

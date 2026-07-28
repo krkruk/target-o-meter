@@ -1,19 +1,15 @@
-// S-02 Phase 7: Dashboard — the single-screen CSS Grid dashboard.
+// S-03: Dashboard — the single-screen CSS Grid dashboard.
 //
 // Four regions (hero stats, add-photos, results, daily-average chart) in a
 // viewport-locked grid on laptop; collapses to a scrollable single column on
-// <=760px viewports (mobile cannot honor "no scroll" — the brief's no-scroll
-// is a laptop constraint, mobile falls back gracefully per the project's 760px
-// convention).
-//
-// The add-photos button branches: on viewports <=760px it routes to /capture
-// (mobile camera capture), else /upload (PC file picker) — via a
-// matchMedia('(max-width: 760px)') check.
-//
-// All data is mocked (src/mocks/dashboard); S-03 swaps the fixtures for real
-// aggregation API calls. Accessibility: each region carries role="region" +
-// aria-label; the chart wrapper is role="img" (handled in DailyAverageChart).
+// <=760px viewports. S-03 swapped the S-02 mocked fixtures for real
+// aggregation API calls (getAggregations on mount — refetch-on-navigate, no
+// Redux/Oval). Accessibility: each region carries role="region" + aria-label;
+// the chart wrapper is role="img" (handled in DailyAverageChart). Loading →
+// role="status"; error → role="alert".
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getAggregations, type Aggregations } from '../api';
 import { HeroStats } from './HeroStats';
 import { ResultsList } from './ResultsList';
 import { DailyAverageChart } from './DailyAverageChart';
@@ -28,15 +24,37 @@ function useIsMobile(): boolean {
 export function Dashboard() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const [aggregations, setAggregations] = useState<Aggregations | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getAggregations()
+      .then((agg) => { if (mounted) setAggregations(agg); })
+      .catch((err) => { if (mounted) setError(err instanceof Error ? err.message : String(err)); });
+    return () => { mounted = false; };
+  }, []);
 
   function handleAddPhotos() {
     navigate(isMobile ? '/capture' : '/upload');
   }
 
+  if (error) {
+    return (
+      <div className={styles.dashboard} data-testid="dashboard-route">
+        <div role="alert">Unable to load dashboard: {error}</div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.dashboard} data-testid="dashboard-route">
       <section className={styles.hero}>
-        <HeroStats />
+        {aggregations ? (
+          <HeroStats hero={aggregations.hero} />
+        ) : (
+          <div role="status" aria-label="Loading hero stats">Loading…</div>
+        )}
       </section>
 
       <section className={styles.addPhotos} aria-label="Add photos">
@@ -51,11 +69,11 @@ export function Dashboard() {
       </section>
 
       <section className={styles.results}>
-        <ResultsList />
+        <ResultsList recent={aggregations?.recent ?? null} />
       </section>
 
       <section className={styles.chart} aria-label="Daily average">
-        <DailyAverageChart />
+        <DailyAverageChart daily={aggregations?.daily_averages ?? null} />
       </section>
     </div>
   );

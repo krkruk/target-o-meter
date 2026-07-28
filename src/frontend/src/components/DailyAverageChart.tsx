@@ -1,10 +1,9 @@
-// S-02 Phase 7: DailyAverageChart — recharts LineChart of the past month's
-// daily average. The first recharts usage in the project.
-//
-// recharts renders SVGs that aren't screen-reader-friendly by default, so the
-// wrapper carries role="img" + an aria-label summarizing the data (min/max/
-// mean of the mocked series). Reads from the mocked fixture (aggregation is
-// S-03); ResponsiveContainer sizes the chart to its grid area.
+// S-03: DailyAverageChart — recharts LineChart of the past month's daily
+// average. Now consumes real aggregation data via props (S-02 read from a
+// mocked fixture). recharts renders SVGs that aren't screen-reader-friendly by
+// default, so the wrapper carries role="img" + an aria-label summarizing the
+// data (min/max/mean of the series). ResponsiveContainer sizes the chart to
+// its grid area.
 import {
   LineChart,
   Line,
@@ -14,11 +13,23 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { mockDailyAverages } from '../mocks/dashboard';
+import type { DailyAverage } from '../api';
 import styles from './DailyAverageChart.module.css';
 
-export function DailyAverageChart() {
-  const data = mockDailyAverages;
+interface Props {
+  daily: DailyAverage[] | null;
+}
+
+export function DailyAverageChart({ daily }: Props) {
+  const data = daily ?? [];
+  if (data.length === 0) {
+    return (
+      <div className={styles.wrapper} role="img" aria-label="Daily average chart — no data yet.">
+        <h3 className={styles.heading}>Daily average — past 30 days</h3>
+        <p className={styles.empty}>No data yet.</p>
+      </div>
+    );
+  }
   const averages = data.map((d) => d.average);
   const min = Math.min(...averages).toFixed(1);
   const max = Math.max(...averages).toFixed(1);

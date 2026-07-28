@@ -13,8 +13,33 @@
 # → qcluster), becoming PID 1 so signals reach Django directly.
 set -euo pipefail
 
-# Scratch dir for transient stderr capture (the migrate retry loop).
+# Scratch dir for transient stderr capture (the migrate retry loop) + the
+# post-migrate sentinel (web writes it after migrate+seed; worker's
+# depends_on: web: service_healthy probes it via the web healthcheck).
 RUN_DIR="${RAILWAY_VOLUME_MOUNT_PATH:-/tmp}"
+SENTINEL="$RUN_DIR/.dev-seed-complete"
+
+case "${SERVICE_ROLE:-web}" in
+    web)
+        # Wipe any stale sentinel from a prior boot so it can't falsely
+        # advertise migrate-done while this boot's migrate is still running.
+        rm -f "$SENTINEL"
+        ;;
+    worker)
+        # The worker does NOT migrate or seed — only web does. Running migrate
+        # here too races web's migrate against the SAME shared SQLite volume
+        # (the ``duplicate column name`` boot crash: both did ALTER TABLE ADD
+        # COLUMN concurrently on vision.0004). worker's depends_on waits on
+        # web's healthcheck (the sentinel = migrate done), so the schema is
+        # migrated before qcluster boots.
+        echo "▸ starting worker (waiting on web migrate via depends_on healthcheck)"
+        exec uv run python src/manage.py qcluster
+        ;;
+    *)
+        echo "unknown SERVICE_ROLE=${SERVICE_ROLE}; expected 'web' or 'worker'" >&2
+        exit 2
+        ;;
+esac
 
 echo "▸ migrate"
 # podman-compose starts web + worker concurrently; the bind-mount :Z relabel
@@ -72,6 +97,11 @@ get_or_create_user_by_sub('dev-user-sub')
 print('  ensured dev-user row')
 "
 
+# Signal migrate+seed done so the worker's healthcheck gate passes. Written
+# AFTER the seed and BEFORE exec'ing the role command, so "healthy" means the
+# schema is migrated (exactly what the worker needs before booting qcluster).
+touch "$SENTINEL"
+
 echo "▸ starting $SERVICE_ROLE"
 case "${SERVICE_ROLE:-web}" in
     web)
@@ -79,9 +109,5 @@ case "${SERVICE_ROLE:-web}" in
         ;;
     worker)
         exec uv run python src/manage.py qcluster
-        ;;
-    *)
-        echo "unknown SERVICE_ROLE=${SERVICE_ROLE}; expected 'web' or 'worker'" >&2
-        exit 2
         ;;
 esac
