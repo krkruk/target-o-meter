@@ -298,6 +298,25 @@ def get_job(job_id: str | UUID, user_uuid: UUID) -> ScoringJobDTO:
     return _job_to_dto(job)
 
 
+def get_job_for_user(job_id: str | UUID, user_uuid: UUID) -> ScoringJob:
+    """Owner-checked raw-row accessor (the DTO path is ``get_job``).
+
+    The marked-image proxy route needs the raw ``ScoringJob`` (to read
+    ``marked_image_path`` and stream the bytes), not the DTO. The ownership +
+    missing-row semantics are identical to ``get_job`` so an ID-prober still
+    can't distinguish "exists, not mine" from "doesn't exist" (both 404).
+    """
+    try:
+        job = ScoringJob.objects.get(id=job_id)
+    except ScoringJob.DoesNotExist as exc:
+        raise PermissionError(f"ScoringJob {job_id} not visible to user_uuid {user_uuid}") from exc
+    if job.user_uuid != user_uuid:
+        raise PermissionError(
+            f"user_uuid {user_uuid} does not own ScoringJob {job_id}"
+        )
+    return job
+
+
 def accept_job(
     *,
     job_id: str | UUID,
@@ -565,15 +584,18 @@ def _job_to_dto(job: ScoringJob) -> ScoringJobDTO:
 
     marked_image_url = None
     if job.marked_image_path:
-        # Resolve the deliverable URL via the SAME storage that wrote it. The
-        # marked-image path on the job is relative to ``ScoringStorage``'s root
-        # (``MEDIA_ROOT/scoring`` under ``USE_S3=False``, or the S3 backend
-        # under ``USE_S3=True``). Using the global ``default_storage`` here
-        # would resolve against the wrong root under FS dev (default_storage
-        # is rooted at ``MEDIA_ROOT``, not ``MEDIA_ROOT/scoring``). Under S3
-        # ``ScoringStorage`` IS ``default_storage`` so the two coincide.
-        storage = ScoringStorage()
-        marked_image_url = storage._storage.url(job.marked_image_path)
+        # The browser fetches the marked image through the BFF's same-origin
+        # proxy route (``GET /v1/scoring/jobs/{id}/marked-image``), which reads
+        # the bytes server-side via ``ScoringStorage.read_deliverable_bytes``
+        # and streams them back as ``image/png``. This deliberately does NOT
+        # use ``storage._storage.url(...)``: that would hand the browser a
+        # presigned S3 URL (``AWS_QUERYSTRING_AUTH=True``), exposing
+        # ``AWSAccessKeyId`` + ``Signature`` in the query string AND baking in
+        # an internal endpoint host (e.g. ``http://minio:9000``) the host
+        # browser can't resolve. The proxy keeps storage creds + topology on
+        # the backend; the SPA's ``<img src={marked_image_url}>`` is unchanged
+        # because the relative URL resolves against the same origin.
+        marked_image_url = f"/v1/scoring/jobs/{job.id}/marked-image"
 
     return ScoringJobDTO(
         job_id=job.id,

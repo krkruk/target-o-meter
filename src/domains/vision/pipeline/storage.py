@@ -150,6 +150,20 @@ class ScoringStorage:
             return self._storage.open(stored_path, "rb").read()
         return self._safe_join(stored_path).read_bytes()
 
+    def read_deliverable_bytes(self, stored_path: str) -> bytes:
+        """Read a deliverable (a job's ``marked_image_path`` etc.) back as
+        bytes, under either backend.
+
+        Symmetric to ``read_upload_bytes`` but for the deliverable keys written
+        by ``write_deliverable_bytes``. The BFF's marked-image proxy route
+        reads a job's marked-image artifact through this so the bytes never
+        reach the browser via a presigned S3 URL (which would expose
+        ``AWSAccessKeyId`` + signature and bake in an internal endpoint host).
+        """
+        if self._is_s3:
+            return self._storage.open(stored_path, "rb").read()
+        return self._safe_join(stored_path).read_bytes()
+
     def write_deliverable_bytes(self, job_id: UUID, name: str, data: bytes) -> str:
         """Write a deliverable (``{stem}_marked.png`` etc.) and return its stored
         key, under either backend.

@@ -643,3 +643,117 @@ def test_post_scoring_results_422_for_empty_holes(client, user_sub) -> None:
         HTTP_X_CSRFTOKEN=csrf,
     )
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/scoring/jobs/{job_id}/marked-image — BFF proxy for the marked image.
+# ---------------------------------------------------------------------------
+#
+# Resource-named per the API-design lesson (the job's marked-image ARTIFACT, a
+# noun — not a verb like /get-image or /serve). Streams the bytes server-side as
+# ``image/png`` so the browser never receives a presigned S3 URL (which would
+# expose ``AWSAccessKeyId``/``Signature`` and bake in an internal ``minio:9000``
+# host). Ownership mirrors ``GET /v1/scoring/jobs/{id}``: 404 on mismatch OR
+# missing (ID-prober learns nothing), 404 when the job has no marked image yet.
+
+from src.domains.vision.pipeline.storage import ScoringStorage  # noqa: E402
+
+
+def _seed_succeeded_job_with_marked_image(
+    user_uuid, tmp_path, *, png_bytes=b"\x89PNG\r\n\x1a\nMARKED-BYTES"
+) -> ScoringJob:
+    """A SUCCEEDED job whose ``marked_image_path`` points at a real deliverable
+    written under ``MEDIA_ROOT/scoring`` (the default ``ScoringStorage()`` root
+    the proxy route reads from — no explicit ``location=`` so the seed + route
+    share the same root under ``override_settings(MEDIA_ROOT=...)``)."""
+    storage = ScoringStorage()
+    job = ScoringJob.objects.create(
+        user_uuid=user_uuid,
+        status=ScoringJob.Status.SUCCEEDED,
+        input_path="uploads/seed.jpg",
+        target_type="air_pistol",
+        result={
+            "ok": True,
+            "holes": [{"x": 500, "y": 500, "score": 9, "confidence": 0.95}],
+            "target_type": "air_pistol",
+            "detector": "mock",
+        },
+        marked_image_path=None,
+    )
+    job.marked_image_path = storage.write_deliverable_bytes(
+        job.id, "marked.png", png_bytes
+    )
+    job.save()
+    return job
+
+
+def test_get_marked_image_streams_png_bytes_for_owner(
+    client, user_sub, tmp_path
+) -> None:
+    """The job's owner GETs ``/marked-image`` and receives the PNG bytes
+    (``Content-Type: image/png``), read server-side — never a presigned URL."""
+
+    user = make_user(sub=user_sub, nick="quinn")
+    _login_as(client, user)
+    png = b"\x89PNG\r\n\x1a\nMARKED-BYTES"
+    with override_settings(MEDIA_ROOT=str(tmp_path)):
+        job = _seed_succeeded_job_with_marked_image(user.id, tmp_path, png_bytes=png)
+        response = client.get(f"/v1/scoring/jobs/{job.id}/marked-image")
+
+    assert response.status_code == 200, response.content
+    assert response.headers["Content-Type"] == "image/png"
+    assert response.content == png
+    # No S3 creds leak in any response header (defense-in-depth for the proxy).
+    for header_value in response.headers.values():
+        assert "AWSAccessKeyId" not in header_value
+        assert "Signature=" not in header_value
+
+
+def test_get_marked_image_404_for_non_owner(client, user_sub) -> None:
+    """Another user's job → 404 (same shape as ``GET /v1/scoring/jobs/{id}`` —
+    an ID-prober can't distinguish "exists, not mine" from "doesn't exist")."""
+
+    intruder = make_user(sub="auth0|intruder-sub", nick="rita")
+    owner = make_user(sub=user_sub, nick="sam")
+    _login_as(client, intruder)
+
+    job = _seed_succeeded_job(owner.id)
+    job.marked_image_path = "jobs/x/marked.png"
+    job.save()
+
+    response = client.get(f"/v1/scoring/jobs/{job.id}/marked-image")
+    assert response.status_code == 404
+
+
+def test_get_marked_image_404_when_no_marked_image_yet(client, user_sub) -> None:
+    """A queued/running job (no ``marked_image_path``) → 404, not 500."""
+    user = make_user(sub=user_sub, nick="tom")
+    _login_as(client, user)
+    job = ScoringJob.objects.create(
+        user_uuid=user.id,
+        status=ScoringJob.Status.QUEUED,
+        input_path="uploads/seed.jpg",
+        target_type="air_pistol",
+        marked_image_path=None,
+    )
+    response = client.get(f"/v1/scoring/jobs/{job.id}/marked-image")
+    assert response.status_code == 404
+
+
+def test_get_scoring_job_json_marked_image_url_is_bff_path_no_creds(
+    client, user_sub, tmp_path
+) -> None:
+    """Regression for the leak: ``GET /v1/scoring/jobs/{id}`` JSON's
+    ``marked_image_url`` is the BFF path and carries no S3 creds/host."""
+    user = make_user(sub=user_sub, nick="uma")
+    _login_as(client, user)
+    with override_settings(MEDIA_ROOT=str(tmp_path)):
+        job = _seed_succeeded_job_with_marked_image(user.id, tmp_path)
+        response = client.get(f"/v1/scoring/jobs/{job.id}")
+
+    assert response.status_code == 200, response.content
+    url = response.json()["marked_image_url"]
+    assert url == f"/v1/scoring/jobs/{job.id}/marked-image"
+    assert "AWSAccessKeyId" not in url
+    assert "Signature" not in url
+    assert "minio" not in url

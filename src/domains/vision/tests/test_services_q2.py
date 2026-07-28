@@ -295,6 +295,49 @@ def test_get_job_surfaces_distance_and_weapon_type_on_dto(
     assert dto.target_type == "precision_pistol"
 
 
+def test_get_job_marked_image_url_is_bff_path_not_presigned(
+    storage_with_upload: tuple[ScoringStorage, str],
+) -> None:
+    """``marked_image_url`` is a BFF-relative path
+    (``/v1/scoring/jobs/{id}/marked-image``), NOT a presigned S3 URL.
+
+    The browser must never receive a URL carrying ``AWSAccessKeyId``/``Signature``
+    (leaks the storage creds) or an internal endpoint host like ``minio:9000``
+    (unresolvable from the host browser). The BFF proxies the bytes through a
+    same-origin route instead. The value is ``None`` until a marked image
+    exists on the job.
+    """
+    storage, rel_input = storage_with_upload
+    user_uuid = uuid4()
+    with patch("django_q.tasks.async_task"):
+        job_id = schedule_image_processing(
+            user_uuid=user_uuid,
+            input_path=rel_input,
+            target_type="air_pistol",
+        )
+
+    # No marked image yet → None (the queued/running state).
+    dto_before = get_job(job_id, user_uuid)
+    assert dto_before.marked_image_url is None
+
+    # Write a marked-image deliverable + flip to SUCCEEDED, the state in which
+    # ``_job_to_dto`` surfaces the URL.
+    job = ScoringJob.objects.get(id=job_id)
+    job.marked_image_path = storage.write_deliverable_bytes(
+        job.id, "66666666-7777-8888-9999-aaaaaaaaaaaa_marked.png", b"\x89PNG-r\r\n"
+    )
+    job.status = ScoringJob.Status.SUCCEEDED
+    job.save()
+
+    dto = get_job(job_id, user_uuid)
+    expected = f"/v1/scoring/jobs/{job.id}/marked-image"
+    assert dto.marked_image_url == expected
+    # The leak / host bugs the proxy route fixes:
+    assert "AWSAccessKeyId" not in dto.marked_image_url
+    assert "Signature" not in dto.marked_image_url
+    assert "minio" not in dto.marked_image_url
+
+
 def test_q_cluster_uses_orm_default_broker() -> None:
     """Pin the broker config that the atomicity contract above depends on.
 

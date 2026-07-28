@@ -186,6 +186,41 @@ def test_read_write_bytes_under_s3_uses_backend_not_path_ops(monkeypatch) -> Non
         storage.read_upload("uploads/abc.jpg")
 
 
+def test_read_deliverable_bytes_round_trip_under_fs(tmp_path) -> None:
+    """``read_deliverable_bytes`` (the deliverable sibling of
+    ``read_upload_bytes``) returns the bytes ``write_deliverable_bytes`` stored,
+    under FS. The BFF's marked-image proxy route reads a job's marked-image
+    artifact through this method, so it must round-trip under both backends."""
+    from src.domains.vision.pipeline.storage import ScoringStorage
+
+    storage = ScoringStorage(location=tmp_path / "bucket")
+    job_id = "44444444-4444-4444-4444-444444444444"
+    key = storage.write_deliverable_bytes(job_id, "44_marked.png", b"MARKED-PNG")
+    assert storage.read_deliverable_bytes(key) == b"MARKED-PNG"
+
+
+def test_read_deliverable_bytes_under_s3_uses_backend_not_path_ops(monkeypatch) -> None:
+    """Under USE_S3=True, ``read_deliverable_bytes`` reads via
+    ``self._storage.open(...).read()`` (NOT the path-shaped ``_safe_join``,
+    which raises ``NotImplementedError`` under S3). Mirrors the upload-bytes
+    S3 test — proves the deliverable read is backend-agnostic too."""
+    from src.domains.vision.pipeline.storage import ScoringStorage
+
+    storage = ScoringStorage.__new__(ScoringStorage)  # bypass __init__ env read
+    storage._storage = _FakeS3Storage()
+    storage._is_s3 = True
+    storage._root = None
+
+    key = "jobs/55555555-5555-5555-5555-555555555555/55_marked.png"
+    storage._storage.files[key] = b"S3-DELIVERABLE"
+    assert storage.read_deliverable_bytes(key) == b"S3-DELIVERABLE"
+
+    # The FS path-shaped method still raises under S3 (the read must NOT
+    # route through it).
+    with pytest.raises(NotImplementedError):
+        storage.read_upload(key)
+
+
 def test_old_path_methods_still_work_under_fs(tmp_path) -> None:
     """The FS-only path methods (absolute_path / read_upload / write_deliverable
     / deliverable_dir) are kept for the CLI + existing FS tests — they still

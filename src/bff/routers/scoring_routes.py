@@ -54,6 +54,7 @@ from src.domains.vision.services import (
     accept_job,
     aggregate_for_user,
     get_job,
+    get_job_for_user,
     schedule_image_processing,
 )
 
@@ -141,6 +142,43 @@ def get_scoring_job(request, job_id: str) -> ScoringJobDTO:
     except PermissionError:
         # ID-probers can't distinguish "exists, not mine" from "doesn't exist".
         raise HttpError(404, "Not found") from None
+
+
+@router.get("/scoring/jobs/{job_id}/marked-image", auth=session_auth)
+def get_scoring_job_marked_image(request, job_id: str):
+    """Stream a job's marked-image artifact back as ``image/png`` (S-03 Phase 7).
+
+    Resource-named per the API-design lesson: the job's marked-image ARTIFACT
+    (a noun), NOT a verb. The browser fetches this same-origin route instead of
+    a presigned S3 URL — so ``AWSAccessKeyId``/``Signature`` and the internal
+    ``minio:9000`` endpoint never reach the client. The bytes are read
+    server-side via ``ScoringStorage.read_deliverable_bytes`` and streamed
+    through an ``HttpResponse`` (the house style from ``dev_vite_proxy``).
+
+    Ownership mirrors ``GET /v1/scoring/jobs/{id}``: 404 on mismatch OR missing
+    (ID-prober learns nothing). 404 when the job has no marked image yet
+    (queued/running), not 500. No Pydantic ``response=``: this route returns
+    raw bytes, not a JSON DTO.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    try:
+        job = get_job_for_user(job_id, user_dto.user_uuid)
+    except PermissionError:
+        raise HttpError(404, "Not found") from None
+
+    if not job.marked_image_path:
+        # Queued/running — no marked image written yet.
+        raise HttpError(404, "Not found") from None
+
+    from django.http import HttpResponse
+
+    storage = ScoringStorage()
+    data = storage.read_deliverable_bytes(job.marked_image_path)
+    return HttpResponse(data, content_type="image/png")
 
 
 class AcceptResultIn(Schema):
