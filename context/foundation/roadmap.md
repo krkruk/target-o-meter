@@ -3,7 +3,7 @@ project: Target-o-meter
 version: 1
 status: draft
 created: 2026-07-19
-updated: 2026-07-27
+updated: 2026-07-28
 prd_version: 1
 main_goal: market-feedback
 top_blocker: skills
@@ -34,7 +34,7 @@ Shooting results are trapped on paper targets; ISSF hobbyist shooters have no ea
 | S-01 | `sign-in-empty-dashboard` | sign in via OAuth, set a username on first login, and land on an empty dashboard | F-01 | US-01, FR-001, FR-002, FR-012 | done |
 | S-04 | `owner-user-management` | (as owner) list registered users, remove a user, and toggle registration to invite-only | F-01 | FR-003, FR-004, FR-005 | proposed |
 | S-02 | `photo-detection-review` | photograph an ISSF target, upload it, and see the detected score with holes marked for review | F-02, S-01 | US-01, FR-006, FR-007, FR-008 | done |
-| S-03 | `accept-persist-dashboard` | confirm shooting parameters, accept or reject a detection result, and see accepted results aggregated on the dashboard | S-02 | US-01, FR-009, FR-010, FR-011, FR-012 | proposed |
+| S-03 | `accept-persist-dashboard` | confirm shooting parameters, accept or reject a detection result, and see accepted results aggregated on the dashboard | S-02 | US-01, FR-009, FR-010, FR-011, FR-012 | done |
 
 ## Streams
 
@@ -139,7 +139,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **Unknowns:**
   - What is the fixed parameter list for caliber / distance / weapon type, and is free-text entry allowed alongside it? — Owner: user. Block: no (PRD Socrates note on FR-009: "initial list covers common ISSF setups; manual entry option covers the rest").
 - **Risk:** Closes the US-01 vertical and is therefore the validation milestone for the `market-feedback` goal. Sequenced strictly after `S-02` (no persistence before detection is trusted) — but does not carry the wedge risk itself, so it can absorb scope adjustments (e.g. simplest-possible aggregation) without threatening the product hypothesis. **Update (2026-07-28): the S-02 wedge was resolved by lowering the ≥90% fidelity bar to ~70% for MVP (see Open Roadmap Question #1, RESOLVED), so this slice proceeds without resequencing.**
-- **Status:** proposed
+- **Status:** done
 
 ## Backlog Handoff
 
@@ -178,3 +178,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **F-01: (foundation) third-party OAuth sign-in (Google per `shape-notes.md`) is wired, the user model carries a role flag, and the owner is determinable via a configured designated sub (`OWNER_SUB_ID` env var) — no username flow, no admin UI, no invite-only logic; just enough that downstream slices can require authentication and check role.** — Archived 2026-07-25 → `context/archive/2026-07-24-oauth-roles-scaffold/`. Lesson: —.
 - **S-01: user can sign in via the configured OAuth provider, set a username on first login, and land on an empty dashboard that renders the shell for FR-012 (no aggregated data yet).** — Archived 2026-07-26 → `context/archive/2026-07-25-sign-in-empty-dashboard/`. Lesson: —.
 - **S-02: user can capture a target photo via device camera, upload it, the CV service runs detection, and the user sees the overall score plus the target photo with holes marked — without yet persisting anything.** — Archived 2026-07-27 → `context/archive/2026-07-26-photo-detection-review/`. Lesson: —.
+- **S-03: user can confirm shooting parameters (caliber, distance, weapon type), accept a detection result to persist it (or reject to discard), and see accepted results aggregated on the dashboard (total shots, last session, best result).** — Archived 2026-07-28 → `context/archive/2026-07-28-accept-persist-dashboard/`. Lesson: —.
