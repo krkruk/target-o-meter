@@ -137,10 +137,12 @@ sessions); Phase 7 is verification (½–1 session).
 - **Presigned URL expiry.** `AWS_QUERYSTRING_EXPIRE = 3600` (1 hour). A user
   who leaves the results screen open longer sees a broken `<img>` on refresh.
   Acceptable for MVP; a refresh-on-focus follow-up is post-MVP.
-- **`total_shots` semantics.** The PRD says "total shots" — Phase 5.2 reads it
-  as the count of holes across accepted results (not the count of accepted
-  results). If the user means "number of sessions," the computation changes.
-  The plan flags this for confirmation during Phase 5 implementation.
+- **`total_shots` semantics.** The PRD says "total shots" — Phase 5.2 pins this
+  as the **sum of hole counts across the user's accepted results** (a result
+  with 10 holes = 10 shots, not 1). This matches "total shots" most naturally
+  and is locked in the 5.2 contract + 5.4 assertions so the hero-stats
+  contract is unambiguous. If the user later means "number of sessions," the
+  computation changes — but that's a re-decision, not an open TBD.
 - **Tigris verification is a manual prod-deploy gate.** Phase 4 verifies
   against MinIO; the actual Tigris path can only be verified after prod deploy
   (out of S-03 scope). Phase 7 documents this.

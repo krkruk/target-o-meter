@@ -216,7 +216,9 @@ BFF's `POST /v1/scoring/results` also wraps (AGENTS.md §6.2). Both stay.
   stored_path`), and `process_image` writes the upload bytes to a
   `tempfile.NamedTemporaryFile` before handing the temp path to
   `PipelineRunner.run(...)`. The detector and pipeline logic are untouched —
-  only the storage adapter + the 3 call sites in `process_image` change. This
+  only the storage adapter + the call sites in `process_image` change
+  (`:141` input load, `:146`/`:147` out_dir setup, `:159` `storage_root`
+  computation, and the `:160-164` `_rel` helper that depends on it). This
   is the surgical scope of "modify little of the vision code."
 - **`cv2.imread` cannot read S3.** This is the root reason the refactor is
   unavoidable under `USE_S3=True`. `PipelineRunner.run` takes a path and calls
@@ -227,11 +229,17 @@ BFF's `POST /v1/scoring/results` also wraps (AGENTS.md §6.2). Both stay.
   returns a time-limited signed URL. Phase 4 sets this in `settings.py` under
   the `USE_S3` block (default expire at django-storages' default, 3600s — well
   over the SPA's results-screen view time).
-- **Acceptance is idempotent-ish.** `POST /v1/scoring/results` for a job that
-  already has an `AcceptedResult` returns the existing one (200) rather than
-  creating a duplicate (201). This handles the double-click and the
-  refresh-during-submit cases without a uniqueness constraint that would 500
-  on the race.
+- **Acceptance is idempotent and race-free via a uniqueness constraint.**
+  `AcceptedResult` declares `unique_together = ("source_job", "user_uuid")`.
+  `POST /v1/scoring/results` for a job that already has an `AcceptedResult`
+  returns the existing one (200) rather than creating a duplicate (201). The
+  double-click / refresh-during-submit race is handled at the DB layer: the
+  second concurrent insert raises `IntegrityError`, which the service catches
+  and converts to a re-fetch + 200 (the canonical insert-or-return-existing
+  idiom — the `IntegrityError` must be caught so it never surfaces as a 500).
+  This is safer than a check-then-create sequence, which under SQLite's
+  default isolation lets both transactions pass the existence check and both
+  insert.
 - **The `ScoringJob` row is NOT deleted on reject.** Reject is the absence of
   an `AcceptedResult`; the `ScoringJob` stays as a CV-pipeline audit record.
   This preserves the existing `get_job` ownership semantics and avoids a
@@ -425,11 +433,17 @@ away). Idempotent on re-POST.
 a flag on it) so the CV-pipeline lifecycle and the user-accept lifecycle stay
 clean. Aggregation queries this.
 
-**Contract**: New `AcceptedResult` class in the same `models.py` file is NOT
-allowed (lessons.md: "One class per file"). Instead, create a new file
-`src/domains/vision/accepted_result.py` containing the `AcceptedResult` class
-(referenced by `models.py` via `from src.domains.vision.accepted_result import
-AcceptedResult` and registered with `app_label = "vision"`). Fields:
+**Contract**: Add a new `AcceptedResult` class to the existing
+`src/domains/vision/models.py` (alongside `ScoringJob`). This matches the
+repo's established convention — every domain (vision, identity, core) uses a
+single `models.py`, and Django auto-discovers models in the app's `models`
+module, so no import-to-register dance is needed and `makemigrations vision`
+picks it up automatically. (The "One class per file" lesson in `lessons.md`
+targets code-gen grab-bag modules and explicitly exempts contract modules like
+`ports.py`/`dtos.py`; it is not about Django ORM models, and applying it here
+would both break from every existing domain and create a model-discovery
+footgun.) Declare `class Meta: app_label = "vision"` and
+`db_table = "vision_acceptedresult"` to match `ScoringJob`'s pattern. Fields:
 - `id` UUID PK
 - `user_uuid` UUIDField `db_index=True` (AGENTS.md §5 — plain UUID, no FK)
 - `source_job` UUIDField (the `ScoringJob.id` it was accepted from — plain UUID,
@@ -444,6 +458,10 @@ AcceptedResult` and registered with `app_label = "vision"`). Fields:
   hero-stats + chart aggregation)
 - `created_at` auto_now_add
 - `Meta.db_table = "vision_acceptedresult"`
+- `Meta.unique_together = ("source_job", "user_uuid")` — DB-enforced
+  idempotency for the accept path (see Critical Implementation Details); a
+  second concurrent accept for the same job raises `IntegrityError`, caught
+  in the service and converted to the 200 idempotent re-fetch path.
 
 Add `default=uuid.uuid4` to the `id` field. The `holes` JSONField stores the
 corrected snapshot (detector output + user corrections applied pre-accept).
@@ -455,8 +473,10 @@ corrected snapshot (detector output + user corrections applied pre-accept).
 **Intent**: Persist the new model.
 
 **Contract**: `dependencies = [("vision", "0004_scoringjob_distance_weapon_
-type")]`. `CreateModel` for `AcceptedResult`. Run `makemigrations vision` to
-generate.
+type")]`. `CreateModel` for `AcceptedResult` (including its
+`unique_together = ("source_job", "user_uuid")` constraint — the generated
+migration will emit it as a `AlterUniqueTogether` op in the same file; verify
+after `makemigrations`). Run `makemigrations vision` to generate.
 
 #### 2.3 DTOs — `AcceptedResultDTO` + `AcceptResultIn`
 
@@ -468,10 +488,12 @@ generate.
 `source_job: UUID`, `target_type`, `caliber_hint: Optional[str]`,
 `distance: Optional[int]`, `weapon_type: Optional[str]`, `holes:
 List[DetectedHoleDTO]`, `score_average: float`, `created_at: Optional[str]`.
-Add `AcceptResultIn` (the request body): `target_type`, `caliber_hint:
-Optional[str]`, `distance: Optional[int]`, `weapon_type: Optional[str]`,
-`holes: List[DetectedHoleDTO]` (the corrected snapshot — the SPA sends the
-detector's holes with any corrections applied).
+Add `AcceptResultIn` (the request body): `job_id: UUID` (the `ScoringJob` the
+SPA is accepting — the route `POST /scoring/results` is resource-named with no
+path param, so the job identifier rides in the body), `target_type`,
+`caliber_hint: Optional[str]`, `distance: Optional[int]`,
+`weapon_type: Optional[str]`, `holes: List[DetectedHoleDTO]` (the corrected
+snapshot — the SPA sends the detector's holes with any corrections applied).
 
 #### 2.4 `accept_job` service
 
@@ -484,11 +506,19 @@ enforces ownership, creates `AcceptedResult` from the confirmed payload.
 target_type: TargetType, caliber_hint: Optional[str], distance: Optional[int],
 weapon_type: Optional[str], holes: List[DetectedHoleDTO]) -> AcceptedResultDTO`.
 Inside `transaction.atomic()`: fetch the `ScoringJob` (raise `PermissionError`
-on missing/mismatch, same as `get_job`); check whether an `AcceptedResult`
-already exists for `source_job=job_id` + `user_uuid` — if so, return it
-(idempotent, 200 path); otherwise compute `score_average = mean(h.score for h
-in holes)`, create the `AcceptedResult`, return the DTO. Do NOT delete the
-`ScoringJob` — it stays as the CV audit record.
+on missing/mismatch, same as `get_job`); **enforce state — raise a typed
+`StateError` (a small domain exception defined alongside the service, mirroring
+the existing `PermissionError` convention) if `job.status != SUCCEEDED`; a
+queued/running/failed job cannot be accepted**; compute
+`score_average = mean(h.score for h in holes)`; attempt to create the
+`AcceptedResult` — on `IntegrityError` (a concurrent accept for the same job
+won the `unique_together` race), re-fetch the existing `AcceptedResult` and
+return it (the 200 idempotent path). Return the DTO with the row that won
+(whether it's this call's or the re-fetched one). Do NOT delete the
+`ScoringJob` — it stays as the CV audit record. Do NOT use a check-then-create
+sequence: under SQLite's default isolation two concurrent transactions both
+pass the check and both insert, so the `unique_together` constraint + caught
+`IntegrityError` is the arbiter, not a pre-read.
 
 #### 2.5 BFF route — `POST /v1/scoring/results`
 
@@ -501,12 +531,21 @@ accepted-result resource) per the new API-design lesson — NOT `/scoring/accept
 response={201: AcceptedResultDTO, 200: AcceptedResultDTO})`.
 `@transaction.atomic`. Body is `AcceptResultIn` (JSON, not multipart). Resolve
 `user_uuid` via `get_user_context` (same `try/except DoesNotExist → 401` wrap
-as the existing routes). Call `accept_job(job_id=..., user_uuid=...,
-**payload)`. The `job_id` comes from the request body (the SPA knows which job
-it's accepting from the URL param). Return the `AcceptedResultDTO`; the
-response status is 201 on first accept, 200 on the idempotent re-POST (use
-django-ninja's `response={201: ..., 200: ...}` and return a tuple `(status,
-dto)` — see django-ninja docs for multiple response codes).
+as the existing routes). The `job_id` comes from the body (the `AcceptResultIn`
+field added in 2.3 — the SPA knows which job it's accepting from the route's
+`/results/:jobId` param and sends it as `job_id` in the POST body). Call
+`accept_job(job_id=payload.job_id, user_uuid=..., target_type=payload.target_type,
+caliber_hint=payload.caliber_hint, distance=payload.distance,
+weapon_type=payload.weapon_type, holes=payload.holes)`. Return the
+`AcceptedResultDTO`; the response status is 201 on first accept, 200 on the
+idempotent re-POST (use django-ninja's `response={201: ..., 200: ...}` and
+return a tuple `(status, dto)` — see django-ninja docs for multiple response
+codes). **Error mapping (route-owned, mirroring the existing
+`PermissionError → HttpError(404)` pattern)**: catch `PermissionError`
+(missing/ownership mismatch) → `HttpError(404)`; catch `StateError`
+(non-succeeded job) → `HttpError(409, "Job not succeeded")`. The status guard
+itself lives in the service (2.4) so the domain owns the rule; the route only
+translates the exception to HTTP, exactly as it does for `PermissionError`.
 
 #### 2.6 System tests — accept contract
 
@@ -514,18 +553,24 @@ dto)` — see django-ninja docs for multiple response codes).
 
 **Intent**: Pin the accept route's contract.
 
-**Contract**: Module marker unchanged. Test cases:
+**Contract**: Module marker unchanged. The `AcceptResultIn` body in every test
+MUST include `job_id` (the field added in 2.3). Test cases:
 - `POST /v1/scoring/results` for a succeeded job owned by the user, with a
-  valid `AcceptResultIn` body → 201, returns `AcceptedResultDTO` with the
-  snapshot holes + `score_average` = mean of the sent holes
+  valid `AcceptResultIn` body (including `job_id`) → 201, returns
+  `AcceptedResultDTO` with the snapshot holes + `score_average` = mean of the
+  sent holes
 - `POST` for the same job again → 200, returns the SAME `result_id` (idempotent)
+- **Race**: two concurrent POSTs for the same job (e.g. via `threading`) both
+  return 200, AND exactly one `AcceptedResult` row exists afterwards (the
+  `unique_together` constraint + caught `IntegrityError` prevents a duplicate,
+  not the check-then-create sequence). This is the load-bearing regression
+  test for the F1 fix.
 - `POST` for a job owned by another user → 404 (ownership via `PermissionError`)
 - `POST` for a nonexistent job → 404
 - `POST` anon → 401
-- `POST` for a job still in `queued`/`running` → 409 Conflict (the BFF checks
-  `job.status == SUCCEEDED` before accepting; a non-succeeded job can't be
-  accepted — add this guard to `accept_job` and map to `HttpError(409, "Job not
-  succeeded")` in the route)
+- `POST` for a job still in `queued`/`running`/`failed` → 409 Conflict (the
+  service raises `StateError` when `job.status != SUCCEEDED`; the route maps
+  it to `HttpError(409, "Job not succeeded")` — see 2.4 / 2.5)
 - `POST` with an empty `holes` list → 422 (Pydantic validation —
   `List[DetectedHoleDTO]` with `min_items=1`, or an explicit check in
   `accept_job`)
@@ -701,18 +746,25 @@ of the 3 fixed deliverable filenames).
 surface + a tempfile.
 
 **Contract**: Replace the `input_abspath = storage.absolute_path(job.input_
-path)` line with: read bytes via `storage.read_upload_bytes(job.input_path)`,
+path)` line (`:141`) with: read bytes via `storage.read_upload_bytes(job.input_path)`,
 write them to a `tempfile.NamedTemporaryFile(suffix=Path(job.input_path).
 suffix, delete=False)`, and pass the temp path to `PipelineRunner.run(...)`.
 After the run, unlink the temp file (in a `finally`). Replace the
-`out_dir.mkdir(...)` + `runner.run(..., out_dir=out_dir)` block: have
-`PipelineRunner.run` write deliverables to a temp directory
+`out_dir.mkdir(...)` (`:146-147`) + `runner.run(..., out_dir=out_dir)` block:
+have `PipelineRunner.run` write deliverables to a temp directory
 (`tempfile.TemporaryDirectory()`), then upload each deliverable back via
 `storage.write_deliverable_bytes(job_uuid, name, data)` where `data` is the
 deliverable's bytes (`(tmp_dir / f"{stem}_llm_input.png").read_bytes()` etc.).
-The `_rel(p)` helper (`:160-164`) is replaced by the return value of
-`write_deliverable_bytes` (the stored key). The detector + `PipelineRunner`
-internals are untouched — only the 3 call sites change.
+**The `storage_root` computation (`:159`,
+`storage_root = Path(storage.absolute_path(".")).resolve()`) is removed
+entirely** — it is FS-only (it calls `absolute_path`, which raises under S3
+per 4.1) and only exists to feed `_rel`. The `_rel(p)` helper (`:160-164`) is
+**deleted, not rewritten**: `write_deliverable_bytes` returns the stored key
+directly, so the job's `llm_input_path`/`marked_image_path`/`result_json_path`
+are set from those return values, not from `_rel(out_dir / filename)`. So the
+call sites that change are `:141`, `:146`/`:147`, AND `:159` (the `_rel`
+helper at `:160-164` goes away with it). The detector + `PipelineRunner`
+internals are untouched.
 
 **Snippet** (the load-bearing transformation, non-obvious because the temp
 file's lifecycle must wrap the pipeline run):
@@ -738,6 +790,9 @@ try:
                                                      (out_dir / f"{stem}_marked.png").read_bytes())
         result_json_key = storage.write_deliverable_bytes(job_uuid, f"{stem}_result.json",
                                                           (out_dir / f"{stem}_result.json").read_bytes())
+        # The stored keys replace the old _rel(out_dir / filename) values —
+        # no storage_root / _rel helper needed.
+        llm_path, marked_path, result_json_path = llm_key, marked_key, result_json_key
 finally:
     input_abspath.unlink(missing_ok=True)
 ```
@@ -834,9 +889,19 @@ session" decision. Resource-named per the API-design lesson.
 Add `ResultSummaryDTO` (`result_id: UUID`, `created_at: str`, `score_average:
 float`, `hole_count: int`, `target_type: str`). Add `DailyAverageDTO` (`date:
 str`, `average: float`). Add `AggregationDTO` (`hero: HeroStatsDTO`, `recent:
-List[ResultSummaryDTO]`, `daily_averages: List[DailyAverageDTO]`). These
-mirror the shapes in `mocks/dashboard.ts` (the swap is a data-source change,
-not a shape change — per the fixture's own comment).
+List[ResultSummaryDTO]`, `daily_averages: List[DailyAverageDTO]`).
+
+**These DTOs are the new canonical shapes — the dashboard swap is a shape AND
+scale change, not just a data-source change.** The S-02 fixture
+`mocks/dashboard.ts` `ResultSummary` is `{ jobId, date, score /* 0-100 */,
+targetCount }`; the DTO is `{ result_id, created_at, score_average /* 0-10 */,
+hole_count, target_type }` — different field names, different identity
+(`jobId` → `result_id`), and a different scale (`score` 0-100 in the mock vs.
+`score_average` 0-10 here). The 0-10 scale is intentional: it matches the
+PRD's 0-10 + X scoring domain (AGENTS.md §2), so the mock's 0-100 was always
+arbitrary. **Phase 6.6 must rewrite the three dashboard child components**
+(field names + scale handling) to consume these DTOs — it is NOT a one-line
+import change per consumer despite the S-02 fixture's aspirational comment.
 
 #### 5.2 `aggregate_for_user` service
 
@@ -847,11 +912,14 @@ given `user_uuid`. Pure-query logic; no HTTP.
 
 **Contract**: New function `aggregate_for_user(*, user_uuid: UUID, recent_
 limit: int = 10, days: int = 30) -> AggregationDTO`. Three computations:
-- `total_shots` = `AcceptedResult.objects.filter(user_uuid=...).count()` (one
-  accepted result = one "shot session"; alternatively sum the hole counts —
-  decide based on the PRD's "total shots" phrasing; the PRD US-01 says
-  "total shots" which most naturally reads as the count of holes, so sum
-  `holes` list lengths across the user's accepted results).
+- `total_shots` = **the sum of hole counts across the user's accepted
+  results** (NOT the count of `AcceptedResult` rows). The PRD US-01 says
+  "total shots," which most naturally reads as the count of holes; a shooter
+  who accepts one result with 10 holes has 10 shots, not 1. Implement via
+  `AcceptedResult.objects.filter(user_uuid=...).annotate(c=KeyLength("holes"))`
+  aggregation or, more simply, sum the Python-side lengths in the `recent` +
+  date-group query results (the dataset is small at MVP scale). Pinned here so
+  the Phase 5.4 assertions and the `HeroStats.total_shots` UI are unambiguous.
 - `last_session_average` = the max `created_at__date` with ≥1 accepted result;
   the mean `score_average` across that date's accepted results. `None` if the
   user has no accepted results.
@@ -1062,14 +1130,20 @@ Swap to `getAggregations()`.
 **Contract**: In `Dashboard.tsx`, fetch aggregations on mount via a `useEffect`
 + `useState<Aggregations | null>` (loading state → `role="status"`; error →
 `role="alert"`). Pass the aggregations (or loading/error) down to `HeroStats`,
-`ResultsList`, `DailyAverageChart` as props. Each child component drops its
-`mocks/dashboard.ts` import and reads from props. `HeroStats` renders
-`hero.total_shots`, `hero.last_session_average`, `hero.best_result`.
-`ResultsList` renders `recent` (each row links to `/results/{r.source_job}`
-— the original `ScoringJob` id, so the user can re-view the detection).
-`DailyAverageChart` renders `daily_averages`. Delete `src/mocks/dashboard.ts`
-after the swap (no remaining consumers). Keep the loading/error fallbacks
-accessible.
+`ResultsList`, `DailyAverageChart` as props. **Each child component is
+rewritten, not just re-imported** (the DTO shapes differ from the fixture's —
+see Phase 5.1): drop the `mocks/dashboard.ts` import and rebind to the new
+props/field names + scale. `HeroStats` renders `hero.total_shots`,
+`hero.last_session_average`, `hero.best_result` (all already 0-10/null). 
+`ResultsList` renders `recent` and must adapt to the scale + name change: the
+fixture's `ResultSummary.score` (0-100) becomes `ResultSummary.score_average`
+(0-10) — the per-row display changes (e.g. "8.4" not "84", or a 0-10 label),
+and each row links to `/results/{r.source_job}` (the original `ScoringJob` id,
+so the user can re-view the detection). `DailyAverageChart` renders
+`daily_averages` (already 0-10 in the fixture, so the axis is unchanged). 
+Delete `src/mocks/dashboard.ts` after the swap (no remaining consumers —
+verified). Update the existing `HeroStats`/`ResultsList`/`DailyAverageChart`
+tests to the new prop shapes. Keep the loading/error fallbacks accessible.
 
 #### 6.7 Component + client tests
 
