@@ -8,7 +8,7 @@
 *   **API Layer:** `django-ninja` (strictly enforcing Pydantic DTO contracts).
 *   **Database:** SQLite3 (WAL mode) at `db.sqlite3`.
 *   **Storage:** django-storages S3 backend in prod (Railway Storage Buckets, Tigris-backed) and in docker-compose dev (MinIO); `FileSystemStorage` is the env-selected debug fallback (`USE_S3=False`). Hashed-path bucketing for OpenCV binaries still applies under both backends (`ScoringStorage.save_upload`'s SHA-1 digest bucketing). DB stores metadata only.
-*   **Deployment Target:** Render (Persistent Disk) via GitHub Actions CI/CD.
+*   **Deployment Target:** Railway (Storage Buckets / Tigris-backed S3 in prod). The `docker-compose.prod.yml` stack mirrors prod locally for testing. Prod runs `USE_S3=True` against Tigris, so the `cv2.imread`-needs-local-bytes path in `vision/pipeline/storage.py` MUST download uploads to a tempfile before processing and upload deliverables back (landed in S-03).
 
 ## 2. Domain Constraints (Source of Truth: `context/foundation/prd.md`)
 *   **Target Types:** 10m Air Pistol (170x170mm) and 25m/50m Precision Pistol (550x550mm).

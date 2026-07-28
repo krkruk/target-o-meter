@@ -15,3 +15,10 @@
 - **Problem**: When a module accumulates multiple classes (or a class + unrelated helpers), files grow into grab-bags, names stop matching paths, and agents regenerate duplicate classes in adjacent files because "the class looked like it belonged there too."
 - **Rule**: One class per file, and the filename matches the class name in snake_case (`GoogleAIStudioDetector` → `google_ai_studio_detector.py`). A file may hold supporting module-level constants and private helpers that serve *only* that class, but no second class. Pure contract collections are the explicit exception — `ports.py` (Protocol/ABC interfaces) and `dtos.py` (Pydantic DTOs) may hold several contracts each, because they ARE the domain's typed boundary, not implementation modules.
 - **Applies to**: plan, implement
+
+## API endpoint URIs name resources, not actions
+
+- **Context**: REST API endpoint design across the BFF layer (`src/bff/routers/`), whenever a new route is added or named.
+- **Problem**: Verb-in-URI naming (e.g. `/v1/scoring/aggregate`, `/v1/process-image`) reads as an RPC call, conflicts with REST resource semantics, and produces inconsistent endpoint shapes — some noun-named, some verb-named — that are hard to discover and reason about. It also leaks the operation into the path rather than letting the HTTP method carry it.
+- **Rule**: API endpoint URIs name resources, not actions — always use plural nouns and no verbs. The HTTP method carries the verb (GET to read, POST to create, etc.). Example: `GET /v1/scores/aggregations` (correct, resource-oriented) not `GET /v1/scoring/aggregate` (wrong, verb in URI). When adding a BFF route, name the path after the resource being accessed.
+- **Applies to**: plan, implement, impl-review
