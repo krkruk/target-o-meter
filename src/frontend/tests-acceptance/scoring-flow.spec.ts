@@ -9,8 +9,10 @@
 //
 // Drives the live SPA against Django + Vite + the qcluster worker. The worker
 // runs process_image with VISION_DETECTOR=mock, so the job transitions
-// queued -> running -> succeeded with the fixed 5-hole pattern. The waiting
-// screen polls until terminal; /results renders the marked image + dropdowns.
+// queued -> running -> succeeded. S-03: the MockDetector now emits a random
+// N-hole pattern; global-setup pins MOCK_DETECTOR_SEED + MOCK_DETECTOR_HOLE_COUNT
+// (=5) so the hole-count assertions here are deterministic. The waiting screen
+// polls until terminal; /results renders the marked image + dropdowns.
 //
 // The file upload uses a real image (the vision domain's versioned 12.jpg
 // fixture), fetched from the repo via the test fixture path.
@@ -55,13 +57,9 @@ test.describe('Scoring flow end-to-end', () => {
     await expect(page).toHaveURL(/\/results\//, { timeout: 60_000 });
 
     // Results render: the marked image + 5 per-hole correction dropdowns
-    // (MockDetector's fixed pattern: 1 bullseye + 4 cardinals).
+    // (MockDetector's seeded random pattern, count pinned via global-setup).
     await expect(page.getByRole('img', { name: /marked target/i })).toBeVisible();
     await expect(page.getByRole('combobox')).toHaveCount(5);
-
-    // Each hole's detected score shows (10 for the bullseye, 7 for cardinals).
-    const holeText = await page.locator('body').textContent();
-    expect(holeText).toContain('10');
   });
 
   test('8.6 — mobile: dashboard -> /capture -> waiting -> results', async ({ page }) => {

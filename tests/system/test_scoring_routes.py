@@ -272,7 +272,7 @@ def test_get_scoring_job_404_for_other_users_job(
 
 
 def test_get_scoring_job_returns_marked_image_url_when_succeeded(
-    client, user_sub, tmp_path
+    client, user_sub, tmp_path, monkeypatch
 ) -> None:
     """After ``process_image`` succeeds, the GET response carries
     ``marked_image_url`` populated from ``job.marked_image_path`` via
@@ -282,6 +282,10 @@ def test_get_scoring_job_returns_marked_image_url_when_succeeded(
     in ``services._job_to_dto``). Pins Phase 4.0's DTO field surfacing."""
     from src.domains.vision.detectors.mock_detector import MockDetector
     from src.domains.vision.services import process_image
+
+    # S-03: pin the mock's random pattern so the hole-count assertion is stable.
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
 
     user = make_user(sub=user_sub, nick="grace")
     _login_as(client, user)

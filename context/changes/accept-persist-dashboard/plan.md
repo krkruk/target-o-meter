@@ -1411,11 +1411,11 @@ considering this change done.
 
 #### Automated
 
-- [x] 2.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration
-- [x] 2.2 `uv run python src/manage.py migrate` applies cleanly
-- [x] 2.3 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new accept-contract tests)
-- [x] 2.4 `make check` passes
-- [x] 2.5 `make be-test` passes (no regressions)
+- [x] 2.1 `uv run python src/manage.py makemigrations --check --dry-run vision` reports no pending migration — 8f043dc
+- [x] 2.2 `uv run python src/manage.py migrate` applies cleanly — 8f043dc
+- [x] 2.3 `uv run pytest tests/system/test_scoring_routes.py` passes (incl. new accept-contract tests) — 8f043dc
+- [x] 2.4 `make check` passes — 8f043dc
+- [x] 2.5 `make be-test` passes (no regressions) — 8f043dc
 
 #### Manual
 
@@ -1426,11 +1426,11 @@ considering this change done.
 
 #### Automated
 
-- [ ] 3.1 `uv run pytest src/domains/vision/tests/test_mock_detector.py` passes (new random-N shape)
-- [ ] 3.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (migrated)
-- [ ] 3.3 `uv run pytest tests/system/test_scoring_routes.py` passes (migrated)
-- [ ] 3.4 `cd src/frontend && npx playwright test` passes (migrated scoring-flow.spec)
-- [ ] 3.5 `make check` passes
+- [x] 3.1 `uv run pytest src/domains/vision/tests/test_mock_detector.py` passes (new random-N shape)
+- [x] 3.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (migrated)
+- [x] 3.3 `uv run pytest tests/system/test_scoring_routes.py` passes (migrated)
+- [x] 3.4 `cd src/frontend && npx playwright test` passes (migrated scoring-flow.spec)
+- [x] 3.5 `make check` passes
 
 #### Manual
 

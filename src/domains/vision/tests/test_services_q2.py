@@ -53,10 +53,16 @@ def storage_with_upload(tmp_path: Path) -> tuple[ScoringStorage, str]:
 
 
 def test_process_image_writes_deliverables_and_marks_succeeded(
+    monkeypatch: pytest.MonkeyPatch,
     storage_with_upload: tuple[ScoringStorage, str],
 ) -> None:
     """End-to-end: create a ScoringJob, run process_image (mock detector),
-    assert success + 3 deliverables stored."""
+    assert success + 3 deliverables stored.
+
+    S-03: the MockDetector now emits a random N-hole pattern; the count is
+    pinned via env so the assertion is deterministic."""
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
     storage, rel_input = storage_with_upload
 
     user_uuid = uuid4()
@@ -323,9 +329,12 @@ def test_process_image_reads_vision_detector_env(
     hardcoded ``GoogleAIStudioDetector()``.
 
     With ``VISION_DETECTOR=mock`` the factory spy must be called with ``"mock"``
-    and the job must succeed with MockDetector's 5-hole pattern. The spy makes
-    the test deterministic regardless of the google detector's offline behavior.
+    and the job must succeed with MockDetector's pattern. The mock hole count is
+    pinned via env so the assertion is deterministic; the spy makes the test
+    deterministic regardless of the google detector's offline behavior.
     """
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", "5")
     storage, rel_input = storage_with_upload
     job = ScoringJob.objects.create(
         user_uuid=uuid4(),

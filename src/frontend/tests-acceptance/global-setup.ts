@@ -88,6 +88,10 @@ export default async function globalSetup(): Promise<void> {
     DEV_AUTH_BYPASS_SUB: 'auth0|playwright-acceptance',
     OWNER_SUB_ID: 'auth0|playwright-acceptance',
     VISION_DETECTOR: 'mock',
+    // S-03: pin the MockDetector's random pattern so hole-count assertions in
+    // the specs are deterministic (seeded + count pinned to 5).
+    MOCK_DETECTOR_SEED: '42',
+    MOCK_DETECTOR_HOLE_COUNT: '5',
     // Auth0 vars can stay empty — the dev bypass short-circuits OAuth.
     AUTH0_SECRET: 'a'.repeat(64),
     SECRET_KEY: 'a'.repeat(64),

@@ -3,6 +3,10 @@
 Runs the full pipeline (geometry + MockDetector + renderer) on img 12 (from
 the versioned ``tests/fixtures/`` set) and asserts the 3-file deliverable
 contract.
+
+S-03: the MockDetector now emits a random N-hole pattern (seeded here for
+determinism). The hole count is pinned via ``MOCK_DETECTOR_HOLE_COUNT``; the
+score assertions are shape-level (count + sum consistency), not a fixed value.
 """
 from __future__ import annotations
 
@@ -16,6 +20,17 @@ from src.domains.vision.pipeline.pipeline_runner import PipelineRunner
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+# S-03: pin the mock so the pipeline test is deterministic. Hole count is a
+# module constant so the assertions reference it; the seed makes the pattern
+# reproducible.
+_HOLE_COUNT = 5
+
+
+@pytest.fixture(autouse=True)
+def _pin_mock(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MOCK_DETECTOR_SEED", "42")
+    monkeypatch.setenv("MOCK_DETECTOR_HOLE_COUNT", str(_HOLE_COUNT))
 
 
 @pytest.fixture(scope="module")
@@ -50,15 +65,17 @@ def test_pipeline_runner_writes_three_deliverables(
     # _result.json parses.
     parsed = json.loads((tmp_path / "12_result.json").read_text())
     assert parsed["ok"] is True
-    assert parsed["count"] == 5
+    assert parsed["count"] == _HOLE_COUNT
     assert parsed["detector"] == "mock"
     assert parsed["target_type"] == "air_pistol"
     assert parsed["caliber_hint"] == "9mm"
     assert parsed["approach"] == "vision_pipeline"
     # Classical scores computed alongside the LLM (mock) scores.
-    assert len(parsed["scores_classical"]) == 5
-    # Mock detector returns [10,7,7,7,7] → total_llm = 38
-    assert parsed["total_llm"] == 38
+    assert len(parsed["scores_classical"]) == _HOLE_COUNT
+    # S-03: total_llm is the sum of the (now random) mock scores — assert the
+    # consistency invariant (sum of per-hole scores == total) instead of a
+    # fixed value.
+    assert parsed["total_llm"] == sum(h["score"] for h in parsed["holes"])
     # self_test passed (invert err is tiny for img 12 — frozen table reports 1.1e-13)
     assert parsed["self_test"]["passed"] is True
 
@@ -87,5 +104,5 @@ def test_pipeline_runner_skips_files_when_no_out_dir(
         target_type="air_pistol",
         gt_marked_path=img_12_marked,
     )
-    assert result["count"] == 5
+    assert result["count"] == _HOLE_COUNT
     assert not any(tmp_path.iterdir())
