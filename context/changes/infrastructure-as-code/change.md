@@ -1,7 +1,7 @@
 ---
 change_id: infrastructure-as-code
 title: GitHub Actions CI/CD pipeline for build, test, and deploy
-status: preparing
+status: planned
 created: 2026-07-28
 updated: 2026-07-28
 archived_at: null
