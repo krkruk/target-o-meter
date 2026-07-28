@@ -1440,10 +1440,10 @@ considering this change done.
 
 #### Automated
 
-- [x] 4.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes (new S3-path tests)
-- [x] 4.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (process_image under mocked S3 completes)
-- [x] 4.3 `make check` passes
-- [x] 4.4 `make be-test` passes (no regressions in the FS path)
+- [x] 4.1 `uv run pytest src/domains/vision/tests/test_storage_swap.py` passes (new S3-path tests) — 9d56aa4
+- [x] 4.2 `uv run pytest src/domains/vision/tests/test_services_q2.py` passes (process_image under mocked S3 completes) — 9d56aa4
+- [x] 4.3 `make check` passes — 9d56aa4
+- [x] 4.4 `make be-test` passes (no regressions in the FS path) — 9d56aa4
 
 #### Manual
 
@@ -1454,9 +1454,9 @@ considering this change done.
 
 #### Automated
 
-- [ ] 5.1 `uv run pytest tests/system/test_aggregation_routes.py` passes (all cases)
-- [ ] 5.2 `make check` passes
-- [ ] 5.3 `make be-test` passes (no regressions)
+- [x] 5.1 `uv run pytest tests/system/test_aggregation_routes.py` passes (all cases)
+- [x] 5.2 `make check` passes
+- [x] 5.3 `make be-test` passes (no regressions)
 
 #### Manual
 

@@ -82,3 +82,46 @@ class AcceptedResultDTO(BaseModel):
     holes: list[DetectedHoleDTO]
     score_average: float
     created_at: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# S-03 Phase 5: aggregation DTOs (the dashboard's wire contract).
+#
+# These are the NEW canonical shapes — the S-02 ``mocks/dashboard.ts`` fixture
+# used different field names + a 0-100 score scale; the DTOs use 0-10 to match
+# the PRD's 0-10 scoring domain (the mock's 0-100 was arbitrary). Phase 6.6
+# rewrites the three dashboard child components to consume these.
+# ---------------------------------------------------------------------------
+
+
+class HeroStatsDTO(BaseModel):
+    """The dashboard's headline stats."""
+
+    total_shots: int
+    last_session_average: Optional[float] = None
+    best_result: Optional[float] = None
+
+
+class ResultSummaryDTO(BaseModel):
+    """One row in the dashboard's recent-results list."""
+
+    result_id: UUID
+    created_at: str
+    score_average: float
+    hole_count: int
+    target_type: str
+
+
+class DailyAverageDTO(BaseModel):
+    """One point on the dashboard's daily-average chart."""
+
+    date: str
+    average: float
+
+
+class AggregationDTO(BaseModel):
+    """The dashboard's single aggregation response."""
+
+    hero: HeroStatsDTO
+    recent: list[ResultSummaryDTO]
+    daily_averages: list[DailyAverageDTO]

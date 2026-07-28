@@ -33,7 +33,11 @@ from django.utils import timezone
 
 from src.domains.vision.dtos import (
     AcceptedResultDTO,
+    AggregationDTO,
+    DailyAverageDTO,
     DetectedHoleDTO,
+    HeroStatsDTO,
+    ResultSummaryDTO,
     ScoringJobDTO,
     ScoringResultDTO,
 )
@@ -404,6 +408,102 @@ def _accepted_result_to_dto(ar: AcceptedResult) -> AcceptedResultDTO:
         ],
         score_average=ar.score_average,
         created_at=ar.created_at.isoformat() if ar.created_at else None,
+    )
+
+
+def aggregate_for_user(
+    *,
+    user_uuid: UUID,
+    recent_limit: int = 10,
+    days: int = 30,
+) -> AggregationDTO:
+    """Compute the dashboard's hero stats + recent results + daily averages from
+    the user's ``AcceptedResult`` rows (S-03 Phase 5).
+
+    Pure-query logic; no HTTP. Three computations (per the plan's pinned
+    semantics):
+
+      - ``total_shots`` = the SUM of hole counts across the user's accepted
+        results (NOT the count of result rows). A shooter who accepts one
+        result with 10 holes has 10 shots, not 1.
+      - ``last_session_average`` = the mean ``score_average`` across the most
+        recent calendar day (server-local) with >=1 accepted result. Derived
+        session = calendar day (the user's decision — morning + evening accepts
+        on the same day are one session). ``None`` if no accepted results.
+      - ``best_result`` = ``max(score_average)`` across the user's results.
+        ``None`` if none.
+      - ``recent`` = the ``recent_limit`` newest results as ``ResultSummaryDTO``.
+      - ``daily_averages`` = for each of the last ``days`` days that has >=1
+        accepted result, the mean ``score_average`` of that day's results
+        (zero-result days omitted, matching the mocked fixture's chart shape).
+
+    The dataset is small at MVP scale, so the hole-count sum is computed
+    Python-side from the result rows already fetched for ``recent`` + the date
+    group, rather than a JSON-length annotation (SQLite has no native
+    JSON array-length).
+    """
+    user_results = AcceptedResult.objects.filter(user_uuid=user_uuid)
+
+    # All of the user's results (small set at MVP scale), newest first, for
+    # total_shots + best_result + the date grouping.
+    all_rows = list(user_results.order_by("-created_at"))
+    if not all_rows:
+        return AggregationDTO(
+            hero=HeroStatsDTO(
+                total_shots=0,
+                last_session_average=None,
+                best_result=None,
+            ),
+            recent=[],
+            daily_averages=[],
+        )
+
+    # total_shots = sum of hole counts across the user's results.
+    total_shots = sum(len(r.holes) for r in all_rows)
+    best_result = max(r.score_average for r in all_rows)
+
+    # Derived session: the most recent calendar day with >=1 result.
+    last_day = all_rows[0].created_at.date()
+    last_day_rows = [r for r in all_rows if r.created_at.date() == last_day]
+    last_session_average = (
+        sum(r.score_average for r in last_day_rows) / len(last_day_rows)
+    )
+
+    # recent: newest recent_limit rows.
+    recent = [
+        ResultSummaryDTO(
+            result_id=r.id,
+            created_at=r.created_at.isoformat(),
+            score_average=r.score_average,
+            hole_count=len(r.holes),
+            target_type=r.target_type,
+        )
+        for r in all_rows[:recent_limit]
+    ]
+
+    # daily_averages: mean score_average per calendar day, for the last `days`
+    # days, omitting zero-result days. Built oldest-first so the chart reads
+    # left-to-right chronologically.
+    by_date: dict = {}
+    for r in all_rows:
+        d = r.created_at.date()
+        by_date.setdefault(d, []).append(r.score_average)
+    cutoff = (all_rows[0].created_at - timezone.timedelta(days=days)).date()
+    daily = []
+    for d in sorted(by_date.keys()):
+        if d < cutoff:
+            continue
+        scores = by_date[d]
+        daily.append(DailyAverageDTO(date=d.isoformat(), average=sum(scores) / len(scores)))
+
+    return AggregationDTO(
+        hero=HeroStatsDTO(
+            total_shots=total_shots,
+            last_session_average=last_session_average,
+            best_result=best_result,
+        ),
+        recent=recent,
+        daily_averages=daily,
     )
 
 

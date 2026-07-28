@@ -42,11 +42,17 @@ from ninja.errors import HttpError
 
 from src.bff.api import session_auth
 from src.domains.identity.services import get_user_context
-from src.domains.vision.dtos import AcceptedResultDTO, DetectedHoleDTO, ScoringJobDTO
+from src.domains.vision.dtos import (
+    AcceptedResultDTO,
+    AggregationDTO,
+    DetectedHoleDTO,
+    ScoringJobDTO,
+)
 from src.domains.vision.pipeline.storage import ScoringStorage
 from src.domains.vision.services import (
     StateError,
     accept_job,
+    aggregate_for_user,
     get_job,
     schedule_image_processing,
 )
@@ -199,3 +205,26 @@ def accept_scoring_result(request, payload: AcceptResultIn):
     # comparison. ``Status(...)`` is django-ninja's non-deprecated multi-code
     # response form (a bare tuple is deprecated).
     return Status(201 if created else 200, dto)
+
+
+@router.get(
+    "/scores/aggregations", auth=session_auth, response={200: AggregationDTO}
+)
+def get_aggregations(request) -> AggregationDTO:
+    """The dashboard's single aggregation endpoint (S-03 Phase 5, FR-012).
+
+    Resource-named per the API-design lesson (``/scores/aggregations``, plural
+    noun, NOT ``/scoring/aggregate``). Lives under ``/v1/scores/`` to distinguish
+    the aggregated-result resource from the ``/v1/scoring/jobs`` pipeline
+    resource. Returns hero stats + a recent-results list + a daily-average
+    chart, computed on read from the user's ``AcceptedResult`` rows.
+
+    An owner sees their own aggregations (the owner is also a shooter per PRD
+    §Access Control) — no special owner path.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    return aggregate_for_user(user_uuid=user_dto.user_uuid)
