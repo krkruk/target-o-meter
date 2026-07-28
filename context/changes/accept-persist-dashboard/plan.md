@@ -1454,9 +1454,9 @@ considering this change done.
 
 #### Automated
 
-- [x] 5.1 `uv run pytest tests/system/test_aggregation_routes.py` passes (all cases)
-- [x] 5.2 `make check` passes
-- [x] 5.3 `make be-test` passes (no regressions)
+- [x] 5.1 `uv run pytest tests/system/test_aggregation_routes.py` passes (all cases) — 12439f6
+- [x] 5.2 `make check` passes — 12439f6
+- [x] 5.3 `make be-test` passes (no regressions) — 12439f6
 
 #### Manual
 
@@ -1467,11 +1467,11 @@ considering this change done.
 
 #### Automated
 
-- [ ] 6.1 `cd src/frontend && npm run lint` passes
-- [ ] 6.2 `cd src/frontend && npx tsc --noEmit` passes
-- [ ] 6.3 `cd src/frontend && npm run test` passes (migrated + new tests)
-- [ ] 6.4 `make check` passes
-- [ ] 6.5 `make fe-test` passes
+- [x] 6.1 `cd src/frontend && npm run lint` passes
+- [x] 6.2 `cd src/frontend && npx tsc --noEmit` passes
+- [x] 6.3 `cd src/frontend && npm run test` passes (migrated + new tests)
+- [x] 6.4 `make check` passes
+- [x] 6.5 `make fe-test` passes
 
 #### Manual
 

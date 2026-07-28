@@ -58,8 +58,10 @@ test.describe('Scoring flow end-to-end', () => {
 
     // Results render: the marked image + 5 per-hole correction dropdowns
     // (MockDetector's seeded random pattern, count pinned via global-setup).
+    // S-03 adds a 4-field confirm-params form (also comboboxes), so scope the
+    // hole-count assertion to the hole-correction selects (id^="correct-").
     await expect(page.getByRole('img', { name: /marked target/i })).toBeVisible();
-    await expect(page.getByRole('combobox')).toHaveCount(5);
+    await expect(page.locator('select[id^="correct-"]')).toHaveCount(5);
   });
 
   test('8.6 — mobile: dashboard -> /capture -> waiting -> results', async ({ page }) => {
@@ -87,7 +89,8 @@ test.describe('Scoring flow end-to-end', () => {
     await expect(page).toHaveURL(/\/waiting\//, { timeout: 15_000 });
     await expect(page).toHaveURL(/\/results\//, { timeout: 60_000 });
     await expect(page.getByRole('img', { name: /marked target/i })).toBeVisible();
-    await expect(page.getByRole('combobox')).toHaveCount(5);
+    // S-03: scope to the hole-correction selects (the confirm-params form adds more).
+    await expect(page.locator('select[id^="correct-"]')).toHaveCount(5);
   });
 
   test('8.8 — refresh on /waiting/:jobId resumes polling until terminal', async ({ page }) => {
@@ -125,6 +128,7 @@ test.describe('Scoring flow end-to-end', () => {
     // Refresh — results re-fetch + re-render.
     await page.reload();
     await expect(page.getByRole('img', { name: /marked target/i })).toBeVisible();
-    await expect(page.getByRole('combobox')).toHaveCount(5);
+    // S-03: scope to the hole-correction selects.
+    await expect(page.locator('select[id^="correct-"]')).toHaveCount(5);
   });
 });

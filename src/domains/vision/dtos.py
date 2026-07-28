@@ -106,6 +106,7 @@ class ResultSummaryDTO(BaseModel):
     """One row in the dashboard's recent-results list."""
 
     result_id: UUID
+    source_job: UUID  # the ScoringJob the result was accepted from (for re-view links)
     created_at: str
     score_average: float
     hole_count: int

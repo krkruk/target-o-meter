@@ -473,6 +473,7 @@ def aggregate_for_user(
     recent = [
         ResultSummaryDTO(
             result_id=r.id,
+            source_job=r.source_job,
             created_at=r.created_at.isoformat(),
             score_average=r.score_average,
             hole_count=len(r.holes),

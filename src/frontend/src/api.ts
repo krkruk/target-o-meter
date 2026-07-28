@@ -102,6 +102,10 @@ export interface ScoringJob {
   status: ScoringJobStatus;
   target_type: string;
   caliber_hint?: string | null;
+  // S-03 FR-009 confirmation params (mirror of ScoringJob's columns) so the
+  // /results/:jobId screen can pre-fill the accept form with the wizard's picks.
+  distance?: number | null;
+  weapon_type?: string | null;
   result?: ScoringResult | null;
   error?: string | null;
   created_at?: string | null;
@@ -126,13 +130,15 @@ export async function createScoringJob(
   file: File,
   target_type: string,
   caliber_hint?: string,
-  distance_m?: number,
+  distance?: number,
+  weapon_type?: string,
 ): Promise<CreatedScoringJob> {
   const form = new FormData();
   form.append('file', file);
   form.append('target_type', target_type);
   if (caliber_hint) form.append('caliber_hint', caliber_hint);
-  if (distance_m != null) form.append('distance_m', String(distance_m));
+  if (distance != null) form.append('distance', String(distance));
+  if (weapon_type) form.append('weapon_type', weapon_type);
   const res = await fetch('/v1/scoring/jobs', {
     method: 'POST',
     headers: multipartHeaders(),
@@ -148,4 +154,82 @@ export async function getScoringJob(jobId: string): Promise<ScoringJob> {
   });
   if (!res.ok) throw new Error(`GET /v1/scoring/jobs/${jobId} failed: ${res.status}`);
   return (await res.json()) as ScoringJob;
+}
+
+// S-03: accept a detection result (FR-010) + the dashboard's aggregation (FR-012).
+// The accept route is resource-named (/scoring/results, no {jobId} path param),
+// so the job identifier rides in the body. The aggregation route lives under
+// /scores/ to distinguish the aggregated-result resource from /scoring/jobs.
+
+export interface AcceptedHole {
+  x: number;
+  y: number;
+  score: number;
+  confidence: number;
+  caliber?: string | null;
+}
+
+export interface AcceptedResult {
+  result_id: string;
+  source_job: string;
+  target_type: string;
+  caliber_hint?: string | null;
+  distance?: number | null;
+  weapon_type?: string | null;
+  holes: AcceptedHole[];
+  score_average: number;
+  created_at?: string | null;
+}
+
+export interface HeroStats {
+  total_shots: number;
+  last_session_average: number | null;
+  best_result: number | null;
+}
+
+export interface ResultSummary {
+  result_id: string;
+  source_job: string;
+  created_at: string;
+  score_average: number;
+  hole_count: number;
+  target_type: string;
+}
+
+export interface DailyAverage {
+  date: string;
+  average: number;
+}
+
+export interface Aggregations {
+  hero: HeroStats;
+  recent: ResultSummary[];
+  daily_averages: DailyAverage[];
+}
+
+export async function acceptResult(
+  jobId: string,
+  payload: {
+    target_type: string;
+    caliber_hint?: string;
+    distance?: number;
+    weapon_type?: string;
+    holes: AcceptedHole[];
+  },
+): Promise<AcceptedResult> {
+  const res = await fetch('/v1/scoring/results', {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ job_id: jobId, ...payload }),
+  });
+  if (!res.ok) throw new Error(`POST /v1/scoring/results failed: ${res.status}`);
+  return (await res.json()) as AcceptedResult;
+}
+
+export async function getAggregations(): Promise<Aggregations> {
+  const res = await fetch('/v1/scores/aggregations', {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error(`GET /v1/scores/aggregations failed: ${res.status}`);
+  return (await res.json()) as Aggregations;
 }

@@ -86,7 +86,7 @@ def test_get_aggregations_multi_day(client, user_sub) -> None:
     assert len(body["daily_averages"]) == 3
     # Each recent entry carries the per-hole count + score_average + target_type.
     for r in body["recent"]:
-        assert {"result_id", "created_at", "score_average", "hole_count", "target_type"} <= set(r)
+        assert {"result_id", "source_job", "created_at", "score_average", "hole_count", "target_type"} <= set(r)
 
 
 def test_get_aggregations_same_day_derived_session(client, user_sub) -> None:
