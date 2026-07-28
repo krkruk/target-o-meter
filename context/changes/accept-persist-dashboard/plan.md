@@ -1467,11 +1467,11 @@ considering this change done.
 
 #### Automated
 
-- [x] 6.1 `cd src/frontend && npm run lint` passes
-- [x] 6.2 `cd src/frontend && npx tsc --noEmit` passes
-- [x] 6.3 `cd src/frontend && npm run test` passes (migrated + new tests)
-- [x] 6.4 `make check` passes
-- [x] 6.5 `make fe-test` passes
+- [x] 6.1 `cd src/frontend && npm run lint` passes — e17be54
+- [x] 6.2 `cd src/frontend && npx tsc --noEmit` passes — e17be54
+- [x] 6.3 `cd src/frontend && npm run test` passes (migrated + new tests) — e17be54
+- [x] 6.4 `make check` passes — e17be54
+- [x] 6.5 `make fe-test` passes — e17be54
 
 #### Manual
 
@@ -1484,10 +1484,10 @@ considering this change done.
 
 #### Automated
 
-- [ ] 7.1 `make check` passes
-- [ ] 7.2 `make be-test` passes (full backend suite)
-- [ ] 7.3 `make fe-test` passes (full frontend suite + Playwright, incl. new accept-flow spec)
-- [ ] 7.4 `cd src/frontend && npx playwright test` passes (all specs green)
+- [x] 7.1 `make check` passes
+- [x] 7.2 `make be-test` passes (full backend suite)
+- [x] 7.3 `make fe-test` passes (full frontend suite + Playwright, incl. new accept-flow spec)
+- [x] 7.4 `cd src/frontend && npx playwright test` passes (all specs green)
 
 #### Manual
 
