@@ -1484,10 +1484,10 @@ considering this change done.
 
 #### Automated
 
-- [x] 7.1 `make check` passes
-- [x] 7.2 `make be-test` passes (full backend suite)
-- [x] 7.3 `make fe-test` passes (full frontend suite + Playwright, incl. new accept-flow spec)
-- [x] 7.4 `cd src/frontend && npx playwright test` passes (all specs green)
+- [x] 7.1 `make check` passes — 53f8a71
+- [x] 7.2 `make be-test` passes (full backend suite) — 53f8a71
+- [x] 7.3 `make fe-test` passes (full frontend suite + Playwright, incl. new accept-flow spec) — 53f8a71
+- [x] 7.4 `cd src/frontend && npx playwright test` passes (all specs green) — 53f8a71
 
 #### Manual
 
