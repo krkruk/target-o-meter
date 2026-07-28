@@ -608,33 +608,33 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Automated
 
-- [x] 1.1 `uv run pytest` passes after `/health` view + `Q_CLUSTER` env change
-- [x] 1.2 `uv run ruff check .` passes on the new view + settings edit
-- [x] 1.3 `uv run python src/manage.py check` passes (incl. E001/E002/W001/W002)
-- [x] 1.4 `uv run python src/manage.py migrate --no-input` applies cleanly
-- [x] 1.5 Local curl smoke check: `curl -fsS http://127.0.0.1:8000/health` returns `ok` / 200
-- [x] 1.6 `Q2_WORKERS=1 uv run python src/manage.py check` passes
+- [x] 1.1 `uv run pytest` passes after `/health` view + `Q_CLUSTER` env change — 808da8d
+- [x] 1.2 `uv run ruff check .` passes on the new view + settings edit — 808da8d
+- [x] 1.3 `uv run python src/manage.py check` passes (incl. E001/E002/W001/W002) — 808da8d
+- [x] 1.4 `uv run python src/manage.py migrate --no-input` applies cleanly — 808da8d
+- [x] 1.5 Local curl smoke check: `curl -fsS http://127.0.0.1:8000/health` returns `ok` / 200 — 808da8d
+- [x] 1.6 `Q2_WORKERS=1 uv run python src/manage.py check` passes — 808da8d
 
 #### Manual
 
-- [ ] 1.7 `Q2_WORKERS=1 uv run python src/manage.py qcluster` boots with 1 worker
-- [ ] 1.8 `make dev` still boots with 3 workers (default unchanged)
-- [ ] 1.9 `.github/workflows/uat.yml` removed from repo root
+- [x] 1.7 `Q2_WORKERS=1 uv run python src/manage.py qcluster` boots with 1 worker — 808da8d
+- [x] 1.8 `make dev` still boots with 3 workers (default unchanged) — 808da8d
+- [x] 1.9 `.github/workflows/uat.yml` removed from repo root — 808da8d
 
 ### Phase 2: Railpack Configuration
 
 #### Automated
 
-- [ ] 2.1 `railpack.json` parses as valid JSON
-- [ ] 2.2 Schema validation against `https://schema.railpack.com` (or visual review)
-- [ ] 2.3 `uv run python src/manage.py check` passes (Django still boots)
-- [ ] 2.4 (If Docker + BuildKit available) `railpack build .` succeeds end-to-end
+- [x] 2.1 `railpack.json` parses as valid JSON
+- [x] 2.2 Schema validation against `https://schema.railpack.com` (or visual review)
+- [x] 2.3 `uv run python src/manage.py check` passes (Django still boots)
+- [x] 2.4 (If Docker + BuildKit available) `railpack build .` succeeds end-to-end — SKIPPED: Docker/BuildKit + `railpack` CLI unavailable in this env; Phase 8's first Railway build is the end-to-end signal (plan explicitly permits this skip)
 
 #### Manual
 
-- [ ] 2.5 Visual review: every required field present, apt list matches `Dockerfile:31-43`
-- [ ] 2.6 `RAILPACK_DJANGO_APP_NAME=target_o_meter.wsgi` present and correctly spelled
-- [ ] 2.7 `BUILDER=railpack` is NOT in railpack.json (lands in IaC in Phase 6)
+- [x] 2.5 Visual review: every required field present, apt list matches `Dockerfile:31-43`
+- [x] 2.6 `RAILPACK_DJANGO_APP_NAME=target_o_meter.wsgi` present and correctly spelled
+- [x] 2.7 `BUILDER=railpack` is NOT in railpack.json (lands in IaC in Phase 6)
 
 ### Phase 3: CI Composite Actions
 

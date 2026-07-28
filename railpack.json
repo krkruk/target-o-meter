@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "python",
+  "packages": {
+    "node": "20"
+  },
+  "deploy": {
+    "aptPackages": [
+      "...",
+      "libgl1",
+      "libglib2.0-0",
+      "libsm6",
+      "libxext6",
+      "libxrender1",
+      "libgomp1"
+    ],
+    "variables": {
+      "PYTHONPATH": "/app"
+    },
+    "inputs": [
+      "...",
+      { "step": "frontend-build" },
+      { "step": "collectstatic" }
+    ],
+    "startCommand": "sh -c \"python src/manage.py migrate --noinput && python src/manage.py qcluster & exec gunicorn src.target_o_meter.wsgi:application --bind 0.0.0.0:8000 --workers 1\""
+  },
+  "steps": {
+    "frontend-build": {
+      "inputs": [{ "step": "install" }],
+      "commands": [
+        "...",
+        "npm --prefix src/frontend ci",
+        "npm --prefix src/frontend run build",
+        "rm -rf src/frontend/node_modules"
+      ]
+    },
+    "collectstatic": {
+      "inputs": [{ "step": "frontend-build" }],
+      "commands": [
+        "...",
+        "python src/manage.py collectstatic --noinput --clear"
+      ]
+    }
+  }
+}
