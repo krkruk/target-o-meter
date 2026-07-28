@@ -640,22 +640,22 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Automated
 
-- [x] 3.1 All 8 `action.yml` files parse as valid YAML
-- [x] 3.2 `actionlint` (if available) passes on every composite
+- [x] 3.1 All 8 `action.yml` files parse as valid YAML — 44ef862
+- [x] 3.2 `actionlint` (if available) passes on every composite — 44ef862
 
 #### Manual
 
-- [x] 3.3 `setup-backend/action.yml` pins `astral-sh/setup-uv@v6` (not v3)
-- [x] 3.4 opencv apt list in `setup-backend/action.yml` matches `Dockerfile:31-43`
-- [x] 3.5 `deploy-railway/action.yml` does NOT call `railway config apply`
-- [x] 3.6 `run-acceptance-tests/action.yml` passes no `AUTH0_*` / `GOOGLE_API_KEY` env
+- [x] 3.3 `setup-backend/action.yml` pins `astral-sh/setup-uv@v6` (not v3) — 44ef862
+- [x] 3.4 opencv apt list in `setup-backend/action.yml` matches `Dockerfile:31-43` — 44ef862
+- [x] 3.5 `deploy-railway/action.yml` does NOT call `railway config apply` — 44ef862
+- [x] 3.6 `run-acceptance-tests/action.yml` passes no `AUTH0_*` / `GOOGLE_API_KEY` env — 44ef862
 
 ### Phase 4: CI Workflow
 
 #### Automated
 
-- [ ] 4.1 `ci.yml` parses as valid YAML
-- [ ] 4.2 `actionlint` (if available) passes
+- [x] 4.1 `ci.yml` parses as valid YAML
+- [x] 4.2 `actionlint` (if available) passes
 
 #### Manual
 

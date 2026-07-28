@@ -1,0 +1,63 @@
+# CI — the PR gate. Triggers on pull_request opened + synchronize. Chained jobs
+# via `needs:`: lint → (be-unit ∥ fe-unit) → system. Red blocks merge.
+#
+# Concurrency: cancel-in-progress on a per-PR group so a new push to an open PR
+# cancels the in-flight run (PRs are disposable; no deploy races here). Contrast
+# cd.yml which NEVER cancels (master deploys must not race Railway's builder).
+#
+# Secret-free: no `environment:` key, no RAILWAY_* references. CI must run on
+# every PR from every contributor without secret setup (research.md:67-72 — the
+# four suites it runs are env-hermetic).
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+# Per-PR concurrency. New commit on an open PR cancels the previous run.
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Stage 1: cheapest fast-fail. Lint errors block here before any test suite
+  # burns minutes. Single job (be+fe lint together) since both are quick.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-backend
+      - uses: ./.github/actions/setup-frontend
+      - uses: ./.github/actions/lint-check
+
+  # Stage 2: unit suites in parallel. Both depend on lint (no point running
+  # tests on unlintable code). Independent — neither needs the other.
+  be-unit:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-backend
+      - uses: ./.github/actions/run-be-tests
+
+  fe-unit:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-frontend
+      - uses: ./.github/actions/run-fe-tests
+
+  # Stage 3: system tests. Boots Django via runserver subprocess + exercises the
+  # BFF via httpx (no browser). Needs both unit suites green — system is the
+  # slowest, most expensive stage, so gate it on the cheaper stages passing.
+  system:
+    needs: [be-unit, fe-unit]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-backend
+      - uses: ./.github/actions/run-system-tests
