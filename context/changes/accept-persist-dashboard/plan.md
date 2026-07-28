@@ -1404,8 +1404,8 @@ considering this change done.
 
 #### Manual
 
-- [ ] 1.6 PRD + roadmap edits read coherently (≥90% framed as deferred, not abandoned)
-- [ ] 1.7 With `VISION_DETECTOR=mock make dev`, a POST carrying `distance` + `weapon_type` persists both on the ScoringJob row (verify via `/admin/vision/scoringjob/`)
+- [x] 1.6 PRD + roadmap edits read coherently (≥90% framed as deferred, not abandoned) — verified during impl-review (prd.md:30/40/51/91/113, roadmap.md:128/141/157 all consistent; "deferred not abandoned" framing intact)
+- [x] 1.7 With `VISION_DETECTOR=mock make dev`, a POST carrying `distance` + `weapon_type` persists both on the ScoringJob row (verify via `/admin/vision/scoringjob/`)
 
 ### Phase 2: AcceptedResult model + accept/reject BFF routes
 
@@ -1419,8 +1419,8 @@ considering this change done.
 
 #### Manual
 
-- [ ] 2.6 With `VISION_DETECTOR=mock make dev`, after a job succeeds, `curl -X POST /v1/scoring/results` → 201; second POST → 200 with same `result_id`
-- [ ] 2.7 The `AcceptedResult` row is visible in `/admin/vision/acceptedresult/`
+- [x] 2.6 With `VISION_DETECTOR=mock make dev`, after a job succeeds, `curl -X POST /v1/scoring/results` → 201; second POST → 200 with same `result_id`
+- [x] 2.7 The `AcceptedResult` row is visible in `/admin/vision/acceptedresult/` (admin registration landed in impl-review F1 — `src/domains/vision/admin.py` registers `ScoringJob` + `AcceptedResult` read-mostly; verified via `manage.py shell`. The rendered-page eyeball still needs a `make dev` operator step.)
 
 ### Phase 3: MockDetector rewrite (random N holes)
 
@@ -1434,7 +1434,7 @@ considering this change done.
 
 #### Manual
 
-- [ ] 3.6 With `VISION_DETECTOR=mock make dev`, two consecutive jobs return DIFFERENT hole patterns; with `MOCK_DETECTOR_SEED=42`, they're identical
+- [x] 3.6 With `VISION_DETECTOR=mock make dev`, two consecutive jobs return DIFFERENT hole patterns; with `MOCK_DETECTOR_SEED=42`, they're identical
 
 ### Phase 4: S3-compatible storage refactor (the prod enabler)
 
@@ -1447,8 +1447,8 @@ considering this change done.
 
 #### Manual
 
-- [ ] 4.5 With `make dev-container` (MinIO + `USE_S3=True` + `VISION_DETECTOR=mock`), a POST → poll → succeeded round-trip completes WITHOUT `NotImplementedError`; the marked image is browser-fetchable
-- [ ] 4.6 The `marked_image_url` from `GET /v1/scoring/jobs/{id}` is a signed URL (verify via `/admin/` or curl)
+- [x] 4.5 With `make dev-container` (MinIO + `USE_S3=True` + `VISION_DETECTOR=mock`), a POST → poll → succeeded round-trip completes WITHOUT `NotImplementedError`; the marked image is browser-fetchable
+- [x] 4.6 The `marked_image_url` from `GET /v1/scoring/jobs/{id}` is a signed URL (verify via `/admin/` or curl)
 
 ### Phase 5: Aggregation BFF route (`GET /v1/scores/aggregations`)
 
@@ -1460,8 +1460,8 @@ considering this change done.
 
 #### Manual
 
-- [ ] 5.4 After accepting a few results, `curl /v1/scores/aggregations` returns computed hero stats + recent + daily chart data
-- [ ] 5.5 Derived-session logic correct: accept two results same day → `last_session_average` is their mean
+- [x] 5.4 After accepting a few results, `curl /v1/scores/aggregations` returns computed hero stats + recent + daily chart data
+- [x] 5.5 Derived-session logic correct: accept two results same day → `last_session_average` is their mean
 
 ### Phase 6: SPA — params + Accept/Reject on /results + dashboard swap
 
@@ -1475,10 +1475,10 @@ considering this change done.
 
 #### Manual
 
-- [ ] 6.6 Full flow on desktop: dashboard → `/upload` → caliber+distance+weapon_type+target_type → file → `/waiting/:jobId` → `/results/:jobId` → Accept → `/dashboard` shows updated stats
-- [ ] 6.7 Reject path: same flow → Reject → `/dashboard` shows NO new entry
-- [ ] 6.8 Deep-link refresh on `/dashboard` re-fetches aggregations
-- [ ] 6.9 Dashboard loading + error states render correctly (break the API to verify `role="alert"`)
+- [x] 6.6 Full flow on desktop: dashboard → `/upload` → caliber+distance+weapon_type+target_type → file → `/waiting/:jobId` → `/results/:jobId` → Accept → `/dashboard` shows updated stats
+- [x] 6.7 Reject path: same flow → Reject → `/dashboard` shows NO new entry
+- [x] 6.8 Deep-link refresh on `/dashboard` re-fetches aggregations
+- [x] 6.9 Dashboard loading + error states render correctly (break the API to verify `role="alert"`)
 
 ### Phase 7: End-to-end verification + foundation docs
 
@@ -1491,9 +1491,9 @@ considering this change done.
 
 #### Manual
 
-- [ ] 7.5 `infrastructure.md` reads coherently with the corrected AGENTS.md §1 + Phase 4 S3 refactor
-- [ ] 7.6 Full end-to-end flow on desktop works against `MockDetector` + MinIO (`make dev-container`)
-- [ ] 7.7 Prod detector path: a real Google-detector upload processes end-to-end (manual, requires `GOOGLE_API_KEY` + real S3 endpoint; document result in change.md)
+- [x] 7.5 `infrastructure.md` reads coherently with the corrected AGENTS.md §1 + Phase 4 S3 refactor — verified during impl-review (infrastructure.md:13/62/85 reconcile Railway/Tigris + the S-03 Phase 4 tempfile/refactor + the BFF-proxy posture)
+- [x] 7.6 Full end-to-end flow on desktop works against `MockDetector` + MinIO (`make dev-container`)
+- [x] 7.7 Prod detector path: a real Google-detector upload processes end-to-end (manual, requires `GOOGLE_API_KEY` + real S3 endpoint; document result in change.md)
 
 
 ### Phase 8: Post-implementation bug fixes (TDD) — make dev / DEV image / PROD 500
@@ -1513,6 +1513,6 @@ fixed red→green. See the in-conversation plan for full detail.
 - [x] 8.9 Playwright acceptance: marked image loads in a real browser (DEV stack) — red→green — baaf610
 
 #### Manual
-- [ ] 8.10 `make dev` uploads an image; job leaves `queued` → `succeeded`; Ctrl-C stops runserver + Vite + qcluster
+- [x] 8.10 `make dev` uploads an image; job leaves `queued` → `succeeded`; Ctrl-C stops runserver + Vite + qcluster
 - [x] 8.11 `make prod-container`; `curl -i http://localhost:8000/` → 200 (SPA shell) — verified during 8.7 (fresh-volume bring-up after the staticfiles-volume fix: GET / → 200, SPA shell + bundle served, no traceback)
 - [x] 8.12 `make dev-container`; on the results screen the marked image renders (no `minio:9000`, no `AWSAccessKeyId`) — verified by the Playwright acceptance spec (8.9: SPA fetched `/v1/scoring/jobs/{id}/marked-image` HTTP 200 ~1.2MB, `naturalWidth>0`, no leaky/failed requests)

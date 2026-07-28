@@ -87,6 +87,38 @@ class ScoringStorage:
             ) from exc
         return resolved
 
+    def _safe_key(self, stored_path: str) -> str:
+        """S3-side counterpart to ``_safe_join``: reject keys whose shape could
+        escape the storage namespace.
+
+        S3 has no filesystem root, so there is no ``resolve()``-equivalent —
+        but the same traversal vectors exist: an absolute key (leading ``/``),
+        a ``..`` segment, or a prefix outside the buckets this adapter owns
+        (``uploads/`` for saved uploads, ``jobs/`` for deliverables). Today
+        every ``stored_path`` is server-composed (``save_upload``'s hex digest,
+        ``write_deliverable_bytes``'s ``jobs/{job_id}/{name}``), so this never
+        fires — it is the same defense-in-depth posture as ``_safe_join``: the
+        moment a future caller passes anything user-controlled through this
+        surface, the guard makes the violation loud instead of silent.
+
+        Returns the validated key unchanged (the caller hands it to
+        ``self._storage.open/save``).
+        """
+        if stored_path.startswith("/"):
+            raise ValueError(
+                f"stored_path {stored_path!r} is absolute — S3 keys are relative"
+            )
+        parts = stored_path.split("/")
+        if any(part == ".." for part in parts):
+            raise ValueError(
+                f"stored_path {stored_path!r} contains a '..' segment"
+            )
+        if not (stored_path.startswith("uploads/") or stored_path.startswith("jobs/")):
+            raise ValueError(
+                f"stored_path {stored_path!r} is outside the uploads/|jobs/ namespaces"
+            )
+        return stored_path
+
     def save_upload(self, upload_bytes: bytes, original_name: str) -> str:
         """Save an uploaded image's raw bytes; return the stored path.
 
@@ -147,7 +179,7 @@ class ScoringStorage:
         — the only S3-safe way to get the upload's bytes for the tempfile dance.
         """
         if self._is_s3:
-            return self._storage.open(stored_path, "rb").read()
+            return self._storage.open(self._safe_key(stored_path), "rb").read()
         return self._safe_join(stored_path).read_bytes()
 
     def read_deliverable_bytes(self, stored_path: str) -> bytes:
@@ -161,7 +193,7 @@ class ScoringStorage:
         ``AWSAccessKeyId`` + signature and bake in an internal endpoint host).
         """
         if self._is_s3:
-            return self._storage.open(stored_path, "rb").read()
+            return self._storage.open(self._safe_key(stored_path), "rb").read()
         return self._safe_join(stored_path).read_bytes()
 
     def write_deliverable_bytes(self, job_id: UUID, name: str, data: bytes) -> str:

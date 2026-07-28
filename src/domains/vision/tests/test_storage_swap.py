@@ -232,3 +232,73 @@ def test_old_path_methods_still_work_under_fs(tmp_path) -> None:
     rel = storage.write_deliverable(job_id, "y_result.json", b"{}")
     assert storage.read_upload(rel) == b"{}"
     assert storage.absolute_path(rel).exists()
+
+
+# ---------------------------------------------------------------------------
+# S-03 impl-review F4: ``_safe_key`` is the S3-side counterpart to ``_safe_join``
+# — it rejects keys whose shape could escape the storage namespace (absolute,
+# ``..`` segment, or outside ``uploads/``|``jobs/``). Today every stored key is
+# server-composed, so this never fires in production; the tests pin the guard
+# so a future caller that passes anything user-controlled through this surface
+# fails loud, not silent. Symmetric to the FS branch's traversal checks.
+# ---------------------------------------------------------------------------
+
+
+def _s3_storage():
+    """Build an S3-shaped ``ScoringStorage`` (bypassing ``__init__``'s env read)
+    against the in-memory ``_FakeS3Storage`` — the same shape the Phase 4 S3
+    tests use."""
+    from src.domains.vision.pipeline.storage import ScoringStorage
+
+    storage = ScoringStorage.__new__(ScoringStorage)
+    storage._storage = _FakeS3Storage()
+    storage._is_s3 = True
+    storage._root = None
+    return storage
+
+
+def test_safe_key_accepts_uploads_and_jobs_namespaces() -> None:
+    """The two server-composed key shapes (``uploads/{digest}.{ext}`` from
+    ``save_upload`` and ``jobs/{job_id}/{name}`` from ``write_deliverable_bytes``)
+    pass the guard unchanged — the happy path for every real caller."""
+    storage = _s3_storage()
+
+    assert storage._safe_key("uploads/abc123def456.jpg") == "uploads/abc123def456.jpg"
+    assert (
+        storage._safe_key("jobs/33333333-3333-3333-3333-333333333333/12_marked.png")
+        == "jobs/33333333-3333-3333-3333-333333333333/12_marked.png"
+    )
+
+
+@pytest.mark.parametrize("bad_key", [
+    "/etc/passwd",                       # absolute — S3 keys are relative
+    "uploads/../etc/passwd",             # .. segment escapes the namespace
+    "../secret",                         # leading .. segment
+    "secret/key",                        # outside uploads/|jobs/
+    "jobs/../uploads/x",                 # .. mid-key
+])
+def test_safe_key_rejects_traversal_shapes(bad_key: str) -> None:
+    """Each traversal vector (absolute, ``..`` anywhere, namespace mismatch) is
+    rejected with a ``ValueError`` — the same posture as ``_safe_join`` on the
+    FS branch. A future caller passing user-controlled input through this
+    surface fails loud instead of reading an arbitrary bucket key."""
+    storage = _s3_storage()
+    with pytest.raises(ValueError, match="stored_path"):
+        storage._safe_key(bad_key)
+
+
+def test_read_paths_route_through_safe_key_under_s3() -> None:
+    """The byte-oriented read methods (``read_upload_bytes`` /
+    ``read_deliverable_bytes``) gate the S3 backend call through ``_safe_key``
+    before ``self._storage.open(...)`` — so a traversal-shaped key never reaches
+    the backend, even though no real caller passes one today. Regression guard
+    for the wiring (F4), not the guard itself."""
+    storage = _s3_storage()
+    storage._storage.files["uploads/legit.jpg"] = b"OK"
+    assert storage.read_upload_bytes("uploads/legit.jpg") == b"OK"
+
+    with pytest.raises(ValueError, match="stored_path"):
+        storage.read_upload_bytes("uploads/../etc/passwd")
+    with pytest.raises(ValueError, match="stored_path"):
+        storage.read_deliverable_bytes("uploads/../etc/passwd")
+

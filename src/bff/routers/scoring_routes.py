@@ -36,6 +36,7 @@ from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.http import HttpResponse
 from ninja import Field, File, Form, Router, Schema, Status
 from ninja.files import UploadedFile
 from ninja.errors import HttpError
@@ -173,8 +174,6 @@ def get_scoring_job_marked_image(request, job_id: str):
     if not job.marked_image_path:
         # Queued/running — no marked image written yet.
         raise HttpError(404, "Not found") from None
-
-    from django.http import HttpResponse
 
     storage = ScoringStorage()
     data = storage.read_deliverable_bytes(job.marked_image_path)

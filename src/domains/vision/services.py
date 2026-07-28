@@ -399,12 +399,27 @@ def accept_job(
                     holes=holes_payload,
                     score_average=score_average,
                 )
-        except IntegrityError:
+        except IntegrityError as integrity_exc:
             # A concurrent accept won the unique_together race — the savepoint
             # rolled back, the outer transaction is still valid, re-fetch the
             # existing row (200 idempotent path). The IntegrityError must be
             # caught so it never surfaces as a 500.
-            ar = AcceptedResult.objects.get(source_job=job.id, user_uuid=user_uuid)
+            #
+            # Today the unique_together is the ONLY IntegrityError source the
+            # create() can raise (every other field is nullable, defaulted, or
+            # guaranteed non-null by the route contract), so the re-fetch always
+            # finds the row. Guard the re-fetch anyway: a future NOT NULL / CHECK
+            # constraint could make the IntegrityError come from a different
+            # cause, in which case the re-fetch would miss and we must NOT mask
+            # that with an unrelated 500 — re-raise the original so it surfaces
+            # honestly (the outer transaction is still valid thanks to the
+            # savepoint).
+            try:
+                ar = AcceptedResult.objects.get(
+                    source_job=job.id, user_uuid=user_uuid,
+                )
+            except AcceptedResult.DoesNotExist:
+                raise integrity_exc from None
             created = False
         return _accepted_result_to_dto(ar), created
 
