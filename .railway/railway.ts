@@ -141,11 +141,18 @@ export default defineRailway((_ctx) => {
     // keeps gunicorn's resident footprint minimal (~40-60 MB/worker);
     // `--workers 3` (the docker-compose.prod.yml default) is a Hobby-tier
     // shape. Q2_WORKERS=1 above does the same for q2. See research.md §Budget.
+    //
+    // PORT: bind :8080 (Railway's default injected PORT). We tried
+    // `${PORT:-8000}` but the shell expansion inside railpack.json's nested
+    // JSON-escaped sh -c string did NOT see Railway's runtime-injected PORT —
+    // it collapsed to the :8000 fallback and the proxy (routing to 8080) got
+    // connection refused → 502. Hardcoding 8080 matches confirmed Railway
+    // behavior. Local dev stays on :8000 via docker-compose/Dockerfile.
     start:
       'sh -c "python src/manage.py migrate --noinput && ' +
       'python src/manage.py qcluster & ' +
       'exec gunicorn src.target_o_meter.wsgi:application ' +
-      '--bind 0.0.0.0:${PORT:-8000} --workers 1"',
+      '--bind 0.0.0.0:8080 --workers 1"',
 
     // The Phase 1 view (src/target_o_meter/views.py) returns 200 "ok" with no
     // DB access. healthcheck is a STRING path (railway/iac DSL), not an object.
