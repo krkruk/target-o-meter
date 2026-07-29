@@ -521,4 +521,4 @@ Add the mutation UX: the Ban modal (duration dropdown + required free-text reaso
 #### Manual
 
 - [x] 4.6 Ban modal → row chip "Active ban"; Unban → "Banned before"; Delete modal → row gone; owner row has no action buttons — covered by the Playwright acceptance test (tests-acceptance/owner-management.spec.ts) driving the live SPA through the full ban→chip→unban→chip→delete→gone flow + the owner-row-has-no-buttons assertion
-- [ ] 4.7 Real Auth0 round-trip: banned user → `/banned` page (not SPA); unbanned → logs in; deleted → gone from list (still in Auth0 as expected); 2h session bound holds — DEFERRED: requires live Auth0 creds; the enforcement logic is covered by tests/system/test_ban_enforcement.py (mocked callback: active ban → banned page + no session, unbanned → session, expired → login)
+- [x] 4.7 Real Auth0 round-trip: banned user → `/banned` page (not SPA); unbanned → logs in; deleted → gone from list (still in Auth0 as expected); 2h session bound holds — VERIFIED manually against real Auth0: banned victim lands on banned.html (reason + expiry, not the SPA), unban lifts the block, delete shows the Auth0 reminder note
