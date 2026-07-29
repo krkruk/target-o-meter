@@ -724,3 +724,72 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 - [ ] 8.9 Free-RAM headroom: no OOM-kill after a CV job — fallback: Q2_WORKERS=2, then Hobby
 - [ ] 8.10 `/health` returns 200 on the Railway domain
 - [ ] 8.11 OWNER_SUB_ID set after first prod login confirms Owner role active
+
+#### Phase 8 — Open investigation: POST /v1/scoring/jobs returns 500 (upload fails)
+
+Status as of 2026-07-29: the app is live (`/health` → 200 `ok`, OAuth login +
+admin role work on PC and phone). **Image upload is the one broken flow**:
+`POST /v1/scoring/jobs` returns HTTP 500. Added 2026-07-29 after first real
+prod upload attempt.
+
+**Evidence collected:**
+- Railway proxy log: `POST /v1/scoring/jobs 500`, `upstreamRqDuration: ~286ms`,
+  `rxBytes: 1910426` (~1.9 MB received — the upload body reached the app).
+- App log: **no Traceback / no 500 entry.** Only `[Q] INFO Enqueued
+  [targetometer] 10/11` from the scheduled `reap-stuck-scoring-jobs` task —
+  unrelated to the failing upload (the enqueues are the reaper, not the upload).
+- Failure is fast (~290ms) — consistent with a synchronous raise in the view,
+  not a hung request.
+
+**Primary hypothesis (most likely): the S3/Tigris write in `save_upload`
+raises, and the traceback is invisible because `settings.py` has NO `LOGGING`
+dict.** The route (`src/bff/routers/scoring_routes.py:111`) does
+`storage.save_upload(file.read(), file.name)` against `ScoringStorage()`, which
+under `USE_S3=True` is django-storages' S3 backend writing to Tigris. A Tigris
+write failure (creds, endpoint, addressing, ACL) would raise in boto3 → 500
+from `@transaction.atomic` rollback. With no `LOGGING` config, Django's prod
+default does not surface the traceback where we're reading logs — so the 500
+is effectively silent. This would also explain why the first real exercise of
+the S3 path (every prior request was auth/static, not a bucket write) is where
+it breaks.
+
+**Secondary hypotheses (check if primary is ruled out):**
+1. **Tigris addressing/endpoint mismatch.** `AWS_S3_ADDRESSING_STYLE=virtual-host`
+   + `AWS_S3_ENDPOINT_URL=https://t3.storageapi.dev` were set from the bucket's
+   Connect panel, but `settings.py:370-371` reads them with `.get()` — a typo
+   or a virtual-host vs path-style mismatch against the actual Tigris bucket
+   (`systematic-organizer-lvvddc`) would surface as an S3 connection error
+   only on write. Open Q #5 / #8.6 predicted exactly this.
+2. **`AWS_QUERYSTRING_AUTH` / ACL conflict.** `settings.py` sets
+   `AWS_QUERYSTRING_AUTH=True` + `AWS_DEFAULT_ACL=None`; if Tigris rejects the
+   upload's ACL or the presign config, the PUT fails.
+3. **Form/parser rejection surfacing as 500.** Less likely (would usually be
+   413/422), but `file.read()` on a large upload under the 10 MiB cap is in
+   the path.
+
+**Investigation steps (in order — do the first before changing anything):**
+1. **Make the error visible.** Add a minimal `LOGGING` dict to `settings.py`
+   that sends `django.request` (and a catch-all `django` + app loggers) to the
+   console at `INFO`/`DEBUG`. Redeploy, retry the upload, read the actual
+   Traceback from `railway logs`. This is the single highest-leverage step —
+   every hypothesis above is guesswork until the traceback is visible.
+2. **Once the traceback is visible**, branch on the exception type:
+   - `botocore`/`boto3`/`EndpointConnectionError`/`ClientError` → Tigris
+     connection or auth (hypothesis 1/2). Verify `AWS_*` values against the
+     bucket Connect panel; test a write directly via a Django shell
+     (`storage.save('_probe', b'x')`).
+   - Django `SuspiciousOperation`/form error → hypothesis 3.
+3. **Direct bucket write probe** (independent of the app): run
+   `railway run python src/manage.py shell` (or a one-off) and execute
+   `from django.core.files.storage import default_storage;
+   default_storage.save('probe.txt', ContentFile(b'x'))`. If this fails with
+   the same error, the bug is in S3 config, not the view.
+
+**Do NOT** "fix" by disabling S3 or widening `ALLOWED_HOSTS`-style — the S3
+path is load-bearing for prod storage. Fix the root cause the traceback names.
+
+**Related Phase 8 row:** this investigation supersedes the "verify-on-failure"
+stance of 8.6 (Tigris endpoint) — the upload IS the test, and it's failing.
+
+- [ ] 8.12 (this investigation) — make the 500 traceback visible via a `LOGGING`
+      dict, then fix the root cause it names; confirm a real upload returns 201

@@ -3,7 +3,7 @@ change_id: infrastructure-as-code
 title: GitHub Actions CI/CD pipeline for build, test, and deploy
 status: implementing
 created: 2026-07-28
-updated: 2026-07-29  # Phase 7 provisioning complete; IaC corrections e0ae19b + deef72e
+updated: 2026-07-29  # App LIVE on Railway (Railpack); /health 200, login works. Open: upload 500 (Phase 8.12)
 archived_at: null
 ---
 
