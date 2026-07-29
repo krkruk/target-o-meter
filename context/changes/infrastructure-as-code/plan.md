@@ -698,13 +698,13 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Manual
 
-- [ ] 7.1 Railway project + environment + Volume (512MB, europe-west4) + Bucket (ams) created
-- [ ] 7.2 All secrets set in Railway dashboard (SECRET_KEY, AUTH0_SECRET, AUTH0_*, GOOGLE_API_KEY, AWS_*) — values NOT in plan/IaC/agent context
-- [ ] 7.3 Scoped `RAILWAY_TOKEN` generated (project-scoped, Deploy + Variables only)
-- [ ] 7.4 GitHub `RAILWAY_TOKEN` secret + `RAILWAY_PROJECT_ID` / `RAILWAY_ENVIRONMENT_ID` vars set
-- [ ] 7.5 GitHub `production` environment created (no required-reviewers; auto-deploy posture)
-- [ ] 7.6 GitHub branch protection on master requires the 4 CI checks
-- [ ] 7.7 OWNER_SUB_ID chicken-and-egg acknowledged (deploy once empty, copy sub, redeploy)
+- [x] 7.1 Railway project + environment + Volume (500MB, europe-west4, renamed web-volume→data) + Bucket (uploads, region auto) created
+- [x] 7.2 All secrets set on Railway web service (SECRET_KEY=AUTH0_SECRET, AUTH0_*, GOOGLE_API_KEY, AWS_STORAGE_BUCKET_NAME + AWS creds, OWNER_SUB_ID) — values NOT in plan/IaC/agent context
+- [x] 7.3 Scoped `RAILWAY_TOKEN` generated (project-scoped, Deploy + Variables only)
+- [x] 7.4 GitHub `RAILWAY_TOKEN` secret + `RAILWAY_PROJECT_ID` / `RAILWAY_ENVIRONMENT_ID` vars set
+- [x] 7.5 GitHub `production` environment created (no required-reviewers; auto-deploy posture)
+- [ ] 7.6 GitHub branch protection on master requires the 4 CI checks — DEFERRED until CI runs once (status checks populate in dropdown then); does not block first deploy
+- [x] 7.7 OWNER_SUB_ID set from a known sub (chicken-and-egg N/A — owner known ahead of first deploy)
 
 ### Phase 8: First Deploy Verification
 
