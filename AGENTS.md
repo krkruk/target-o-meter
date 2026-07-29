@@ -124,6 +124,13 @@ not re-implement that sequence or follow an external commit ritual; the
 Makefile is the source of truth and `make check` logs each step so a failure
 names the tool that broke. Run `make help` for all targets.
 
+**Shared git hooks (one-time setup per clone):** run
+`git config core.hooksPath .githooks` once after cloning. This enables a
+`pre-commit` hook that runs the full CI cycle — `make check` + `uv run pytest`
++ frontend `vitest` — before a commit lands, so a green local commit means a
+green CI run. It skips automatically when only docs/non-code files are staged.
+Use `git commit --no-verify` to bypass it deliberately for WIP commits.
+
 ```bash
 make check           # lint + type-check + import contracts (be + fe) — verification gate
 make be-test         # `check` + backend pytest
