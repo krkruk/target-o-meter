@@ -148,4 +148,74 @@ describe('AdminUsersPage (read-only)', () => {
     expect(ownerRow!.querySelectorAll('button')).toHaveLength(0);
     expect(plainRow!.querySelectorAll('button').length).toBeGreaterThan(0);
   });
+
+  // ---- Phase 4: mutation wiring at the page level ----
+
+  it('opens the Ban modal on a plain row, submits, and the chip becomes "Active ban"', async () => {
+    const user = userEvent.setup();
+    const plain = makeAdminUser({ nick: 'plain', sub: 'auth0|plain' });
+    vi.spyOn(api, 'getAdminUsers').mockResolvedValue({
+      items: [plain], page: 1, page_size: 20, total: 1, total_pages: 1,
+    });
+    const banSpy = vi.spyOn(api, 'banUser').mockResolvedValue({
+      is_banned: true, reason: 'spamming', banned_until: '2099-01-01T00:00:00Z',
+      lifted_at: null, has_prior_ban: true,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+
+    await user.click(screen.getByRole('button', { name: /^ban$/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    await user.type(screen.getByRole('textbox', { name: /reason/i }), 'spamming the range');
+    await user.click(screen.getByRole('button', { name: /confirm ban/i }));
+
+    await waitFor(() => expect(banSpy).toHaveBeenCalled());
+    // The row now shows the active-ban chip + an Unban button (Ban is gone).
+    await waitFor(() => expect(screen.getByText(/active ban/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /unban/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^ban$/i })).toBeNull();
+  });
+
+  it('unbans a banned row and the chip becomes "Banned before"', async () => {
+    const user = userEvent.setup();
+    const banned = makeAdminUser({
+      nick: 'banned', sub: 'auth0|banned',
+      ban: { is_banned: true, reason: 'x', banned_until: '2099-01-01T00:00:00Z', lifted_at: null, has_prior_ban: true },
+    });
+    vi.spyOn(api, 'getAdminUsers').mockResolvedValue({
+      items: [banned], page: 1, page_size: 20, total: 1, total_pages: 1,
+    });
+    vi.spyOn(api, 'unbanUser').mockResolvedValue({
+      is_banned: false, reason: 'x', banned_until: '2099-01-01T00:00:00Z', lifted_at: '2024-01-01T00:00:00Z', has_prior_ban: true,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.getByText(/active ban/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /unban/i }));
+
+    await waitFor(() => expect(screen.getByText(/banned before/i)).toBeInTheDocument());
+    // Unban replaced by Ban again.
+    expect(screen.getByRole('button', { name: /^ban$/i })).toBeInTheDocument();
+  });
+
+  it('opens the Delete modal and removes the row on confirm', async () => {
+    const user = userEvent.setup();
+    const plain = makeAdminUser({ nick: 'plain', sub: 'auth0|plain' });
+    vi.spyOn(api, 'getAdminUsers').mockResolvedValue({
+      items: [plain], page: 1, page_size: 20, total: 1, total_pages: 1,
+    });
+    const delSpy = vi.spyOn(api, 'deleteUser').mockResolvedValue(undefined);
+    renderPage();
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+
+    await user.click(screen.getByRole('button', { name: /delete/i }));
+    expect(screen.getByText(/cannot do that for you/i)).toBeInTheDocument(); // the reminder note
+
+    await user.click(screen.getByRole('button', { name: /delete permanently/i }));
+    await waitFor(() => expect(delSpy).toHaveBeenCalledWith('auth0|plain'));
+    // The row is gone.
+    await waitFor(() => expect(screen.queryByText('plain')).toBeNull());
+  });
 });

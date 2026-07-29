@@ -497,28 +497,28 @@ Add the mutation UX: the Ban modal (duration dropdown + required free-text reaso
 
 #### Automated
 
-- [x] 3.1 `react-router-dom` ^6.x added to `package.json` `dependencies`; `npm install`; `tsc --noEmit` clean — pre-existing (S-02 landed the router); verified clean
-- [x] 3.2 `App.tsx` refactored to `<BrowserRouter>` + `<Routes>`; auth seam preserved; nested routes (`index` → dashboard placeholder, `admin` → `AdminUsersPage`) — pre-existing (S-02); the `/admin` route added in AppShell
-- [x] 3.3 `AppShell` renders `<Outlet>`; `Sidebar` Admin `<button>` → `<Link to="/admin">` (drop `disabled`); `AppShell.test.tsx` updated
-- [x] 3.4 `AdminUsersPage` (search, pagination, status chips, 403 handling) + `getAdminUsers`/`AdminUser` types in `api.ts`
-- [x] 3.5 `AdminUsersPage.test.tsx` (search, pager, chips, 403); updated `AppShell.test.tsx` (Admin link, not disabled button)
-- [x] 3.6 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` green
+- [x] 3.1 `react-router-dom` ^6.x added to `package.json` `dependencies`; `npm install`; `tsc --noEmit` clean — pre-existing (S-02 landed the router); verified clean — 5f6df73
+- [x] 3.2 `App.tsx` refactored to `<BrowserRouter>` + `<Routes>`; auth seam preserved; nested routes (`index` → dashboard placeholder, `admin` → `AdminUsersPage`) — pre-existing (S-02); the `/admin` route added in AppShell — 5f6df73
+- [x] 3.3 `AppShell` renders `<Outlet>`; `Sidebar` Admin `<button>` → `<Link to="/admin">` (drop `disabled`); `AppShell.test.tsx` updated — 5f6df73
+- [x] 3.4 `AdminUsersPage` (search, pagination, status chips, 403 handling) + `getAdminUsers`/`AdminUser` types in `api.ts` — 5f6df73
+- [x] 3.5 `AdminUsersPage.test.tsx` (search, pager, chips, 403); updated `AppShell.test.tsx` (Admin link, not disabled button) — 5f6df73
+- [x] 3.6 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` green — 5f6df73
 
 #### Manual
 
-- [x] 3.7 Bypass-as-owner → `/admin` list + search + pager + deep-link; bypass-as-user → no Admin link, `/admin` shows 403 message — deep-link covered by test_spa_deep_links.py (+/admin); the full flow covered by the Playwright acceptance test (Phase 4)
+- [x] 3.7 Bypass-as-owner → `/admin` list + search + pager + deep-link; bypass-as-user → no Admin link, `/admin` shows 403 message — deep-link covered by test_spa_deep_links.py (+/admin); the full flow covered by the Playwright acceptance test (Phase 4) — 5f6df73
 
 ### Phase 4: Frontend — Ban / unban / delete modals + manual gate
 
 #### Automated
 
-- [ ] 4.1 `api.ts`: `banUser`, `unbanUser`, `deleteUser` (CSRF on all) + `BanStatus` type
-- [ ] 4.2 `BanModal` (duration select + required free-text reason, min 5 chars; extend mode for active bans; dismissable) + test
-- [ ] 4.3 `DeleteUserModal` (Auth0 reminder note + destructive confirm) + test
-- [ ] 4.4 `AdminUsersPage` wiring: adaptive Ban/Unban/View-ban buttons, Delete button, hide actions on owner row; tests
-- [ ] 4.5 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` + `make be-test` + `make fe-test` green
+- [x] 4.1 `api.ts`: `banUser`, `unbanUser`, `deleteUser` (CSRF on all) + `BanStatus` type
+- [x] 4.2 `BanModal` (duration select + required free-text reason, min 5 chars; extend mode for active bans; dismissable) + test
+- [x] 4.3 `DeleteUserModal` (Auth0 reminder note + destructive confirm) + test
+- [x] 4.4 `AdminUsersPage` wiring: adaptive Ban/Unban/View-ban buttons, Delete button, hide actions on owner row; tests
+- [x] 4.5 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` + `make be-test` + `make fe-test` green
 
 #### Manual
 
-- [ ] 4.6 Ban modal → row chip "Active ban"; Unban → "Banned before"; Delete modal → row gone; owner row has no action buttons
-- [ ] 4.7 Real Auth0 round-trip: banned user → `/banned` page (not SPA); unbanned → logs in; deleted → gone from list (still in Auth0 as expected); 2h session bound holds
+- [x] 4.6 Ban modal → row chip "Active ban"; Unban → "Banned before"; Delete modal → row gone; owner row has no action buttons — covered by the Playwright acceptance test (tests-acceptance/owner-management.spec.ts) driving the live SPA through the full ban→chip→unban→chip→delete→gone flow + the owner-row-has-no-buttons assertion
+- [ ] 4.7 Real Auth0 round-trip: banned user → `/banned` page (not SPA); unbanned → logs in; deleted → gone from list (still in Auth0 as expected); 2h session bound holds — DEFERRED: requires live Auth0 creds; the enforcement logic is covered by tests/system/test_ban_enforcement.py (mocked callback: active ban → banned page + no session, unbanned → session, expired → login)

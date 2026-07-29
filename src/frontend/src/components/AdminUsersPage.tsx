@@ -2,17 +2,26 @@
 //
 // Searchable, paginated list of registered users with ban-status chips.
 // Phase 3 ships the read-only list (search, pagination, chips, 403 handling);
-// Phase 4 enables the Ban / Unban / Delete actions (the buttons render now but
-// are wired in Phase 4).
+// Phase 4 enables the Ban / Unban / Delete actions.
 //
 // The owner audience is different from /v1/me: rows carry `sub` (the owner
 // needs it to match rows against the Auth0 dashboard). Ban status drives the
 // chip color: red "Active ban" / grey "Banned before" / nothing.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getAdminUsers, type AdminUser, type AdminUserList } from '../api';
+import {
+  getAdminUsers,
+  unbanUser,
+  type AdminUser,
+  type AdminUserList,
+  type BanStatus,
+} from '../api';
+import { BanModal } from './BanModal';
+import { DeleteUserModal } from './DeleteUserModal';
 import styles from './AdminUsersPage.module.css';
 
 const DEBOUNCE_MS = 250;
+
+type Modal = 'ban' | 'delete';
 
 export function AdminUsersPage() {
   const [query, setQuery] = useState('');
@@ -58,6 +67,32 @@ export function AdminUsersPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Phase 4: update a row in-place after a successful ban/unban, or remove it
+  // after a delete. Mutating the existing items array (not refetching) keeps
+  // the pager + scroll position stable for the owner.
+  const handleBanStatusChanged = useCallback((sub: string, status: BanStatus) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        items: prev.items.map((u) => (u.sub === sub ? { ...u, ban: status } : u)),
+      };
+    });
+  }, []);
+
+  const handleDeleted = useCallback((sub: string) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const items = prev.items.filter((u) => u.sub !== sub);
+      return {
+        ...prev,
+        items,
+        total: Math.max(0, prev.total - 1),
+        total_pages: Math.max(1, Math.ceil(items.length / prev.page_size)),
+      };
+    });
+  }, []);
+
   if (pending && !data) {
     return <div role="status" aria-label="Loading users">Loading users…</div>;
   }
@@ -85,7 +120,12 @@ export function AdminUsersPage() {
       ) : (
         <ul className={styles.list} role="list">
           {data.items.map((u) => (
-            <UserRow key={u.user_uuid} user={u} />
+            <UserRow
+              key={u.user_uuid}
+              user={u}
+              onBanStatusChanged={handleBanStatusChanged}
+              onDeleted={handleDeleted}
+            />
           ))}
         </ul>
       )}
@@ -113,10 +153,33 @@ export function AdminUsersPage() {
   );
 }
 
-function UserRow({ user }: { user: AdminUser }) {
-  // Phase 4 wires the mutations; Phase 3 renders disabled affordances so the
-  // page shape is stable. The owner row never gets ban/delete buttons (the
-  // server guards too, but the UI must not offer the action).
+function UserRow({
+  user,
+  onBanStatusChanged,
+  onDeleted,
+}: {
+  user: AdminUser;
+  onBanStatusChanged: (sub: string, status: BanStatus) => void;
+  onDeleted: (sub: string) => void;
+}) {
+  const [modal, setModal] = useState<Modal | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  async function handleUnban() {
+    setBusy(true);
+    setRowError(null);
+    try {
+      const status = await unbanUser(user.sub);
+      onBanStatusChanged(user.sub, status);
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      setRowError(status === 409 ? 'No active ban.' : 'Could not unban. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <li className={styles.row} data-row data-owner={user.is_owner}>
       <div className={styles.identity}>
@@ -126,9 +189,53 @@ function UserRow({ user }: { user: AdminUser }) {
       <BanChip ban={user.ban} />
       {!user.is_owner && (
         <div className={styles.actions}>
-          <BanButton user={user} />
-          <DeleteButton user={user} />
+          {user.ban.is_banned ? (
+            <button
+              type="button"
+              className={styles.actionBtn}
+              onClick={handleUnban}
+              disabled={busy}
+            >
+              {busy ? '…' : 'Unban'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.actionBtn}
+              onClick={() => setModal('ban')}
+            >
+              Ban
+            </button>
+          )}
+          <button
+            type="button"
+            className={`${styles.actionBtn} ${styles.dangerBtn}`}
+            onClick={() => setModal('delete')}
+          >
+            Delete
+          </button>
         </div>
+      )}
+      {rowError && <span className={styles.rowError} role="alert">{rowError}</span>}
+      {modal === 'ban' && (
+        <BanModal
+          user={user}
+          onClose={() => setModal(null)}
+          onBanned={(status) => {
+            onBanStatusChanged(user.sub, status);
+            setModal(null);
+          }}
+        />
+      )}
+      {modal === 'delete' && (
+        <DeleteUserModal
+          user={user}
+          onClose={() => setModal(null)}
+          onDeleted={() => {
+            onDeleted(user.sub);
+            setModal(null);
+          }}
+        />
       )}
     </li>
   );
@@ -142,15 +249,4 @@ function BanChip({ ban }: { ban: AdminUser['ban'] }) {
     return <span className={`${styles.chip} ${styles.priorBan}`}>Banned before</span>;
   }
   return null;
-}
-
-// Phase 4 wires these. Kept as inert elements in Phase 3 so the page layout
-// (and the "owner row has no buttons" test) is stable.
-function BanButton({ user }: { user: AdminUser }) {
-  const label = user.ban.is_banned ? 'Unban' : 'Ban';
-  return <button type="button" className={styles.actionBtn} disabled>{label}</button>;
-}
-
-function DeleteButton({ user: _user }: { user: AdminUser }) {
-  return <button type="button" className={`${styles.actionBtn} ${styles.dangerBtn}`} disabled>Delete</button>;
 }

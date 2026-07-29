@@ -139,3 +139,9 @@
   padding: 2rem 0;
   text-align: center;
 }
+
+.rowError {
+  color: #b91c1c;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}

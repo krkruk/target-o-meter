@@ -120,6 +120,10 @@ export default async function globalSetup(): Promise<void> {
   // doesn't overlay the dashboard (the bypass creates the row on first
   // request, but with has_set_nick=False). Goes through the app's service
   // surface (AGENTS.md §5) via manage.py shell.
+  //
+  // S-04: also seed a plain (non-owner) target user so the owner-management
+  // acceptance spec has a row to ban/unban/delete. Re-running is idempotent
+  // (get_or_create); if the spec deleted it last run, it's recreated.
   await new Promise<void>((resolveSeed, rejectSeed) => {
     const seed = spawn(
       'uv', ['run', 'python', MANAGE_PY, 'shell', '-c',
@@ -128,7 +132,8 @@ u, _ = User.objects.get_or_create(sub='auth0|playwright-acceptance', defaults={'
 if not u.has_set_nick:
     u.has_set_nick = True
     u.save(update_fields=['has_set_nick'])
-print('seeded acceptance user')`],
+User.objects.get_or_create(sub='auth0|acceptance-target', defaults={'nick': 'target-acct'})
+print('seeded acceptance users')`],
       { cwd: resolve(REPO_ROOT, 'src'), env: baseEnv, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let stderr = '';

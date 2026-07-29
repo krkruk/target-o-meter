@@ -285,8 +285,45 @@ export async function getAdminUsers(
     headers: { Accept: 'application/json' },
   });
   if (!res.ok) {
-    const err = new HttpError(res.status, `GET /v1/users failed: ${res.status}`);
-    throw err;
+    throw new HttpError(res.status, `GET /v1/users failed: ${res.status}`);
   }
   return (await res.json()) as AdminUserList;
+}
+
+// S-04 Phase 4: owner mutations. All carry the CSRF token via jsonHeaders()
+// (CSRF auto-enforced on SessionAuth for non-GET). Each throws HttpError(status)
+// on non-ok so the UI can map 409/404 to inline messages.
+
+export type BanDuration = '1h' | '1d' | '7d' | '30d';
+
+export async function banUser(
+  userSub: string,
+  body: { duration: BanDuration; reason: string },
+): Promise<BanStatus> {
+  const res = await fetch(`/v1/users/${encodeURIComponent(userSub)}/ban`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new HttpError(res.status, `POST /v1/users/.../ban failed: ${res.status}`);
+  return (await res.json()) as BanStatus;
+}
+
+export async function unbanUser(userSub: string): Promise<BanStatus> {
+  const res = await fetch(`/v1/users/${encodeURIComponent(userSub)}/unban`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+  });
+  if (!res.ok) throw new HttpError(res.status, `POST /v1/users/.../unban failed: ${res.status}`);
+  return (await res.json()) as BanStatus;
+}
+
+export async function deleteUser(userSub: string): Promise<void> {
+  const res = await fetch(`/v1/users/${encodeURIComponent(userSub)}`, {
+    method: 'DELETE',
+    headers: jsonHeaders(),
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new HttpError(res.status, `DELETE /v1/users/... failed: ${res.status}`);
+  }
 }
