@@ -44,12 +44,14 @@ export default defineRailway((_ctx) => {
   // exposes `ctx.environment`, `ctx.isEnvironment(name)`, etc.
 
   // SQLite volume. region "europe-west4" is the friendly name for the
-  // europe-west4-drams3a (Amsterdam) host. 512 MB is the Free/Trial Volume
-  // storage cap; Live Resize is Hobby+ only, so on Free you cannot grow this
-  // without upgrading. SQLite MVP footprint is <100 MB → ~5x headroom.
+  // europe-west4-drams3a (Amsterdam) host. 500 MB is Railway's actual Free-tier
+  // Volume granularity (the plan draft said "512 MB cap"; Railway provisions at
+  // 500 — the IaC must match the provisioned value or `config apply` flags
+  // drift). Live Resize is Hobby+ only, so on Free you cannot grow this without
+  // upgrading. SQLite MVP footprint is <100 MB → ~5x headroom.
   const data = volume("data", {
     region: "europe-west4",
-    sizeMB: 512,
+    sizeMB: 500,
   });
 
   // Tigris-backed object storage for uploads + per-job deliverables. Region
