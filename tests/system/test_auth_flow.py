@@ -83,26 +83,28 @@ def test_api_users_returns_403_for_non_owner(client, owner_sub, user_sub) -> Non
 
 
 def test_api_users_returns_200_for_owner(client, owner_sub) -> None:
-    """Authed Owner → 200. The list contains whatever users exist (here, the
-    owner's own row — ``list_users`` returns all rows, no ``sub`` on any)."""
+    """Authed Owner → 200. The list now carries the owner-admin shape (S-04):
+    a paginated ``AdminUserListOut`` whose items DO carry ``sub`` (the owner
+    audience needs it to match rows against Auth0). The owner's own row is
+    present and flagged ``is_owner``."""
     owner = make_owner(owner_sub)
     _login_as(client, owner)
 
     response = client.get("/v1/users")
     assert response.status_code == 200
     body = response.json()
-    # The owner's own row is present (make_owner seeded it).
-    assert any(u["nick"] == "test-owner" and u["role"] == "owner" for u in body)
-    # And no entry exposes ``sub``.
-    for entry in body:
-        assert "sub" not in entry
+    # S-04: paginated envelope.
+    assert {"items", "page", "page_size", "total", "total_pages"} <= set(body.keys())
+    # The owner's own row is present and flagged.
+    assert any(i["nick"] == "test-owner" and i["is_owner"] for i in body["items"])
 
 
-def test_api_users_200_entries_carry_no_sub(client, owner_sub, user_sub) -> None:
-    """When the owner lists users, no entry exposes ``sub`` (Zero Email Storage).
-
-    Seeds a non-owner row so the list is non-empty, then asserts the response
-    shape omits ``sub`` at every level.
+def test_api_users_owner_list_carries_sub(client, owner_sub, user_sub) -> None:
+    """S-04: the owner-admin list is a DIFFERENT audience than ``/v1/me`` — it
+    DOES carry ``sub`` so the owner can identify users across nick changes and
+    match rows against the Auth0 dashboard. (The sub-less invariant still holds
+    on ``/v1/me``'s ``UserOut`` — see ``test_api_me_returns_200_and_nick_role_
+    for_authed_user``.)
     """
     make_user(sub=user_sub, nick="carol")
     owner = make_owner(owner_sub)
@@ -110,11 +112,13 @@ def test_api_users_200_entries_carry_no_sub(client, owner_sub, user_sub) -> None
 
     response = client.get("/v1/users")
     assert response.status_code == 200
-    for entry in response.json():
-        assert "sub" not in entry
-        # S-01 added ``has_set_nick`` to ``UserOut`` (surfaced on every user
-        # projection, incl. the owner demo route).
-        assert set(entry.keys()) == {"nick", "role", "has_set_nick"}
+    body = response.json()
+    # Every item carries ``sub`` + the ban status + is_owner flag.
+    for entry in body["items"]:
+        assert "sub" in entry
+        assert "ban" in entry
+        assert "is_owner" in entry
+
 
 
 # ---------------------------------------------------------------------------

@@ -465,33 +465,33 @@ Add the mutation UX: the Ban modal (duration dropdown + required free-text reaso
 
 #### Automated
 
-- [x] 1.1 `Ban` model in `src/domains/identity/ban.py` (UUID PK, FK→User CASCADE, reason, duration_kind, banned_at, banned_until, lifted_at; `Duration` TextChoices; `_DURATION_DELTAS`)
-- [x] 1.2 Migration `0003_ban` generated + applies cleanly (`makemigrations identity` → `migrate`)
-- [x] 1.3 Identity DTOs (`BanStatusOut`, `AdminUserOut`, `AdminUserListOut`, `BanIn`) in `dtos.py`; `UserOut`/`UserContextDTO` unchanged
-- [x] 1.4 Ban services (`ban_user`, `unban_user`, `get_active_ban`/`get_ban_status`) + typed exceptions (`UserNotFoundError`, `CannotModifyOwnerError`, `NoActiveBanError`)
-- [x] 1.5 `list_users_for_owner(q, page, page_size)` with nick+sub CI search, nick-asc order, bulk ban-status attach, offset pagination
-- [x] 1.6 `SESSION_COOKIE_AGE` 8h → 2h in `settings.py` with rationale comment
-- [x] 1.7 Identity unit tests (`test_ban_services.py` + `test_utils.make_ban` + `banned_user` fixture)
-- [x] 1.8 `uv run pytest src/domains/identity/tests/` green
-- [x] 1.9 `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
+- [x] 1.1 `Ban` model in `src/domains/identity/ban.py` (UUID PK, FK→User CASCADE, reason, duration_kind, banned_at, banned_until, lifted_at; `Duration` TextChoices; `_DURATION_DELTAS`) — 80d61da
+- [x] 1.2 Migration `0003_ban` generated + applies cleanly (`makemigrations identity` → `migrate`) — 80d61da
+- [x] 1.3 Identity DTOs (`BanStatusOut`, `AdminUserOut`, `AdminUserListOut`, `BanIn`) in `dtos.py`; `UserOut`/`UserContextDTO` unchanged — 80d61da
+- [x] 1.4 Ban services (`ban_user`, `unban_user`, `get_active_ban`/`get_ban_status`) + typed exceptions (`UserNotFoundError`, `CannotModifyOwnerError`, `NoActiveBanError`) — 80d61da
+- [x] 1.5 `list_users_for_owner(q, page, page_size)` with nick+sub CI search, nick-asc order, bulk ban-status attach, offset pagination — 80d61da
+- [x] 1.6 `SESSION_COOKIE_AGE` 8h → 2h in `settings.py` with rationale comment — 80d61da
+- [x] 1.7 Identity unit tests (`test_ban_services.py` + `test_utils.make_ban` + `banned_user` fixture) — 80d61da
+- [x] 1.8 `uv run pytest src/domains/identity/tests/` green — 80d61da
+- [x] 1.9 `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green — 80d61da
 
 #### Manual
 
-- [x] 1.10 `shell -c "Ban._meta.db_table"` prints `identity_ban`; `showmigrations identity` shows 0003 applied
+- [x] 1.10 `shell -c "Ban._meta.db_table"` prints `identity_ban`; `showmigrations identity` shows 0003 applied — 80d61da
 
 ### Phase 2: Backend — BFF owner routes + ban enforcement + banned page
 
 #### Automated
 
-- [ ] 2.1 Owner routes in `owner_routes.py`: `GET /v1/users` (paginated `AdminUserListOut`), `POST /v1/users/{sub}/ban`, `POST /v1/users/{sub}/unban`, `DELETE /v1/users/{sub}` — all `require_owner` first, CSRF auto-enforced
-- [ ] 2.2 Ban check in OAuth callback (`auth_routes.py`): after `get_or_create_user_row`, before `login()`; if `ban_status.is_banned` → render `banned.html`, no session
-- [ ] 2.3 `templates/banned.html` (standalone, no SPA bundle) + render from callback
-- [ ] 2.4 System tests: `test_owner_routes.py` (401/403/200/404/409/422 + CSRF 403 + pagination + search + ban-status) + `test_ban_enforcement.py` (mocked callback: banned→banned page+no session, unbanned→session, expired→login)
-- [ ] 2.5 `uv run pytest` green; `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
+- [x] 2.1 Owner routes in `owner_routes.py`: `GET /v1/users` (paginated `AdminUserListOut`), `POST /v1/users/{sub}/ban`, `POST /v1/users/{sub}/unban`, `DELETE /v1/users/{sub}` — all `require_owner` first, CSRF auto-enforced
+- [x] 2.2 Ban check in OAuth callback (`auth_routes.py`): after `get_or_create_user_row`, before `login()`; if `ban_status.is_banned` → render `banned.html`, no session
+- [x] 2.3 `templates/banned.html` (standalone, no SPA bundle) + render from callback
+- [x] 2.4 System tests: `test_owner_routes.py` (401/403/200/404/409/422 + CSRF 403 + pagination + search + ban-status) + `test_ban_enforcement.py` (mocked callback: banned→banned page+no session, unbanned→session, expired→login)
+- [x] 2.5 `uv run pytest` green; `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
 
 #### Manual
 
-- [ ] 2.6 `curl /v1/users` 401 anon / 403 user / 200 owner (paginated shape)
+- [x] 2.6 `curl /v1/users` 401 anon / 403 user / 200 owner (paginated shape) — verified via system tests (test_owner_routes.py RBAC + paginated-shape cases)
 
 ### Phase 3: Frontend — React Router + admin users page (read-only)
 
