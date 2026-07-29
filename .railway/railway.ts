@@ -53,8 +53,12 @@ export default defineRailway((_ctx) => {
   });
 
   // Tigris-backed object storage for uploads + per-job deliverables. Region
-  // "ams" co-locates with the europe-west4 compute. IMMUTABLE after creation.
-  const uploads = bucket("uploads", { region: "ams" });
+  // "auto" is Tigris's global addressing — Railway Storage Buckets provision
+  // buckets as region "auto" regardless of compute region, and bucket region is
+  // IMMUTABLE after creation (the europe-west4 compute co-locates at the network
+  // layer; the bucket itself is globally addressed). The IaC must match the
+  // provisioned value or `config apply` will flag drift.
+  const uploads = bucket("uploads", { region: "auto" });
 
   // Shared prod env. The q2 task body reads S3 creds, GOOGLE_API_KEY,
   // VISION_DETECTOR, AUTH0 — gunicorn + qcluster share this (single container).
@@ -68,7 +72,18 @@ export default defineRailway((_ctx) => {
     SECURE_COOKIES: "True", // Railway terminates TLS → SECURE cookie flags +
     //                       SECURE_PROXY_SSL_HEADER (settings.py:223-251).
     USE_S3: "True", // flip STORAGES['default'] to Tigris (settings.py:346-358).
-    AWS_S3_ADDRESSING_STYLE: "auto", // Tigris default (settings.py:364).
+    AWS_S3_ENDPOINT_URL: "https://t3.storageapi.dev", // Tigris S3 endpoint.
+    //   REQUIRED — settings.py:366 reads this with os.environ.get() and
+    //   defaults to None; with None, boto3 targets s3.amazonaws.com (a
+    //   different host) and the first upload fails with an S3 connection
+    //   error. The "unset for Tigris" assumption in .env.example only holds if
+    //   Railway injects the endpoint via a bucket-variable reference — we use
+    //   raw preserve() creds, so no Railway magic applies. Value taken from the
+    //   bucket's Connect panel. (research Open Q #5 — resolved up-front.)
+    AWS_S3_ADDRESSING_STYLE: "virtual-host", // Tigris urlStyle from the bucket's
+    //   Connect panel. settings.py:367 reads this; "virtual-host" addresses the
+    //   bucket as <bucket>.t3.storageapi.dev (the Tigris shape) rather than the
+    //   path-style "auto" default.
     VISION_DETECTOR: "google", // prod detector (requires GOOGLE_API_KEY).
     Q2_WORKERS: "1", // narrow django-q2 to 1 worker (Free-tier RAM budget,
     //                ≤10 users). settings.py reads Q2_WORKERS with a local
@@ -99,11 +114,6 @@ export default defineRailway((_ctx) => {
     AWS_ACCESS_KEY_ID: preserve(),
     AWS_SECRET_ACCESS_KEY: preserve(),
     AWS_STORAGE_BUCKET_NAME: preserve(),
-
-    // NOTE: AWS_S3_ENDPOINT_URL intentionally OMITTED — unset for Tigris per
-    // settings.py:363 + .env.example:104. VERIFY on first deploy (Open Q #5):
-    // if boto3 can't reach Tigris, set AWS_S3_ENDPOINT_URL (preserve) to the
-    // endpoint shown in the bucket connection details.
 
     // Explicitly NOT set in prod (E001 boot-blocks DEV_AUTH_BYPASS_SUB under
     // DEBUG=False; the rest are dev-only):
