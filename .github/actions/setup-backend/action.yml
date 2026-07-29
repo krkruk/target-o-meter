@@ -5,10 +5,12 @@ description: |
   every uv dependency group. Reused as the first step of every backend-bearing
   job (lint, be-unit, system, acceptance, deploy).
 
-  The apt list MUST stay in lockstep with Dockerfile:31-43 (the opencv runtime
-  deps) and railpack.json's deploy.aptPackages — any change to one must land in
-  all three in the same PR. See plan §Migration Notes (Railpack-vs-Dockerfile
-  drift risk).
+  The apt list MUST stay in lockstep with docker/Dockerfile:31-43 (the opencv
+  runtime deps) and railpack.json's deploy.aptPackages — any change to one must
+  land in all three in the same PR. See plan §Migration Notes (Railpack-vs-
+  Dockerfile drift risk). The Dockerfile moved under docker/ so Railway's
+  auto-detection picks railpack.json at the repo root (BUILDER=railpack is
+  ignored when a root Dockerfile is present).
 inputs:
   uv-cache-prefix:
     description: Cache key suffix for the uv cache (lets callers vary the key).
@@ -19,7 +21,7 @@ runs:
   steps:
     # opencv-python-headless wheel deps on slim runners. Without these, any
     # test that imports cv2 (e.g. tests/test_geometry_regression.py) fails at
-    # import. Mirrors Dockerfile:31-43.
+    # import. Mirrors docker/Dockerfile:31-43.
     - name: Install opencv apt deps
       shell: bash
       run: |

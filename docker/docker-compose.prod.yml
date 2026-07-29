@@ -13,7 +13,8 @@
 services:
   web:
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       target: prod
     image: target-o-meter-prod
     command: ["uv", "run", "gunicorn", "src.target_o_meter.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
@@ -50,7 +51,8 @@ services:
   worker:
     image: target-o-meter-prod
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       target: prod
     command: ["uv", "run", "python", "src/manage.py", "qcluster"]
     environment:

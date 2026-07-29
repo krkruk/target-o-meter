@@ -80,19 +80,19 @@ migrate:  ## Apply Django migrations
 # read env from .env (copy .env.example to .env).
 #
 # Runtime: podman (5.8+) with podman-compose as the compose provider. On
-# Fedora/SELinux, bind mounts in docker-compose.dev.yml carry the :Z suffix so
-# podman relabels the host path for the container's SELinux context. `docker`
-# isn't required; podman is Docker-compatible so the compose files are
+# Fedora/SELinux, bind mounts in docker/docker-compose.dev.yml carry the :Z
+# suffix so podman relabels the host path for the container's SELinux context.
+# `docker` isn't required; podman is Docker-compatible so the compose files are
 # unchanged otherwise. (`alias docker=podman` makes the README/docs match if
 # you prefer the docker spelling at the shell.)
 
 dev-container:  ## Bring up the containerized dev stack (web + worker + MinIO + create-bucket) with live-reload
 	@echo "▸ building images (first run is slow; opencv system deps bake in)"
-	podman compose -f docker-compose.dev.yml up --build
+	podman compose -f docker/docker-compose.dev.yml up --build
 
 prod-container:  ## Bring up a prod-shape stack (DEBUG=false, built frontend, gunicorn) in containers
 	@echo "▸ building prod images"
-	podman compose -f docker-compose.prod.yml up --build
+	podman compose -f docker/docker-compose.prod.yml up --build
 
 # --- Checks (backend + frontend) -------------------------------------------
 #

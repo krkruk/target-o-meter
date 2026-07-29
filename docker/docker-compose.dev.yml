@@ -27,7 +27,8 @@
 services:
   web:
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       target: dev
     image: target-o-meter-dev
     command: ["/app/docker/dev-seed.sh"]
@@ -115,7 +116,8 @@ services:
   worker:
     image: target-o-meter-dev
     build:
-      context: .
+      context: ..
+      dockerfile: docker/Dockerfile
       target: dev
     command: ["/app/docker/dev-seed.sh"]
     environment:

@@ -34,7 +34,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_compose(name: str) -> dict:
-    with (_REPO_ROOT / name).open() as fh:
+    with (_REPO_ROOT / "docker" / name).open() as fh:
         return yaml.safe_load(fh)
 
 
@@ -325,7 +325,7 @@ def test_devfile_dev_stage_builds_frontend() -> None:
     prod stage's build. Reading the Dockerfile as text (not building) avoids
     needing the daemon — the full build is the manual gate.
     """
-    dockerfile = (_REPO_ROOT / "Dockerfile").read_text()
+    dockerfile = (_REPO_ROOT / "docker" / "Dockerfile").read_text()
     # Locate the dev stage body (FROM base AS dev ... up to the next FROM).
     dev_start = dockerfile.find("FROM base AS dev")
     assert dev_start != -1, "no 'FROM base AS dev' stage in Dockerfile"
