@@ -21,9 +21,23 @@ description: |
 runs:
   using: composite
   steps:
+    # Install Railway CLI via npm (not `curl ... | sh`). The official installer
+    # script's shell_quote() uses the bash-only ${var//pat/repl} expansion; when
+    # piped to `sh` it runs under dash (Ubuntu's /bin/sh) and fails with
+    # "sh: 146: Bad substitution" AFTER the binary has already installed. The
+    # `shell: bash` directive above only governs the curl invocation —
+    # `curl ... | sh` explicitly invokes /bin/sh. npm install is shell-agnostic
+    # and is Railway's documented CI install path. Node 20 LTS (the CI pin) is
+    # set up explicitly here so this composite is self-contained — the deploy
+    # job does NOT call setup-frontend.
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
     - name: Install Railway CLI
       shell: bash
-      run: curl -fsSL https://cli.new | sh
+      run: npm install -g @railway/cli
 
     - name: Deploy (railway up)
       shell: bash
@@ -31,4 +45,9 @@ runs:
         RAILWAY_TOKEN: ${{ env.RAILWAY_TOKEN }}
         RAILWAY_PROJECT_ID: ${{ env.RAILWAY_PROJECT_ID }}
         RAILWAY_ENVIRONMENT_ID: ${{ env.RAILWAY_ENVIRONMENT_ID }}
-      run: railway up
+      # `--service web` is required: the project has more than one resource the
+      # CLI counts as a "service" in the token-only (unlinked) CI context, so a
+      # bare `railway up` aborts with "Multiple services found". Pinning the
+      # service name removes the ambiguity. (`web` is the IaC service name —
+      # .railway/railway.ts service("web").)
+      run: railway up --service web
