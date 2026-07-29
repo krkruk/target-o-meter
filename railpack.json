@@ -25,6 +25,12 @@
     "startCommand": "sh -c \"python src/manage.py migrate --noinput && python src/manage.py qcluster & exec gunicorn src.target_o_meter.wsgi:application --bind 0.0.0.0:8080 --workers 1\""
   },
   "steps": {
+    "install": {
+      "commands": [
+        "...",
+        "uv sync --frozen --all-groups"
+      ]
+    },
     "frontend-build": {
       "inputs": [{ "step": "install" }],
       "commands": [
