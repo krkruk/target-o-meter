@@ -160,15 +160,18 @@ export default defineRailway((_ctx) => {
     // settings.py:263 resolves DB to <RAILWAY_VOLUME_MOUNT_PATH>/db.sqlite3.
     volumeMounts: { "/data": data },
 
-    domains: ["web-production-5c61a.up.railway.app"], // Railway's auto-generated
-    //   production domain (confirmed live 2026-07-29). If a custom domain is
-    //   wired later, replace this + APP_BASE_URL below in the same change.
+    domains: ["target-o-meter.up.railway.app"], // the project's custom Railway
+    //   production domain (attached to the web service, syncStatus ACTIVE,
+    //   confirmed 2026-07-29). supersedes the auto-generated
+    //   web-production-5c61a.up.railway.app.
 
     env: {
       ...env,
-      APP_BASE_URL: "https://web-production-5c61a.up.railway.app", // the live
+      APP_BASE_URL: "https://target-o-meter.up.railway.app", // the live
       //   production domain. ALLOWED_HOSTS derives from this host
-      //   (settings.py:92-99); the OAuth redirect URI also uses it.
+      //   (settings.py:92-99). No trailing slash — both consumers parse it
+      //   with urlparse().hostname, so a slash is harmless, but the canonical
+      //   form matches Railway's domain convention.
     },
   });
 
