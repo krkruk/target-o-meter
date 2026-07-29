@@ -145,7 +145,7 @@ export default defineRailway((_ctx) => {
       'sh -c "python src/manage.py migrate --noinput && ' +
       'python src/manage.py qcluster & ' +
       'exec gunicorn src.target_o_meter.wsgi:application ' +
-      '--bind 0.0.0.0:8000 --workers 1"',
+      '--bind 0.0.0.0:${PORT:-8000} --workers 1"',
 
     // The Phase 1 view (src/target_o_meter/views.py) returns 200 "ok" with no
     // DB access. healthcheck is a STRING path (railway/iac DSL), not an object.

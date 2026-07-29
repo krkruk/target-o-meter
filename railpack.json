@@ -22,7 +22,7 @@
       { "step": "frontend-build" },
       { "step": "collectstatic" }
     ],
-    "startCommand": "sh -c \"python src/manage.py migrate --noinput && python src/manage.py qcluster & exec gunicorn src.target_o_meter.wsgi:application --bind 0.0.0.0:8000 --workers 1\""
+    "startCommand": "sh -c \"python src/manage.py migrate --noinput && python src/manage.py qcluster & exec gunicorn src.target_o_meter.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 1\""
   },
   "steps": {
     "frontend-build": {
