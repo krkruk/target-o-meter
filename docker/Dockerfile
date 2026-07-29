@@ -50,16 +50,16 @@ WORKDIR /app
 # Install deps once (Docker cache: deps change far less often than src/).
 # ``--frozen`` refuses to write the lockfile — CI-grade reproducibility.
 #
-# The project splits runtime deps between [project.dependencies] (django,
-# gunicorn, whitenoise, the CV/scipy stack) and the PEP 735 ``default`` group
-# (django-ninja, django-q2, authlib). ``uv sync`` includes [project.dependencies]
-# by default, but named groups (even one called ``default``) are NOT auto-
-# included unless listed in a ``default-groups`` setting — so we pass
-# ``--group default`` explicitly. ``--no-dev`` excludes the dev/test/system-test
-# groups (ruff, pytest, playwright — not runtime). The result is the full
-# runtime dep set the container needs.
+# All runtime deps live in [project.dependencies] (django, django-ninja,
+# django-q2, authlib, django-vite, the CV/scipy stack, gunicorn, whitenoise).
+# ``uv sync`` installs [project.dependencies] by default; ``--no-dev`` excludes
+# the dev/test/system-test groups (ruff, pytest, playwright — not runtime).
+# The result is the full runtime dep set the container needs. (Previously
+# runtime deps were split into a ``default`` group + [project.dependencies];
+# that broke Railpack, whose default sync skips groups. Runtime now lives only
+# in [project.dependencies].)
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --group default
+RUN uv sync --frozen --no-dev
 
 # ---------------------------------------------------------------------------
 # Dev stage: deps + the baked frontend bundle. Backend Python src/ is bind-

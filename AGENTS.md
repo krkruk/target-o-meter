@@ -22,11 +22,12 @@
     *   **Sessions:** Managed via Django encrypted `HttpOnly` cookies (BFF pattern).
 
 ## 3. Dependency Management
-Dependencies are explicitly managed via `uv` using groups in `pyproject.toml`. Do not use `requirements.txt`.
-*   `default`: django, django-ninja, django-q2, pydantic, langchain, opencv-python-headless
-*   `dev`: ruff, import-linter, django-vite
-*   `test`: pytest, pytest-django, pytest-bdd
-*   `system-test`: httpx, playwright
+Dependencies are explicitly managed via `uv` in `pyproject.toml`. Do not use `requirements.txt`.
+*   `[project.dependencies]`: all runtime deps (django, django-ninja, django-q2, authlib, django-vite, langchain, opencv, etc.). ANY `uv sync` installs these — including Railpack's default `uv sync --no-dev` — so production builds always have the full runtime. Do not move runtime deps into a dependency-group (that's what broke Railpack, whose default sync skips groups).
+*   `[dependency-groups]` (PEP 735): dev/test tooling only.
+    *   `dev`: ruff, import-linter
+    *   `test`: pytest, pytest-django, pytest-bdd
+    *   `system-test`: httpx, playwright
 
 ## 4. Directory Structure (V-Model & DDD)
 All executable Python code is isolated in `src/`. Tests follow the V-Model: domain unit/integration tests co-locate with their domains; system and acceptance tests reside globally.
