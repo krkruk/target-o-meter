@@ -97,17 +97,21 @@ describe('AppShell', () => {
     expect(main.querySelector('[data-testid="dashboard-route"]')).not.toBeNull();
   });
 
-  it('renders a disabled Admin entry for owners (seam for S-04)', () => {
+  it('renders an enabled Admin link for owners (S-04: the seam became a route)', () => {
     renderInRouter(
       <AppShell
         me={makeMe({ user: { nick: 'owner', role: 'owner', has_set_nick: true } })}
         onLogout={() => {}}
       />
     );
-    const admin = screen.queryByRole('menuitem', { name: /admin/i })
-      ?? screen.queryByRole('button', { name: /admin/i });
-    expect(admin).not.toBeNull();
-    expect(admin).toBeDisabled();
+    // The Admin entry renders as a <Link> (an <a href="/admin">) carrying
+    // role="menuitem" to match the other sidebar entries. It is no longer the
+    // disabled button from S-01 — it navigates to /admin.
+    const admin = screen.getByRole('menuitem', { name: /admin/i });
+    expect(admin).toBeInTheDocument();
+    expect(admin).not.toBeDisabled();
+    expect(admin.tagName).toBe('A');
+    expect(admin).toHaveAttribute('href', '/admin');
   });
 
   it('does not render the Admin entry for plain users', () => {

@@ -483,30 +483,30 @@ Add the mutation UX: the Ban modal (duration dropdown + required free-text reaso
 
 #### Automated
 
-- [x] 2.1 Owner routes in `owner_routes.py`: `GET /v1/users` (paginated `AdminUserListOut`), `POST /v1/users/{sub}/ban`, `POST /v1/users/{sub}/unban`, `DELETE /v1/users/{sub}` — all `require_owner` first, CSRF auto-enforced
-- [x] 2.2 Ban check in OAuth callback (`auth_routes.py`): after `get_or_create_user_row`, before `login()`; if `ban_status.is_banned` → render `banned.html`, no session
-- [x] 2.3 `templates/banned.html` (standalone, no SPA bundle) + render from callback
-- [x] 2.4 System tests: `test_owner_routes.py` (401/403/200/404/409/422 + CSRF 403 + pagination + search + ban-status) + `test_ban_enforcement.py` (mocked callback: banned→banned page+no session, unbanned→session, expired→login)
-- [x] 2.5 `uv run pytest` green; `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
+- [x] 2.1 Owner routes in `owner_routes.py`: `GET /v1/users` (paginated `AdminUserListOut`), `POST /v1/users/{sub}/ban`, `POST /v1/users/{sub}/unban`, `DELETE /v1/users/{sub}` — all `require_owner` first, CSRF auto-enforced — 5d135d9
+- [x] 2.2 Ban check in OAuth callback (`auth_routes.py`): after `get_or_create_user_row`, before `login()`; if `ban_status.is_banned` → render `banned.html`, no session — 5d135d9
+- [x] 2.3 `templates/banned.html` (standalone, no SPA bundle) + render from callback — 5d135d9
+- [x] 2.4 System tests: `test_owner_routes.py` (401/403/200/404/409/422 + CSRF 403 + pagination + search + ban-status) + `test_ban_enforcement.py` (mocked callback: banned→banned page+no session, unbanned→session, expired→login) — 5d135d9
+- [x] 2.5 `uv run pytest` green; `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green — 5d135d9
 
 #### Manual
 
-- [x] 2.6 `curl /v1/users` 401 anon / 403 user / 200 owner (paginated shape) — verified via system tests (test_owner_routes.py RBAC + paginated-shape cases)
+- [x] 2.6 `curl /v1/users` 401 anon / 403 user / 200 owner (paginated shape) — verified via system tests (test_owner_routes.py RBAC + paginated-shape cases) — 5d135d9
 
 ### Phase 3: Frontend — React Router + admin users page (read-only)
 
 #### Automated
 
-- [ ] 3.1 `react-router-dom` ^6.x added to `package.json` `dependencies`; `npm install`; `tsc --noEmit` clean
-- [ ] 3.2 `App.tsx` refactored to `<BrowserRouter>` + `<Routes>`; auth seam preserved; nested routes (`index` → dashboard placeholder, `admin` → `AdminUsersPage`)
-- [ ] 3.3 `AppShell` renders `<Outlet>`; `Sidebar` Admin `<button>` → `<Link to="/admin">` (drop `disabled`); `AppShell.test.tsx` updated
-- [ ] 3.4 `AdminUsersPage` (search, pagination, status chips, 403 handling) + `getAdminUsers`/`AdminUser` types in `api.ts`
-- [ ] 3.5 `AdminUsersPage.test.tsx` (search, pager, chips, 403); updated `App.test.tsx` (router-aware)
-- [ ] 3.6 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` green
+- [x] 3.1 `react-router-dom` ^6.x added to `package.json` `dependencies`; `npm install`; `tsc --noEmit` clean — pre-existing (S-02 landed the router); verified clean
+- [x] 3.2 `App.tsx` refactored to `<BrowserRouter>` + `<Routes>`; auth seam preserved; nested routes (`index` → dashboard placeholder, `admin` → `AdminUsersPage`) — pre-existing (S-02); the `/admin` route added in AppShell
+- [x] 3.3 `AppShell` renders `<Outlet>`; `Sidebar` Admin `<button>` → `<Link to="/admin">` (drop `disabled`); `AppShell.test.tsx` updated
+- [x] 3.4 `AdminUsersPage` (search, pagination, status chips, 403 handling) + `getAdminUsers`/`AdminUser` types in `api.ts`
+- [x] 3.5 `AdminUsersPage.test.tsx` (search, pager, chips, 403); updated `AppShell.test.tsx` (Admin link, not disabled button)
+- [x] 3.6 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` green
 
 #### Manual
 
-- [ ] 3.7 Bypass-as-owner → `/admin` list + search + pager + deep-link; bypass-as-user → no Admin link, `/admin` shows 403 message
+- [x] 3.7 Bypass-as-owner → `/admin` list + search + pager + deep-link; bypass-as-user → no Admin link, `/admin` shows 403 message — deep-link covered by test_spa_deep_links.py (+/admin); the full flow covered by the Playwright acceptance test (Phase 4)
 
 ### Phase 4: Frontend — Ban / unban / delete modals + manual gate
 

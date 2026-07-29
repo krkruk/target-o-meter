@@ -1,6 +1,7 @@
 // Phase 3: Sidebar — collapsible left nav. Home pinned to the top, Logout
-// pinned to the bottom (flex margin-top: auto). A disabled Admin entry is
-// surfaced only for owners (the seam for S-04; no admin ships in S-01).
+// pinned to the bottom (flex margin-top: auto). S-04: the previously-disabled
+// Admin entry is now a real <Link to="/admin">, surfaced only for owners.
+import { Link } from 'react-router-dom';
 import styles from './Sidebar.module.css';
 
 interface SidebarProps {
@@ -32,9 +33,9 @@ export function Sidebar({ collapsed, onToggle, onLogout, onHome, isOwner }: Side
           {collapsed ? '⌂' : 'Home'}
         </button>
         {isOwner && (
-          <button role="menuitem" className={styles.item} disabled aria-disabled="true">
+          <Link role="menuitem" className={styles.item} to="/admin">
             {collapsed ? '⚙' : 'Admin'}
-          </button>
+          </Link>
         )}
       </div>
 

@@ -18,6 +18,7 @@ import { Capture } from './Capture';
 import { Upload } from './Upload';
 import { Waiting } from './Waiting';
 import { Results } from './Results';
+import { AdminUsersPage } from './AdminUsersPage';
 import styles from './AppShell.module.css';
 
 interface AppShellProps {
@@ -49,6 +50,10 @@ export function AppShell({ me, onLogout }: AppShellProps) {
             <Route path="/upload" element={<Upload />} />
             <Route path="/waiting/:jobId" element={<Waiting />} />
             <Route path="/results/:jobId" element={<Results />} />
+            {/* S-04: owner-only user management (Admin link in Sidebar). RBAC is
+                enforced server-side (require_owner); a non-owner visiting /admin
+                sees the page but getAdminUsers 403s → "Owner privileges required". */}
+            <Route path="/admin" element={<AdminUsersPage />} />
           </Routes>
         </main>
       </div>
