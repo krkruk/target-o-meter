@@ -29,7 +29,7 @@ from authlib.oauth2 import OAuth2Error
 from django.conf import settings
 from django.contrib.auth import login
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import csrf_protect
@@ -38,7 +38,7 @@ from django.views.decorators.http import require_POST
 from ninja import Router
 
 from src.bff.oauth import oauth
-from src.domains.identity.services import get_or_create_user_row
+from src.domains.identity.services import get_ban_status, get_or_create_user_row
 
 
 logger = logging.getLogger("target_o_meter.auth")
@@ -133,6 +133,23 @@ def callback(request: HttpRequest) -> HttpResponse:
         )
     else:
         logger.info("Login successful (sub=%s)", sub)
+
+    # S-04 ban enforcement (login-only). The callback is the single point a
+    # session is created — checking the active ban here, BEFORE login(), is
+    # sufficient. A brand-new user (is_first_login_ever) has no ban, so the
+    # ordering above (first-login log, then this check) is safe. If the user is
+    # actively banned: do NOT create a session; render the standalone banned
+    # page with the reason + expiry. The owner chose login-only enforcement
+    # (no per-request middleware); the 2h SESSION_COOKIE_AGE bounds the
+    # worst case (a user banned while already logged in).
+    ban_status = get_ban_status(sub)
+    if ban_status.is_banned:
+        logger.info("Login blocked — active ban until %s", ban_status.banned_until)
+        return render(
+            request,
+            "banned.html",
+            {"reason": ban_status.reason, "banned_until": ban_status.banned_until},
+        )
 
     # ``login()`` without ``authenticate()``: Auth0 already proved identity, so
     # there's no password to check. We must set ``user.backend`` so the session

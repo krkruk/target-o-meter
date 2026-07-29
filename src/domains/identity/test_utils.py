@@ -9,6 +9,9 @@ fixture can't leak ``OWNER_SUB_ID`` into sibling tests).
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from src.domains.identity.ban import Ban, Duration
 from src.domains.identity.models import User
 
 
@@ -33,3 +36,33 @@ def make_owner(sub: str) -> User:
     the row (this function).
     """
     return User.objects.create_user(sub=sub, nick="test-owner")
+
+
+def make_ban(
+    *,
+    user: User,
+    duration: str = Duration.ONE_DAY,
+    reason: str = "test ban reason",
+    banned_until: datetime | None = None,
+    lifted_at: datetime | None = None,
+) -> Ban:
+    """Create a ``Ban`` row for ``user``.
+
+    ``banned_until`` defaults to ``now() + duration_delta``. Pass an explicit
+    ``banned_until`` to test expired bans (a past datetime) or far-future ones.
+    ``lifted_at`` is left null (active) by default; set it to record an
+    already-lifted ban. Mirrors ``make_user``: pure row factory, no env mutation.
+    """
+    from src.domains.identity.ban import _DURATION_DELTAS
+
+    if banned_until is None:
+        banned_until = datetime.now(timezone.utc) + _DURATION_DELTAS[duration]
+    ban = Ban(
+        user=user,
+        reason=reason,
+        duration_kind=duration,
+        banned_until=banned_until,
+        lifted_at=lifted_at,
+    )
+    ban.save()
+    return ban

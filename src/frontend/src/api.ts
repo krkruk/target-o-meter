@@ -233,3 +233,97 @@ export async function getAggregations(): Promise<Aggregations> {
   if (!res.ok) throw new Error(`GET /v1/scores/aggregations failed: ${res.status}`);
   return (await res.json()) as Aggregations;
 }
+
+// S-04: owner-admin user management. The owner audience is DIFFERENT from
+// /v1/me — the list DOES carry `sub` (the owner needs it to match rows against
+// Auth0), so these types mirror AdminUserOut / AdminUserListOut (backend),
+// not the sub-less UserOut.
+
+export interface BanStatus {
+  is_banned: boolean;
+  reason: string | null;
+  banned_until: string | null;
+  lifted_at: string | null;
+  has_prior_ban: boolean;
+}
+
+export interface AdminUser {
+  user_uuid: string;
+  sub: string;
+  nick: string;
+  has_set_nick: boolean;
+  is_owner: boolean;
+  ban: BanStatus;
+}
+
+export interface AdminUserList {
+  items: AdminUser[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = 'HttpError';
+  }
+}
+
+export async function getAdminUsers(
+  params: { q?: string; page?: number; page_size?: number } = {},
+): Promise<AdminUserList> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set('q', params.q);
+  if (params.page) qs.set('page', String(params.page));
+  if (params.page_size) qs.set('page_size', String(params.page_size));
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const res = await fetch(`/v1/users${suffix}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    throw new HttpError(res.status, `GET /v1/users failed: ${res.status}`);
+  }
+  return (await res.json()) as AdminUserList;
+}
+
+// S-04 Phase 4: owner mutations. All carry the CSRF token via jsonHeaders()
+// (CSRF auto-enforced on SessionAuth for non-GET). Each throws HttpError(status)
+// on non-ok so the UI can map 409/404 to inline messages.
+
+export type BanDuration = '1h' | '1d' | '7d' | '30d';
+
+export async function banUser(
+  userSub: string,
+  body: { duration: BanDuration; reason: string },
+): Promise<BanStatus> {
+  const res = await fetch(`/v1/users/${encodeURIComponent(userSub)}/ban`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new HttpError(res.status, `POST /v1/users/.../ban failed: ${res.status}`);
+  return (await res.json()) as BanStatus;
+}
+
+export async function unbanUser(userSub: string): Promise<BanStatus> {
+  const res = await fetch(`/v1/users/${encodeURIComponent(userSub)}/unban`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+  });
+  if (!res.ok) throw new HttpError(res.status, `POST /v1/users/.../unban failed: ${res.status}`);
+  return (await res.json()) as BanStatus;
+}
+
+export async function deleteUser(userSub: string): Promise<void> {
+  const res = await fetch(`/v1/users/${encodeURIComponent(userSub)}`, {
+    method: 'DELETE',
+    headers: jsonHeaders(),
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new HttpError(res.status, `DELETE /v1/users/... failed: ${res.status}`);
+  }
+}

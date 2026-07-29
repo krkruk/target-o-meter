@@ -29,6 +29,10 @@ _SPA_ROUTES = [
     "/upload",
     "/waiting/123e4567-e89b-12d3-a456-426614174000",
     "/results/123e4567-e89b-12d3-a456-426614174000",
+    # S-04: the owner admin page is a client-side route; refreshing /admin
+    # must serve the SPA shell so BrowserRouter can pick it up. (/admin/ with
+    # a trailing slash is Django admin — handled by root urls.py first.)
+    "/admin",
 ]
 
 

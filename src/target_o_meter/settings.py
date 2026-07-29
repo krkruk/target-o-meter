@@ -229,8 +229,12 @@ SESSION_COOKIE_SECURE = SECURE_COOKIES
 # would suppress the sessionid cookie on that redirect → Authlib finds no
 # nonce in the session → validation fails silently. Do NOT change to Strict.
 SESSION_COOKIE_SAMESITE = "Lax"
-# 8h bounds token exposure (research §5 — the session is the token store).
-SESSION_COOKIE_AGE = 60 * 60 * 8
+# 2h bounds the window a banned-but-already-logged-in user can keep operating
+# (S-04). The owner chose login-only ban enforcement (no per-request
+# middleware), so the session age is the safety bound: a user banned while
+# already logged in loses access within ≤2h (next request after expiry → 401 →
+# re-login → blocked at the OAuth callback). Previously 8h.
+SESSION_COOKIE_AGE = 60 * 60 * 2
 
 CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SECURE = SECURE_COOKIES

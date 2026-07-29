@@ -2,7 +2,7 @@
 
 Covers the load-bearing logic: the derived role (Owner match, empty-env
 fail-closed, User default), nick CI-uniqueness, ``get_or_create_user_by_sub``
-create/return-existing, and ``list_users`` no-``sub``.
+create/return-existing.
 
 Mirrors ``vision/tests/test_services_q2.py`` in structure (``pytestmark =
 pytest.mark.django_db``, seeders via ``test_utils.py``).
@@ -18,7 +18,6 @@ from src.domains.identity.services import (
     NickTakenError,
     get_or_create_user_by_sub,
     get_user_context,
-    list_users,
     set_nick,
 )
 from src.domains.identity.test_utils import make_owner, make_user
@@ -169,24 +168,3 @@ def test_set_nick_raises_does_not_exist_on_unknown_sub() -> None:
     """An unknown ``sub`` raises ``User.DoesNotExist`` (BFF maps to 401)."""
     with pytest.raises(User.DoesNotExist):
         set_nick("auth0|never-seen", "alice")
-
-
-# ---------------------------------------------------------------------------
-# list_users
-# ---------------------------------------------------------------------------
-
-
-def test_list_users_returns_no_sub() -> None:
-    """``list_users`` DTOs MUST omit ``sub`` (Zero Email Storage, Q1).
-
-    The attribute itself must be absent — not merely falsy — so a Pydantic
-    dump can never leak the OIDC subject to a client.
-    """
-    make_user(sub="auth0|x", nick="dave")
-    make_user(sub="auth0|y", nick="erin")
-    out = list_users()
-    assert len(out) == 2
-    for dto in out:
-        assert not hasattr(dto, "sub"), "UserOut must not expose sub"
-        # S-01 added ``has_set_nick`` to ``UserOut``.
-        assert set(dto.model_dump().keys()) == {"nick", "role", "has_set_nick"}

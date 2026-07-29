@@ -1,0 +1,60 @@
+{% comment %}S-04 banned page — server-rendered, NOT part of the SPA.
+
+A banned user must not load the client app at all (no /v1/me, no bundle). This
+is a standalone HTML document (no {% vite_* %} tags, no #root, no JS) extending
+nothing, so it cannot accidentally inherit SPA script tags. The callback
+renders it directly when it detects an active ban.{% endcomment %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Account suspended — Target-o-meter</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #e8e8e8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+        }
+        .card {
+            max-width: 32rem;
+            text-align: center;
+            background: #262626;
+            border: 1px solid #404040;
+            border-radius: 8px;
+            padding: 2rem;
+        }
+        h1 { color: #ef4444; margin-top: 0; }
+        .reason {
+            background: #1a1a1a;
+            border-left: 3px solid #ef4444;
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            text-align: left;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .expiry { color: #a3a3a3; }
+        a {
+            color: #60a5fa;
+            display: inline-block;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <h1>You are banned</h1>
+        <p>Your access to Target-o-meter has been suspended by the owner.</p>
+        <div class="reason">{{ reason }}</div>
+        <p class="expiry">This ban is in effect until <strong>{{ banned_until|date:"Y-m-d H:i e" }}</strong> (UTC).</p>
+        <p>You can try logging in again after the ban expires. If you believe this is a mistake, contact the range owner.</p>
+        <a href="/login">Try again later</a>
+    </main>
+</body>
+</html>

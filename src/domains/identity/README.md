@@ -168,7 +168,7 @@ from src.domains.identity.services import (
     get_or_create_user_by_sub,  # OAuth callback: resolve-or-create by sub
     get_user_context,           # read accessor → UserContextDTO
     is_owner,                   # thin read of dto.is_owner
-    list_users,                 # owner route: all users as UserOut (no sub)
+    list_users_for_owner,       # owner route: paginated users as AdminUserOut
 )
 
 # After Auth0 callback validates the token:
@@ -200,7 +200,8 @@ src/domains/identity/
 ├── ports.py               Protocol boundaries (reserved — empty in F-01)
 ├── dtos.py                UserContextDTO / UserOut / MeOut (no sub crosses out)
 ├── services.py            get_or_create_user_by_sub / get_user_context /
-│                          is_owner / list_users
+│                          is_owner / ban_user / unban_user / get_ban_status /
+│                          list_users_for_owner / delete_user
 ├── test_utils.py          make_user / make_owner seeders
 ├── admin.py               read-mostly UserAdmin (role/is_owner read-only)
 ├── migrations/

@@ -11,6 +11,8 @@ client**. ``UserOut`` deliberately omits ``sub``; only ``UserContextDTO``
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -71,3 +73,66 @@ class ErrorOut(BaseModel):
     """Generic error envelope for declared non-2xx responses (e.g. 409)."""
 
     detail: str
+
+
+# ---------------------------------------------------------------------------
+# S-04: owner-admin DTOs.
+#
+# ``UserOut`` (above) stays sub-less for ``/v1/me`` (Zero Email Storage holds
+# for the user-facing audience). ``AdminUserOut`` is a DIFFERENT audience — the
+# owner needs ``sub`` to identify users across nick changes and to match rows
+# against the Auth0 dashboard. So it is a separate DTO, not a relaxation of
+# ``UserOut``.
+# ---------------------------------------------------------------------------
+
+
+class BanStatusOut(BaseModel):
+    """The per-user ban status attached to every admin-list row.
+
+    ``is_banned`` is true iff an active ban exists (future ``banned_until``,
+    ``lifted_at`` null). ``has_prior_ban`` is true if ANY ban (active or
+    expired) exists — drives the grey "Banned before" chip.
+    """
+
+    is_banned: bool
+    reason: str | None = None
+    banned_until: datetime | None = None
+    lifted_at: datetime | None = None
+    has_prior_ban: bool = False
+
+
+class AdminUserOut(BaseModel):
+    """Owner-facing user projection — DOES carry ``sub`` (different audience).
+
+    ``is_owner`` lets the SPA hide ban/delete buttons on the owner's own row
+    (the server guards too, but the UI should not offer the action).
+    """
+
+    user_uuid: UUID
+    sub: str
+    nick: str
+    has_set_nick: bool
+    is_owner: bool
+    ban: BanStatusOut
+
+
+class AdminUserListOut(BaseModel):
+    """Paginated owner-list response (offset pagination, hobbyist scale).
+
+    ``total`` + ``total_pages`` are included so the SPA renders pager controls
+    without a second round-trip.
+    """
+
+    items: list[AdminUserOut]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class BanIn(BaseModel):
+    """``POST /v1/users/{sub}/ban`` body. Required free-text justification."""
+
+    duration: Literal["1h", "1d", "7d", "30d"]
+    reason: str = Field(min_length=5, max_length=500)
+

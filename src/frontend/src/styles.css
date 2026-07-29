@@ -19,6 +19,18 @@
   --color-primary: #1a1a1a;
   --color-muted: #6a6a6a;
   --color-border: #e3e1dc;
+  /* Semantic palettes — shared by the admin ban/delete UI so danger and
+     warning stay consistent across CSS Modules instead of each file
+     re-hardcoding near-identical reds/ambers. */
+  --color-danger: #b91c1c;        /* chips, danger buttons, error text */
+  --color-danger-strong: #991b1b; /* danger button hover */
+  --color-danger-bg: #fee2e2;     /* soft danger surface (active-ban chip) */
+  --color-danger-border: #fecaca; /* soft danger border */
+  --color-warning-bg: #fef3c7;    /* reminder callout surface */
+  --color-warning-border: #f59e0b;/* reminder callout accent */
+  --color-warning-text: #78350f;  /* reminder callout text */
+  --color-neutral-bg: #f3f4f6;    /* soft neutral surface (prior-ban chip) */
+  --color-neutral-border: #e5e7eb;/* soft neutral border */
   --sidebar-width: 200px;
   --sidebar-collapsed-width: 56px;
 }
