@@ -512,11 +512,11 @@ Add the mutation UX: the Ban modal (duration dropdown + required free-text reaso
 
 #### Automated
 
-- [x] 4.1 `api.ts`: `banUser`, `unbanUser`, `deleteUser` (CSRF on all) + `BanStatus` type
-- [x] 4.2 `BanModal` (duration select + required free-text reason, min 5 chars; extend mode for active bans; dismissable) + test
-- [x] 4.3 `DeleteUserModal` (Auth0 reminder note + destructive confirm) + test
-- [x] 4.4 `AdminUsersPage` wiring: adaptive Ban/Unban/View-ban buttons, Delete button, hide actions on owner row; tests
-- [x] 4.5 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` + `make be-test` + `make fe-test` green
+- [x] 4.1 `api.ts`: `banUser`, `unbanUser`, `deleteUser` (CSRF on all) + `BanStatus` type — 6f61784
+- [x] 4.2 `BanModal` (duration select + required free-text reason, min 5 chars; extend mode for active bans; dismissable) + test — 6f61784
+- [x] 4.3 `DeleteUserModal` (Auth0 reminder note + destructive confirm) + test — 6f61784
+- [x] 4.4 `AdminUsersPage` wiring: adaptive Ban/Unban/View-ban buttons, Delete button, hide actions on owner row; tests — 6f61784
+- [x] 4.5 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` + `make be-test` + `make fe-test` green — 6f61784
 
 #### Manual
 
