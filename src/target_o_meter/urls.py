@@ -17,8 +17,14 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from src.target_o_meter.health_views import health
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # /health — Railway readiness probe (infrastructure-as-code P1). Routed
+    # BEFORE the BFF include so the SPA-shell catch-all in bff.urls does not
+    # swallow it; the prober has no session and needs the literal `ok`.
+    path('health', health, name='health'),
     # BFF (auth routes + ninja API) — mounted first so /bff/* and /api/* win
     # over the index catch-all. SPA catch-all (Phase 5 / S-01) goes last.
     path('', include('src.bff.urls')),

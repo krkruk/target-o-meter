@@ -1,0 +1,94 @@
+# CD — the deploy pipeline. Triggers on push to master (i.e. PR merge). Runs the
+# full chain then auto-deploys to Railway. Chained jobs via `needs:`:
+#   lint → (be-unit ∥ fe-unit) → system → acceptance → deploy
+# The deploy job uses `environment: production` to gate RAILWAY_TOKEN access —
+# even with the token in repo secrets, the job can't read it unless the
+# production environment allows (research.md:174).
+#
+# Concurrency: cd-master group, cancel-in-progress: FALSE — NEVER cancel a mid-
+# deploy. `railway up` returns when the build is TRIGGERED, not when it
+# completes; cancelling races Railway's builder (research.md:117). Contrast
+# ci.yml which cancels PR runs aggressively.
+#
+# Auto-deploy posture (no required-reviewer gate): tests pass → deploy fires.
+# Rollback is the recovery path for test-passing-but-broken-in-prod (plan §What
+# We're NOT Doing).
+name: CD
+
+on:
+  push:
+    branches: [master]
+
+# NEVER cancel a mid-deploy. Two pushes to master in quick succession both run
+# to completion; the second deploy supersedes the first as Railway's latest.
+concurrency:
+  group: cd-master
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # --- Test stage: mirrors ci.yml's chain (lint → unit ∥ → system) ----------
+  # Duplicated rather than reused because GitHub Actions has no native workflow-
+  # composition for job graphs; the composites (.github/actions/*) ARE the reuse
+  # unit, and every step below calls one.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-backend
+      - uses: ./.github/actions/setup-frontend
+      - uses: ./.github/actions/lint-check
+
+  be-unit:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-backend
+      - uses: ./.github/actions/run-be-tests
+
+  fe-unit:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-frontend
+      - uses: ./.github/actions/run-fe-tests
+
+  system:
+    needs: [be-unit, fe-unit]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-backend
+      - uses: ./.github/actions/run-system-tests
+
+  # --- Acceptance: JS Playwright E2E in dev mode (mock detector, zero secrets,
+  #     zero Google AI cost — research.md:599-618). The globalSetup self-boots
+  #     Django + Vite + qcluster. Needs the whole test stage green.
+  acceptance:
+    needs: [be-unit, fe-unit, system]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-backend
+      - uses: ./.github/actions/setup-frontend
+      - uses: ./.github/actions/run-acceptance-tests
+
+  # --- Deploy: auto-fires once acceptance (and therefore all upstream) passes.
+  #     environment: production is the GitHub Actions gate that makes
+  #     RAILWAY_TOKEN readable. If the production environment is misconfigured or
+  #     the required-status-check rule blocks it, this job cannot read the token.
+  deploy:
+    needs: [acceptance]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/deploy-railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}

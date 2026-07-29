@@ -1,0 +1,33 @@
+name: Run Acceptance Tests
+description: |
+  Run the JS Playwright E2E suite (src/frontend/tests-acceptance/) in DEV mode:
+  VISION_DETECTOR=mock, dev-bypass auth, zero Google AI Studio spend, zero
+  Auth0 secrets. The Playwright globalSetup self-boots the full stack (Django
+  :8187 + Vite :5173 + qcluster + seed) — no manual stack boot in the workflow.
+
+  Two browser installs are required:
+    1. `uv run playwright install --with-deps chromium` — the Python group
+       ships playwright; this provides the browser binary + system deps for the
+       Python runner's machinery.
+    2. `npx playwright install --with-deps chromium` (in src/frontend) — the JS
+       runner (@playwright/test) needs its own browser binary on the Node side.
+
+  No AUTH0_* / GOOGLE_API_KEY env is passed: the dev-mode globalSetup hardcodes
+  its env and needs none. Callers MUST run `setup-backend` and `setup-frontend`
+  before this composite.
+runs:
+  using: composite
+  steps:
+    - name: Install Playwright browser (Python runner)
+      shell: bash
+      run: uv run playwright install --with-deps chromium
+
+    - name: Install Playwright browser (JS runner)
+      shell: bash
+      working-directory: src/frontend
+      run: npx playwright install --with-deps chromium
+
+    - name: Playwright E2E (npm run test:acceptance)
+      shell: bash
+      working-directory: src/frontend
+      run: npm run test:acceptance

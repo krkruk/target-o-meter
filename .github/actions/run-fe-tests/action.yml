@@ -1,0 +1,12 @@
+name: Run Frontend Tests
+description: |
+  Run the FE vitest suite (`npm run test` = `vitest run`). jsdom environment,
+  API mocked (src/frontend/src/App.test.tsx). Env-hermetic: no secrets. Callers
+  MUST run `setup-frontend` before this composite.
+runs:
+  using: composite
+  steps:
+    - name: vitest run
+      shell: bash
+      working-directory: src/frontend
+      run: npm run test

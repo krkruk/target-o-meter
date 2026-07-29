@@ -1,0 +1,62 @@
+name: Setup Backend
+description: |
+  Install the opencv runtime apt deps, set up Python 3.14, install uv (pinned
+  @v6 — the bump from the stale setup-uv@v3 in the deleted uat.yml), and sync
+  every uv dependency group. Reused as the first step of every backend-bearing
+  job (lint, be-unit, system, acceptance, deploy).
+
+  The apt list MUST stay in lockstep with Dockerfile:31-43 (the opencv runtime
+  deps) and railpack.json's deploy.aptPackages — any change to one must land in
+  all three in the same PR. See plan §Migration Notes (Railpack-vs-Dockerfile
+  drift risk).
+inputs:
+  uv-cache-prefix:
+    description: Cache key suffix for the uv cache (lets callers vary the key).
+    required: false
+    default: "v1"
+runs:
+  using: composite
+  steps:
+    # opencv-python-headless wheel deps on slim runners. Without these, any
+    # test that imports cv2 (e.g. tests/test_geometry_regression.py) fails at
+    # import. Mirrors Dockerfile:31-43.
+    - name: Install opencv apt deps
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          libgl1 \
+          libglib2.0-0 \
+          libsm6 \
+          libxext6 \
+          libxrender1 \
+          libgomp1
+        sudo rm -rf /var/lib/apt/lists/*
+
+    - name: Set up Python 3.14
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.14"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+
+    # Cache the uv cache dir keyed on uv.lock + the caller-supplied prefix.
+    # Restore keys let a partial cache hit (deps changed) still warm most of
+    # the download.
+    - name: Cache uv
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/uv
+          ~/.local/share/uv
+        key: ${{ runner.os }}-uv-${{ inputs.uv-cache-prefix }}-${{ hashFiles('uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-${{ inputs.uv-cache-prefix }}-
+
+    # --frozen refuses to write the lockfile (CI-grade reproducibility).
+    # --all-groups pulls default + dev + test + system-test (everything the
+    # composite's callers might invoke: ruff, pytest, playwright, httpx).
+    - name: Sync uv dependency groups
+      shell: bash
+      run: uv sync --frozen --all-groups

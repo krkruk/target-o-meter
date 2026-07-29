@@ -1,0 +1,14 @@
+name: Run System Tests
+description: |
+  Run the blackbox system-test suite (tests/system/). Boots Django via
+  `manage.py runserver` subprocess, exercises the BFF via httpx — no browser.
+  Env-hermetic: tests/system/conftest.py sanitizes the env (scrubs all real
+  credentials via _SANITIZED_ENV_DENYLIST) and forces VISION_DETECTOR=mock.
+  Zero secrets. Callers MUST run `setup-backend` before this composite (the
+  suite imports cv2 and spawns the Django server).
+runs:
+  using: composite
+  steps:
+    - name: pytest tests/system
+      shell: bash
+      run: uv run pytest tests/system

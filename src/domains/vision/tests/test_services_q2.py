@@ -24,6 +24,9 @@ from src.domains.vision.detectors.factory import DetectorFactory
 from src.domains.vision.detectors.google_ai_studio_detector import (
     GoogleAIStudioDetector,
 )
+from src.domains.vision.detectors.google_studio_vlm_client import (
+    GoogleStudioVLMClient,
+)
 from src.domains.vision.detectors.mock_detector import MockDetector
 from src.domains.vision.models import ScoringJob
 from src.domains.vision.pipeline.storage import ScoringStorage
@@ -476,7 +479,12 @@ def test_factory_default_is_google(monkeypatch: pytest.MonkeyPatch) -> None:
     """VISION_DETECTOR unset (or "google") builds a GoogleAIStudioDetector — pins
     the prod default so a future change can't silently flip it (Phase 3.2)."""
     monkeypatch.delenv("VISION_DETECTOR", raising=False)
-    detector = DetectorFactory.build(os.environ.get("VISION_DETECTOR", "google"))
+    # The real GoogleStudioVLMClient ctor hard-fails without GOOGLE_API_KEY
+    # (a prod invariant). This test asserts *factory routing*, not client
+    # construction, so stub the ctor — keeps the test secret-free on CI
+    # (research.md:67 promises BE tests need zero secrets).
+    with patch.object(GoogleStudioVLMClient, "__init__", return_value=None):
+        detector = DetectorFactory.build(os.environ.get("VISION_DETECTOR", "google"))
     assert isinstance(detector, GoogleAIStudioDetector)
 
 

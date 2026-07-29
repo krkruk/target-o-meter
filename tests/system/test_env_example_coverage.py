@@ -36,9 +36,12 @@ pytestmark = pytest.mark.dev
 #   os.environ["KEY"], os.environ.get("KEY", ...), os.environ.pop("KEY"),
 #   os.getenv("KEY"). Only literal-string keys are captured; dynamic keys
 #   (os.environ[some_var]) are intentionally ignored — they can't be checked
-#   against a static template.
+#   against a static template. Only READS are captured: the first alternative
+#   carries a negative lookahead `(?!\s*=)` so `os.environ["KEY"] = value`
+#   (a WRITE — e.g. qcluster.py sets Q_CLUSTER_NAME for django-q2's Cluster())
+#   is not flagged as a developer-set var. The contract is "vars READ from env".
 _ENV_KEY = re.compile(
-    r"os\.environ\[\s*['\"]([A-Z_][A-Z0-9_]*)['\"]"
+    r"os\.environ\[\s*['\"]([A-Z_][A-Z0-9_]*)['\"]\s*\](?!\s*=)"
     r"|os\.environ\.get\(\s*['\"]([A-Z_][A-Z0-9_]*)['\"]"
     r"|os\.environ\.pop\(\s*['\"]([A-Z_][A-Z0-9_]*)['\"]"
     r"|os\.getenv\(\s*['\"]([A-Z_][A-Z0-9_]*)['\"]"

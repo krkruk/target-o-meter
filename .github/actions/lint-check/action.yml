@@ -1,0 +1,32 @@
+name: Lint Check
+description: |
+  The project's verification gate (the heart of `make check`), CI-fied. Runs
+  ruff + import-linter + the frontend type-check so CI fails fast on lint
+  errors before any test suite burns minutes.
+
+  This is the cheapest stage of every pipeline and sits upstream of all test
+  jobs via `needs: lint`. It does NOT run `ruff check --fix` (the Makefile's
+  [1/5] step) — CI never mutates files; the gating re-check (Makefile [2/5])
+  IS the gate. Treat this composite as the source of truth for what `make
+  check` enforces in CI.
+runs:
+  using: composite
+  steps:
+    # ruff: ruff check . — no --fix in CI (CI doesn't mutate). This is the
+    # Makefile [2/5] gating re-check; if it fails, the run stops here.
+    - name: ruff check
+      shell: bash
+      run: uv run ruff check .
+
+    # import-linter: enforces AGENTS.md §6.1 domain isolation (core, identity,
+    # vision must not import each other). Hard architectural gate.
+    - name: lint-imports (architecture contracts)
+      shell: bash
+      run: uv run lint-imports
+
+    # FE type-check: package.json scripts.lint = `tsc --noEmit`. Mirrors the
+    # Makefile [5/5] step. working-directory matches setup-frontend.
+    - name: Frontend type-check (tsc --noEmit)
+      shell: bash
+      working-directory: src/frontend
+      run: npm run lint

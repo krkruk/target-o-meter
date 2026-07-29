@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pre-commit hook — runs the full CI verification cycle before a commit lands.
+#
+# WHY: `make check` alone runs lint + typecheck + import contracts but NOT the
+# test suites. A test regression (e.g. the env-coverage failure surfaced after
+# the owner-user-management rebase) sailed through locally and only failed in
+# CI. This hook closes that gap by running the same chain CI runs, in the same
+# order: make check → backend pytest → frontend vitest.
+#
+# WHAT IT RUNS (fail-fast — stops at the first failing step, naming it):
+#   1. make check            — ruff + lint-imports + tsc (the existing gate)
+#   2. uv run pytest         — full backend suite (unit + integration + system)
+#   3. npm run test          — frontend vitest (in src/frontend/)
+#
+# SKIP GUARD: if no Python/JS/build-config files are staged, the hook exits 0
+# immediately — trivial doc-only commits skip the ~3-4min cycle.
+#
+# BYPASS: `git commit --no-verify` skips this hook for WIP commits. Use
+# deliberately; the whole point is that a green local commit means a green CI.
+#
+# SETUP (one-time per clone): `git config core.hooksPath .githooks`
+
+set -euo pipefail
+
+# Skip unless the commit touches code or build config.
+if ! git diff --cached --name-only | grep -qE '\.(py|ts|tsx)$|^Makefile$|^pyproject\.toml$|^uv\.lock$|^package(-lock)?\.json$|^\.github/'; then
+    echo "pre-commit: no code/build-config files staged — skipping verification cycle."
+    exit 0
+fi
+
+echo "▸ [1/3] make check (lint + typecheck + import contracts)"
+make check || { echo "✗ pre-commit FAILED at: make check"; exit 1; }
+
+echo "▸ [2/3] uv run pytest (backend suite)"
+uv run pytest || { echo "✗ pre-commit FAILED at: uv run pytest"; exit 1; }
+
+echo "▸ [3/3] npm run test (frontend vitest, in src/frontend/)"
+( cd src/frontend && npm run test ) || { echo "✗ pre-commit FAILED at: npm run test"; exit 1; }
+
+echo "✓ pre-commit passed (check + pytest + vitest) — CI will be green."

@@ -1,0 +1,13 @@
+name: Run Backend Tests
+description: |
+  Run the BE unit + integration suite via `uv run pytest`. Env-hermetic: zero
+  GitHub secrets, zero platform credentials (all settings have safe dev
+  defaults; pytest-django manages src/db.sqlite3). opencv apt libs must be
+  installed first (the importing tests trip without them) — callers MUST run
+  `setup-backend` before this composite.
+runs:
+  using: composite
+  steps:
+    - name: pytest (BE unit + integration)
+      shell: bash
+      run: uv run pytest
