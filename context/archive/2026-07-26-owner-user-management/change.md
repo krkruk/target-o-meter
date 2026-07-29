@@ -1,10 +1,10 @@
 ---
 change_id: owner-user-management
 title: Owner user management
-status: impl_reviewed
+status: archived
 created: 2026-07-26
 updated: 2026-07-29
-archived_at: null
+archived_at: 2026-07-29T15:58:05Z
 ---
 
 ## Notes

@@ -3,7 +3,7 @@ project: Target-o-meter
 version: 1
 status: draft
 created: 2026-07-19
-updated: 2026-07-28
+updated: 2026-07-29
 prd_version: 1
 main_goal: market-feedback
 top_blocker: skills
@@ -32,7 +32,7 @@ Shooting results are trapped on paper targets; ISSF hobbyist shooters have no ea
 | F-01 | `oauth-roles-scaffold` | (foundation) third-party OAuth sign-in wired, user model carries a role flag, owner determinable via configured sub (OWNER_SUB_ID env var) — no username flow, no admin UI | — | FR-001, §Access Control | done |
 | F-02 | `cv-service-boundary` | (foundation) CV detection service exists alongside Django with a callable I/O contract — photo in, per-hole scores + marked image out; fidelity is downstream | — | NFR (≥90%), FR-007, FR-008 | done |
 | S-01 | `sign-in-empty-dashboard` | sign in via OAuth, set a username on first login, and land on an empty dashboard | F-01 | US-01, FR-001, FR-002, FR-012 | done |
-| S-04 | `owner-user-management` | (as owner) list registered users, remove a user, and toggle registration to invite-only | F-01 | FR-003, FR-004, FR-005 | proposed |
+| S-04 | `owner-user-management` | (as owner) list registered users, remove a user, and toggle registration to invite-only | F-01 | FR-003, FR-004, FR-005 | done |
 | S-02 | `photo-detection-review` | photograph an ISSF target, upload it, and see the detected score with holes marked for review | F-02, S-01 | US-01, FR-006, FR-007, FR-008 | done |
 | S-03 | `accept-persist-dashboard` | confirm shooting parameters, accept or reject a detection result, and see accepted results aggregated on the dashboard | S-02 | US-01, FR-009, FR-010, FR-011, FR-012 | done |
 
@@ -113,7 +113,7 @@ Foundations below assume these are present and do NOT re-scaffold them.
   - Soft-delete or hard-delete for FR-004? — Owner: user. Block: no (PRD Socrates note: "Consider soft-delete in future" → hard-delete for MVP).
   - Invite-only mechanism — invite codes, email allowlist, or magic link? — Owner: user. Block: no (design detail resolvable in `/10x-plan`).
 - **Risk:** Sequenced in parallel with the wedge chain rather than after it: owner administration has zero downstream dependents and is the only slice that does not gate the validation milestone, so it is the natural candidate to slip first if `skills`/`time` pressure forces a scope cut.
-- **Status:** proposed
+- **Status:** done
 
 ### S-02: Photograph target + detection review
 
@@ -179,3 +179,4 @@ Foundations below assume these are present and do NOT re-scaffold them.
 - **S-01: user can sign in via the configured OAuth provider, set a username on first login, and land on an empty dashboard that renders the shell for FR-012 (no aggregated data yet).** — Archived 2026-07-26 → `context/archive/2026-07-25-sign-in-empty-dashboard/`. Lesson: —.
 - **S-02: user can capture a target photo via device camera, upload it, the CV service runs detection, and the user sees the overall score plus the target photo with holes marked — without yet persisting anything.** — Archived 2026-07-27 → `context/archive/2026-07-26-photo-detection-review/`. Lesson: —.
 - **S-03: user can confirm shooting parameters (caliber, distance, weapon type), accept a detection result to persist it (or reject to discard), and see accepted results aggregated on the dashboard (total shots, last session, best result).** — Archived 2026-07-28 → `context/archive/2026-07-28-accept-persist-dashboard/`. Lesson: —.
+- **S-04: the owner can list all registered users, remove a user without warning, and toggle registration between open and invite-only.** — Archived 2026-07-29 → `context/archive/2026-07-26-owner-user-management/`. Lesson: —.
