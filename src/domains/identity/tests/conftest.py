@@ -42,7 +42,7 @@ def banned_user(user_sub: str) -> "object":  # type: ignore[name-defined]
     """A plain ``User`` with an ACTIVE ``Ban`` (far-future ``banned_until``).
 
     The ban is created directly via ``make_ban`` (not the service) so tests of
-    ``get_active_ban``/``get_ban_status`` start from a known state without
+    ``_get_active_ban``/``get_ban_status`` start from a known state without
     exercising the create path.
     """
     user = make_user(sub=user_sub, nick="banned-alice")

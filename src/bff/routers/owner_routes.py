@@ -24,6 +24,7 @@ from src.domains.identity.dtos import (
     ErrorOut,
 )
 from src.domains.identity.services import (
+    ActiveBanExistsError,
     CannotModifyOwnerError,
     NoActiveBanError,
     UserNotFoundError,
@@ -59,6 +60,7 @@ def ban_a_user(request, user_sub: str, payload: BanIn) -> BanStatusOut:
 
     Domain exceptions map: ``UserNotFoundError → 404``,
     ``CannotModifyOwnerError → 409`` (cannot ban the owner),
+    ``ActiveBanExistsError → 409`` (lift the active ban first),
     ``ValueError → 422`` (invalid duration / short reason — the DTO also guards).
     """
     require_owner(request)
@@ -70,6 +72,8 @@ def ban_a_user(request, user_sub: str, payload: BanIn) -> BanStatusOut:
         raise HttpError(404, "User not found") from None
     except CannotModifyOwnerError:
         raise HttpError(409, "Cannot ban the owner") from None
+    except ActiveBanExistsError:
+        raise HttpError(409, "User is already banned") from None
     except ValueError:
         raise HttpError(422, "Invalid ban payload") from None
 

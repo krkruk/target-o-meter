@@ -22,7 +22,7 @@
 .title {
   margin: 0;
   font-size: 1.25rem;
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .warning {
@@ -34,16 +34,16 @@
 .reminder {
   margin: 0;
   padding: 0.6rem 0.75rem;
-  background: #fef3c7;
-  border-left: 3px solid #f59e0b;
+  background: var(--color-warning-bg);
+  border-left: 3px solid var(--color-warning-border);
   border-radius: 4px;
   font-size: 0.9rem;
-  color: #78350f;
+  color: var(--color-warning-text);
 }
 
 .error {
   margin: 0;
-  color: #b00020;
+  color: var(--color-danger);
   font-size: 0.88rem;
 }
 
@@ -73,7 +73,7 @@
   padding: 0.6rem 1.2rem;
   font-size: 1rem;
   font-weight: 500;
-  background: #b91c1c;
+  background: var(--color-danger);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -81,7 +81,7 @@
 }
 
 .danger:hover {
-  background: #991b1b;
+  background: var(--color-danger-strong);
 }
 
 .danger:disabled {

@@ -164,6 +164,15 @@ def test_ban_409_on_owner(client, owner_sub) -> None:
     assert _ban(client, owner.sub, csrf=csrf).status_code == 409
 
 
+def test_ban_409_on_already_banned(client, owner_sub, user_sub) -> None:
+    """A second ban while one is active → 409 (one active ban per user)."""
+    target = make_user(sub=user_sub, nick="alice")
+    _login_as(client, make_owner(owner_sub))
+    csrf = _csrf(client)
+    assert _ban(client, target.sub, csrf=csrf).status_code == 200
+    assert _ban(client, target.sub, csrf=csrf).status_code == 409
+
+
 def test_ban_422_short_reason(client, owner_sub, user_sub) -> None:
     target = make_user(sub=user_sub, nick="alice")
     _login_as(client, make_owner(owner_sub))

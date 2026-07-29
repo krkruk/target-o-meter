@@ -514,8 +514,10 @@ Add the mutation UX: the Ban modal (duration dropdown + required free-text reaso
 
 - [x] 4.1 `api.ts`: `banUser`, `unbanUser`, `deleteUser` (CSRF on all) + `BanStatus` type — 6f61784
 - [x] 4.2 `BanModal` (duration select + required free-text reason, min 5 chars; extend mode for active bans; dismissable) + test — 6f61784
+  - **Scope reduction (impl-review F3)**: the "extend mode for active bans" sub-feature was dropped. With the one-active-ban-per-user rule added by impl-review F1, "extend" would require lift-then-create atomically; the implemented UX instead exposes only an Unban button on active-ban rows (re-ban is available after lifting). BanModal is create-only. The View-ban affordance from 4.4 was dropped for the same reason.
 - [x] 4.3 `DeleteUserModal` (Auth0 reminder note + destructive confirm) + test — 6f61784
 - [x] 4.4 `AdminUsersPage` wiring: adaptive Ban/Unban/View-ban buttons, Delete button, hide actions on owner row; tests — 6f61784
+  - **Scope reduction (impl-review F3)**: the "View-ban" button on active-ban rows was dropped (no extend mode — see 4.2 note). Active-ban rows show only Unban; the owner re-bans after lifting if needed.
 - [x] 4.5 `npm run test` + `tsc --noEmit` + `npm run build` clean; `make check` + `make be-test` + `make fe-test` green — 6f61784
 
 #### Manual

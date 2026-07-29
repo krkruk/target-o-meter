@@ -4,7 +4,7 @@
 // Target-o-meter cannot delete the Auth0 user, the owner must do that in the
 // Auth0 dashboard. Submit → deleteUser; 409 shows "Cannot delete the owner".
 // Dismissable (Esc / overlay click / Cancel).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { deleteUser, type AdminUser } from '../api';
 import styles from './DeleteUserModal.module.css';
 
@@ -17,6 +17,16 @@ interface DeleteUserModalProps {
 export function DeleteUserModal({ user, onClose, onDeleted }: DeleteUserModalProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Esc-to-dismiss (overlay-click + Cancel are wired below). A pending submit
+  // is left alone so Esc can't interrupt an in-flight delete.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !pending) onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, pending]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

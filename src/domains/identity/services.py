@@ -21,7 +21,6 @@ from src.domains.identity.dtos import (
     AdminUserOut,
     BanStatusOut,
     UserContextDTO,
-    UserOut,
 )
 from src.domains.identity.models import User, _generated_nick
 
@@ -53,6 +52,17 @@ class CannotModifyOwnerError(Exception):
 
 class NoActiveBanError(Exception):
     """``unban_user`` called with no active ban (BFF → 409)."""
+
+
+class ActiveBanExistsError(Exception):
+    """``ban_user`` called while an active ban already exists (BFF → 409).
+
+    Enforces a single active ban per user — the UI never offers a Ban button
+    while ``is_banned``; this guard makes the API agree. Without it, two
+    overlapping active bans could leave ``unban_user`` lifting only one (the
+    latest by ``banned_until``) so the owner's Unban would appear to do
+    nothing.
+    """
 
 
 # 1–64 chars after trim — matches ``User.nick``'s ``max_length=64``.
@@ -128,25 +138,14 @@ def is_owner(dto: UserContextDTO) -> bool:
     return dto.is_owner
 
 
-def list_users() -> list[UserOut]:
-    """Return all users as ``UserOut`` DTOs (no ``sub``).
-
-    Backs the demo owner route (Phase 3.5). Returns an empty list until S-04
-    adds real data — but the mapping surface is proven now.
-    """
-    return [
-        UserOut(nick=u.nick, role=u.role, has_set_nick=u.has_set_nick)
-        for u in User.objects.all()
-    ]
-
-
 # ---------------------------------------------------------------------------
 # S-04: ban lifecycle + owner-list services.
 #
 # Primitives in, DTOs out; typed exceptions; no ORM/IntegrityError crossing
-# the seam. ``get_active_ban`` is the one ORM-returning read for the OAuth
-# callback's convenience — documented as such, mirroring
-# ``get_or_create_user_row``.
+# the seam. The callback reads ban state via ``get_ban_status`` (a DTO), so
+# no ban accessor returns an ORM object across the boundary —
+# ``get_or_create_user_row`` remains the sole documented ORM-returning
+# exception, justified by ``login()``'s model-instance requirement.
 # ---------------------------------------------------------------------------
 
 _REASON_MIN_LEN = 5
@@ -183,15 +182,17 @@ def _ban_to_status(ban: Ban | None, has_prior: bool) -> BanStatusOut:
     )
 
 
-def get_active_ban(user_sub: str) -> Ban | None:
+def _get_active_ban(user_sub: str) -> Ban | None:
     """Return the active ``Ban`` for ``user_sub`` (or ``None``).
 
-    "Active" = ``banned_until > now() AND lifted_at IS NULL``. The single
-    ORM-returning read accessor — used by the OAuth callback's enforcement
-    check. Mirrors the ``get_or_create_user_row`` exception pattern
-    (services.py) where ``login()``'s model-instance requirement justifies an
-    ORM return at an isolated, documented seam. Here the callback needs the
-    row's ``reason``/``banned_until`` to render the banned page.
+    Private helper — does NOT cross the domain boundary. The BFF callback
+    reads ban state via ``get_ban_status`` (a DTO); this ORM-returning read
+    exists only to back ``ban_user``'s overlap guard and ``unban_user``'s
+    lift target, so neither has to repeat the "active" query.
+
+    "Active" = ``banned_until > now() AND lifted_at IS NULL``. When more than
+    one row matches (only reachable via direct DB writes; ``ban_user`` refuses
+    overlapping active bans), the latest ``banned_until`` wins.
     """
     return (
         Ban.objects.filter(
@@ -227,6 +228,8 @@ def ban_user(*, user_sub: str, duration: str, reason: str) -> BanStatusOut:
 
     - Unknown sub → ``UserNotFoundError`` (BFF → 404).
     - Target is the owner → ``CannotModifyOwnerError`` (BFF → 409).
+    - An active ban already exists → ``ActiveBanExistsError`` (BFF → 409).
+      Enforces a single active ban per user (lift before re-banning).
     - ``duration`` not one of the four literals → ``ValueError`` (BFF → 422).
     - ``reason`` shorter than 5 chars (after trim) → ``ValueError`` (BFF → 422).
       The DTO enforces this too; the service double-checks defensively.
@@ -237,6 +240,8 @@ def ban_user(*, user_sub: str, duration: str, reason: str) -> BanStatusOut:
         raise UserNotFoundError(user_sub) from None
     if user.is_owner:
         raise CannotModifyOwnerError(user_sub)
+    if _get_active_ban(user_sub) is not None:
+        raise ActiveBanExistsError(user_sub)
 
     reason = (reason or "").strip()
     if not (_REASON_MIN_LEN <= len(reason) <= _REASON_MAX_LEN):
@@ -262,7 +267,7 @@ def unban_user(*, user_sub: str) -> BanStatusOut:
     """
     if not User.objects.filter(sub=user_sub).exists():
         raise UserNotFoundError(user_sub) from None
-    ban = get_active_ban(user_sub)
+    ban = _get_active_ban(user_sub)
     if ban is None:
         raise NoActiveBanError(user_sub)
     ban.lifted_at = timezone.now()

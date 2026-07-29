@@ -84,11 +84,16 @@ export function AdminUsersPage() {
     setData((prev) => {
       if (!prev) return prev;
       const items = prev.items.filter((u) => u.sub !== sub);
+      // Derive total_pages from the decremented GLOBAL total, not the
+      // page-local items.length — otherwise deleting the last row on page 1
+      // of a 2-page list would shrink items.length below page_size and hide
+      // the pager, making page 2 unreachable until a refetch.
+      const total = Math.max(0, prev.total - 1);
       return {
         ...prev,
         items,
-        total: Math.max(0, prev.total - 1),
-        total_pages: Math.max(1, Math.ceil(items.length / prev.page_size)),
+        total,
+        total_pages: Math.max(1, Math.ceil(total / prev.page_size)),
       };
     });
   }, []);

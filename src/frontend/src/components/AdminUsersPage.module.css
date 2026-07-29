@@ -78,15 +78,15 @@
 }
 
 .activeBan {
-  background: #fee2e2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger-border);
 }
 
 .priorBan {
-  background: #f3f4f6;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
+  background: var(--color-neutral-bg);
+  color: var(--color-muted);
+  border: 1px solid var(--color-neutral-border);
 }
 
 .actions {
@@ -109,8 +109,8 @@
 }
 
 .dangerBtn {
-  color: #b91c1c;
-  border-color: #fecaca;
+  color: var(--color-danger);
+  border-color: var(--color-danger-border);
 }
 
 .pager {
@@ -141,7 +141,7 @@
 }
 
 .rowError {
-  color: #b91c1c;
+  color: var(--color-danger);
   font-size: 0.8rem;
   white-space: nowrap;
 }

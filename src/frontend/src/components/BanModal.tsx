@@ -5,7 +5,7 @@
 // DISMISSABLE (Esc / overlay click / Cancel) — unlike NickPrompt which is
 // mandatory on first login. On submit → banUser; 409 (cannot ban the owner)
 // surfaces inline.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { banUser, type AdminUser, type BanDuration, type BanStatus } from '../api';
 import styles from './BanModal.module.css';
 
@@ -23,6 +23,16 @@ export function BanModal({ user, onClose, onBanned }: BanModalProps) {
   const [reason, setReason] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Esc-to-dismiss (overlay-click + Cancel are wired below). A pending submit
+  // is left alone so Esc can't interrupt an in-flight ban.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !pending) onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, pending]);
 
   const trimmed = reason.trim();
   const canSubmit = trimmed.length >= REASON_MIN && !pending;

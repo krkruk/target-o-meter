@@ -17,11 +17,12 @@ from django.utils import timezone
 
 from src.domains.identity.ban import Ban, Duration
 from src.domains.identity.services import (
+    ActiveBanExistsError,
     CannotModifyOwnerError,
     NoActiveBanError,
     UserNotFoundError,
+    _get_active_ban,
     ban_user,
-    get_active_ban,
     get_ban_status,
     list_users_for_owner,
     unban_user,
@@ -74,6 +75,32 @@ def test_ban_user_refuses_the_owner(owner_sub: str) -> None:
         ban_user(user_sub=owner.sub, duration=Duration.ONE_DAY, reason="trying to lock the owner out")
 
 
+def test_ban_user_refuses_overlapping_active_ban(user_sub: str) -> None:
+    """A second ban while one is active is refused — ``ActiveBanExistsError``.
+
+    Guards against the create/lift asymmetry: without this, two overlapping
+    active bans would leave ``unban_user`` lifting only the latest, so the
+    owner's Unban would appear to do nothing.
+    """
+    user = make_user(sub=user_sub, nick="alice")
+    ban_user(user_sub=user.sub, duration=Duration.ONE_DAY, reason="first offense")
+    with pytest.raises(ActiveBanExistsError):
+        ban_user(user_sub=user.sub, duration=Duration.SEVEN_DAYS, reason="second offense before lift")
+    # The original active ban is untouched (still exactly one).
+    assert Ban.objects.filter(user=user, lifted_at__isnull=True).count() == 1
+
+
+def test_ban_user_allows_reban_after_lift(user_sub: str) -> None:
+    """After lifting the active ban, a fresh ban is allowed (lift-then-create)."""
+    user = make_user(sub=user_sub, nick="alice")
+    ban_user(user_sub=user.sub, duration=Duration.ONE_HOUR, reason="first offense")
+    unban_user(user_sub=user.sub)
+    # Now re-banning must succeed and produce a new active ban.
+    status = ban_user(user_sub=user.sub, duration=Duration.ONE_DAY, reason="relapsed after unban")
+    assert status.is_banned is True
+    assert status.reason == "relapsed after unban"
+
+
 def test_ban_user_unknown_sub_raises(user_sub: str) -> None:
     """A sub with no row → ``UserNotFoundError`` (BFF maps to 404)."""
     with pytest.raises(UserNotFoundError):
@@ -95,13 +122,13 @@ def test_ban_user_rejects_invalid_duration(user_sub: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# get_active_ban / get_ban_status — active vs expired vs prior
+# _get_active_ban / get_ban_status — active vs expired vs prior
 # ---------------------------------------------------------------------------
 
 
 def test_get_active_ban_returns_active_ban(banned_user) -> None:
     """An active ban (future ``banned_until``, no ``lifted_at``) is returned."""
-    ban = get_active_ban(banned_user.sub)
+    ban = _get_active_ban(banned_user.sub)
     assert ban is not None
     assert ban.user_id == banned_user.id
     assert ban.lifted_at is None
@@ -111,7 +138,7 @@ def test_get_active_ban_none_when_expired(user_sub: str) -> None:
     """A ban whose ``banned_until`` is past returns ``None`` (expired)."""
     user = make_user(sub=user_sub, nick="alice")
     make_ban(user=user, banned_until=timezone.now() - timedelta(days=1))
-    assert get_active_ban(user.sub) is None
+    assert _get_active_ban(user.sub) is None
 
 
 def test_get_active_ban_none_when_lifted(user_sub: str) -> None:
@@ -122,7 +149,7 @@ def test_get_active_ban_none_when_lifted(user_sub: str) -> None:
         banned_until=timezone.now() + timedelta(days=7),
         lifted_at=timezone.now(),
     )
-    assert get_active_ban(user.sub) is None
+    assert _get_active_ban(user.sub) is None
 
 
 def test_get_ban_status_active(banned_user) -> None:
@@ -166,7 +193,7 @@ def test_unban_user_sets_lifted_at(banned_user) -> None:
     assert status.lifted_at is not None
     ban = Ban.objects.get(user=banned_user)
     assert ban.lifted_at is not None
-    assert get_active_ban(banned_user.sub) is None
+    assert _get_active_ban(banned_user.sub) is None
 
 
 def test_unban_user_with_no_active_ban_raises(user_sub: str) -> None:

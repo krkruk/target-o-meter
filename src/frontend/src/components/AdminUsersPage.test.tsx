@@ -218,4 +218,25 @@ describe('AdminUsersPage (read-only)', () => {
     // The row is gone.
     await waitFor(() => expect(screen.queryByText('plain')).toBeNull());
   });
+
+  it('keeps total_pages from the global total after a delete (pager stays visible on a multi-page list)', async () => {
+    // Regression for the total_pages-after-delete miscompute: deleting a row on
+    // page 1 of a 2-page list must NOT shrink total_pages to 1 (which would hide
+    // the pager and strand page 2). total_pages must follow the global total.
+    const user = userEvent.setup();
+    const row = makeAdminUser({ nick: 'deleteme', sub: 'auth0|deleteme' });
+    vi.spyOn(api, 'getAdminUsers').mockResolvedValue({
+      items: [row], page: 1, page_size: 20, total: 25, total_pages: 2,
+    });
+    vi.spyOn(api, 'deleteUser').mockResolvedValue(undefined);
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /delete/i }));
+    await user.click(screen.getByRole('button', { name: /delete permanently/i }));
+
+    // total 25 → 24 over page_size 20 still rounds up to 2 pages: pager visible.
+    await waitFor(() => expect(screen.getByText(/page 1 of 2/i)).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /next/i })).not.toBeNull();
+  });
 });
