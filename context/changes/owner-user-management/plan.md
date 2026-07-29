@@ -465,19 +465,19 @@ Add the mutation UX: the Ban modal (duration dropdown + required free-text reaso
 
 #### Automated
 
-- [ ] 1.1 `Ban` model in `src/domains/identity/ban.py` (UUID PK, FK→User CASCADE, reason, duration_kind, banned_at, banned_until, lifted_at; `Duration` TextChoices; `_DURATION_DELTAS`)
-- [ ] 1.2 Migration `0003_ban` generated + applies cleanly (`makemigrations identity` → `migrate`)
-- [ ] 1.3 Identity DTOs (`BanStatusOut`, `AdminUserOut`, `AdminUserListOut`, `BanIn`) in `dtos.py`; `UserOut`/`UserContextDTO` unchanged
-- [ ] 1.4 Ban services (`ban_user`, `unban_user`, `get_active_ban`/`get_ban_status`) + typed exceptions (`UserNotFoundError`, `CannotModifyOwnerError`, `NoActiveBanError`)
-- [ ] 1.5 `list_users_for_owner(q, page, page_size)` with nick+sub CI search, nick-asc order, bulk ban-status attach, offset pagination
-- [ ] 1.6 `SESSION_COOKIE_AGE` 8h → 2h in `settings.py` with rationale comment
-- [ ] 1.7 Identity unit tests (`test_ban_services.py` + `test_utils.make_ban` + `banned_user` fixture)
-- [ ] 1.8 `uv run pytest src/domains/identity/tests/` green
-- [ ] 1.9 `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
+- [x] 1.1 `Ban` model in `src/domains/identity/ban.py` (UUID PK, FK→User CASCADE, reason, duration_kind, banned_at, banned_until, lifted_at; `Duration` TextChoices; `_DURATION_DELTAS`)
+- [x] 1.2 Migration `0003_ban` generated + applies cleanly (`makemigrations identity` → `migrate`)
+- [x] 1.3 Identity DTOs (`BanStatusOut`, `AdminUserOut`, `AdminUserListOut`, `BanIn`) in `dtos.py`; `UserOut`/`UserContextDTO` unchanged
+- [x] 1.4 Ban services (`ban_user`, `unban_user`, `get_active_ban`/`get_ban_status`) + typed exceptions (`UserNotFoundError`, `CannotModifyOwnerError`, `NoActiveBanError`)
+- [x] 1.5 `list_users_for_owner(q, page, page_size)` with nick+sub CI search, nick-asc order, bulk ban-status attach, offset pagination
+- [x] 1.6 `SESSION_COOKIE_AGE` 8h → 2h in `settings.py` with rationale comment
+- [x] 1.7 Identity unit tests (`test_ban_services.py` + `test_utils.make_ban` + `banned_user` fixture)
+- [x] 1.8 `uv run pytest src/domains/identity/tests/` green
+- [x] 1.9 `uv run ruff check .` + `uv run lint-imports` + `uv run python src/manage.py check` green
 
 #### Manual
 
-- [ ] 1.10 `shell -c "Ban._meta.db_table"` prints `identity_ban`; `showmigrations identity` shows 0003 applied
+- [x] 1.10 `shell -c "Ban._meta.db_table"` prints `identity_ban`; `showmigrations identity` shows 0003 applied
 
 ### Phase 2: Backend — BFF owner routes + ban enforcement + banned page
 

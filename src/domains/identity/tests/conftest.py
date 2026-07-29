@@ -5,9 +5,12 @@ directly). These fixtures wrap the seeders for the unit tests.
 """
 from __future__ import annotations
 
-import pytest
+from datetime import timedelta
 
-from src.domains.identity.test_utils import make_user
+import pytest
+from django.utils import timezone
+
+from src.domains.identity.test_utils import make_ban, make_user
 
 
 @pytest.fixture
@@ -32,3 +35,20 @@ def user_sub() -> str:
 def seeded_user(user_sub: str) -> "object":  # type: ignore[name-defined]
     """A plain ``User`` row (NOT the owner)."""
     return make_user(sub=user_sub, nick="alice")
+
+
+@pytest.fixture
+def banned_user(user_sub: str) -> "object":  # type: ignore[name-defined]
+    """A plain ``User`` with an ACTIVE ``Ban`` (far-future ``banned_until``).
+
+    The ban is created directly via ``make_ban`` (not the service) so tests of
+    ``get_active_ban``/``get_ban_status`` start from a known state without
+    exercising the create path.
+    """
+    user = make_user(sub=user_sub, nick="banned-alice")
+    make_ban(
+        user=user,
+        reason="fixture ban",
+        banned_until=timezone.now() + timedelta(days=7),
+    )
+    return user
