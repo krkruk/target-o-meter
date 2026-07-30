@@ -718,32 +718,59 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 #### Manual
 
 - [ ] 8.5 Bucket creds preserved on first apply (Open Q #3) — fallback: re-set + add explicit ref
-- [ ] 8.6 Tigris endpoint reachable via test upload (Open Q #5) — fallback: set `AWS_S3_ENDPOINT_URL`
+- [x] 8.6 Tigris endpoint reachable via test upload (Open Q #5) — fallback: set `AWS_S3_ENDPOINT_URL` — **CONFIRMED: upload reaches S3 after addressing fix (8024d3c); endpoint was correct, the failure was the `virtual-host`→`auto` addressing value — 8024d3c**
 - [ ] 8.7 Image size ≤ 4 GB (Open Q #9) — fallback: trim railpack.json build steps
 - [ ] 8.8 Cold-start wake latency measured (Open Q #11) — fallback: accept or Hobby upgrade
 - [ ] 8.9 Free-RAM headroom: no OOM-kill after a CV job — fallback: Q2_WORKERS=2, then Hobby
+      — **NOT MET: q2 worker SIGKILLed mid-`process_image` (idle baseline already OOMs at
+      512MB); user chose the Hobby ($5/mo) upgrade as the resolution (not Q2_WORKERS=2 — the
+      footprint doesn't fit 512MB even at workers=1); pending the upgrade + upload retry**
 - [ ] 8.10 `/health` returns 200 on the Railway domain
 - [ ] 8.11 OWNER_SUB_ID set after first prod login confirms Owner role active
 
 #### Phase 8 — Open investigation: POST /v1/scoring/jobs returns 500 (upload fails)
 
-**Update 2026-07-30 (commit ac69636):** step 1 of the investigation — "make
-the error visible" — has landed. A `LOGGING` dict was added to `settings.py`
-(always-on console for `django.request`/`django`/`src`/`django-q` + WARNING
-root catch-all), plus stage-by-stage INFO logging in `scoring_routes.
-create_scoring_job` (upload received → saved → enqueued) and
-`vision.services.process_image` (start → upload read back → succeeded).
-Pushed via the deploy-only CD run (`30563496750`) on `ac69636`; the deploy
-job hit a **Railway Free-tier peak-hours throttle** ("Free-tier deploys to
-europe-west4-drams3a are not available during peak hours (8 AM – 8 PM Europe/
-Amsterdam)") at ~18:53 Amsterdam — an environmental constraint, NOT a defect
-in the change. Retry the push (or `railway up`) after 20:00 Amsterdam for the
-deploy to land. **Next, once deployed:** retry the upload in prod and read
-the actual traceback from `railway logs`, then branch on the exception type
-per step 2 below. The S3 hypothesis (primary) is confirmed-or-ruled-out once
-the traceback names the exception. A regression was also caught: the initial
-`root: WARNING` config filtered django-q's INFO "Q Cluster … running." banner
-(logger named `django-q`, not under `django.*`), breaking
+**Update 2026-07-30 (commits ac69636, 8024d3c):** step 1 of the investigation
+— "make the error visible" — landed in `ac69636` (LOGGING dict + upload/worker
+stage logging), and **step 2 confirmed + fixed the root cause** in `8024d3c`.
+The traceback named it immediately: `botocore.exceptions.
+InvalidS3AddressingStyleError: S3 addressing style virtual-host is invalid.
+Valid options are: 'auto', 'virtual', and 'path'`. The bug was a single env
+var — `AWS_S3_ADDRESSING_STYLE` declared as `"virtual-host"` in
+`.railway/railway.ts`, copied verbatim from the Railway Storage Bucket's
+Connect-panel "urlStyle" label, but boto3 uses a different word (`"virtual"`)
+for that concept and rejected the value at client-construction time (before
+any network call). The S3 creds/endpoint/ACL hypotheses were all ruled out —
+the failure was a config-string vocabulary mismatch. Fix: set the value to
+`"auto"` in the Railway dashboard (user, took effect on redeploy) AND in the
+IaC source-of-truth (`8024d3c`, so a future `config apply` does not drift it
+back). **Confirmed live after the fix:** upload pipeline runs end-to-end —
+`upload received` → `upload saved stored_path=uploads/5d179f1ea2778fe3.jpg` →
+`enqueued job_id=…` → `process_image: start` → `process_image: upload read
+back bytes=1471270`. No more 500 on `POST /v1/scoring/jobs`.
+
+**NEW blocker surfaced by the same logs — OOM kills the q2 worker mid-task
+(Phase 8.9, sharper than the plan's contingency).** The upload now succeeds
+and the task is picked up, BUT the worker running `process_image` is
+SIGKILLed during `PipelineRunner.run` (opencv decode + genai import + Google
+detector): the log shows `process_image: start` → `process_image: upload read
+back` → `CRITICAL django-q reincarnated worker … after death`, with NO
+`process_image: succeeded` and NO `Processed '…process_image'`. Scoring never
+completes. Root cause is the **512MB Free-tier ceiling vs the single-container
+footprint**: django-q2 at `workers=1` still spawns worker + monitor + pusher +
+scheduler processes (4 q2 + 1 gunicorn all sharing 512MB), and the idle
+baseline already trips gunicorn `SIGKILL! Perhaps out of memory?` BEFORE any
+upload arrives (visible at 18:11:39). The opencv/genai import spike on top is
+what kills the worker mid-task. `Q2_WORKERS=1` and gunicorn `--workers 1` are
+already minimal; the 2-service split that would let qcluster live on a
+separate box is ruled out by SQLite+ORM-broker (plan §"What We're NOT
+Doing"). **User decision:** upgrade to Hobby ($5/mo, ~8GB RAM, sleep off) —
+the documented escape hatch. The product flow (upload works, scoring doesn't)
+is gated on it.
+
+A regression was also caught + fixed in `ac69636`: the initial
+`root: WARNING` LOGGING config filtered django-q's INFO "Q Cluster … running."
+banner (logger named `django-q`, not under `django.*`), breaking
 `test_qcluster_shuts_down_cleanly_on_sigint` — fixed by an explicit
 `django-q` INFO logger entry.
 
@@ -813,5 +840,8 @@ stance of 8.6 (Tigris endpoint) — the upload IS the test, and it's failing.
 
 - [ ] 8.12 (this investigation) — make the 500 traceback visible via a `LOGGING`
       dict, then fix the root cause it names; confirm a real upload returns 201
-      — **step 1 done (LOGGING + stage logging landed in ac69636, deployed);
-      awaiting prod upload retry to read the traceback + fix root cause**
+      — **traceback visible (ac69636) + root cause fixed (8024d3c: `virtual-host`→`auto`):
+      upload now returns success and the task is enqueued/started (no more 500). The "confirm
+      201" half is done in spirit but the row stays open because `process_image` doesn't
+      *complete* — it's OOM-killed (8.9); final confirmation of a SUCCEEDED job pending the
+      Hobby upgrade**
