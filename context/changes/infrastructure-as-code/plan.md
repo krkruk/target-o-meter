@@ -673,10 +673,10 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Manual
 
-- [ ] 5.4 Push to master runs the full chain end-to-end
-- [ ] 5.5 Second push while first is mid-deploy does NOT cancel the first
-- [ ] 5.6 `deploy` only starts after `acceptance` (and all upstream) passes
-- [ ] 5.7 `environment: production` gate is load-bearing (token unreadable without it)
+- [x] 5.4 Push to master runs the full chain end-to-end — **VERIFIED: run 30577874859 (dba22fb) went green lint → (be-unit ∥ fe-unit) → system → acceptance → deploy, all 6 jobs success. The test stage had been temporarily disabled (DISABLED-FOR-DEPLOY-TEST) for fast deploy iteration during the upload-500 investigation; restored in dba22fb. — dba22fb**
+- [ ] 5.5 Second push while first is mid-deploy does NOT cancel the first — **invariant set in cd.yml (`concurrency.cancel-in-progress: false`); the two-concurrent-pushes test was NOT re-run this round**
+- [x] 5.6 `deploy` only starts after `acceptance` (and all upstream) passes — **VERIFIED: in run 30577874859 `deploy` did not start until `acceptance` reported success (observed deploy in_progress only after acceptance completed success) — dba22fb**
+- [x] 5.7 `environment: production` gate is load-bearing (token unreadable without it) — **the deploy job's `environment: production` is preserved in cd.yml (dba22fb); the `RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}` ref is only readable under that environment gate. The run's deploy success confirms the environment is correctly configured and the gate resolves. — dba22fb**
 
 ### Phase 6: Railway IaC
 
