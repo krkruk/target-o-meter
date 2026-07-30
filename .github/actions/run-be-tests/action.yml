@@ -8,6 +8,19 @@ description: |
 runs:
   using: composite
   steps:
+    # Pin BLAS/LAPACK backends to a single thread. Multi-threaded OpenBLAS
+    # reduces sums/dot-products in a non-associative order → non-determinism
+    # in the last 1–2 ULPs, which breaks the geometry-regression gate (the
+    # least_squares refiner + integer-rounding amplifies ULPs into ~0.01–0.02
+    # target_ring1_px drift). Single-threading removes the largest source of
+    # cross-run/cross-CPU ULP variance for every numerically-sensitive test.
+    # Does not fully solve cross-CPU SIMD dispatch (test tolerances still
+    # absorb that), but reduces drift magnitude.
     - name: pytest (BE unit + integration)
       shell: bash
+      env:
+        OMP_NUM_THREADS: "1"
+        OPENBLAS_NUM_THREADS: "1"
+        MKL_NUM_THREADS: "1"
+        NUMEXPR_NUM_THREADS: "1"
       run: uv run pytest
