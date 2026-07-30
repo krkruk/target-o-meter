@@ -197,11 +197,19 @@ def process_image(job_id: str | UUID) -> dict:
         try:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 out_dir = Path(tmp_dir)
+                logger.info(
+                    "process_image: pipeline run start job_id=%s input_abspath=%s",
+                    job_id, input_abspath,
+                )
                 result_dict = runner.run(
                     input_abspath,
                     target_type=job.target_type,
                     caliber_hint=job.caliber_hint,
                     out_dir=out_dir,
+                )
+                logger.info(
+                    "process_image: pipeline run done job_id=%s holes=%d",
+                    job_id, len(result_dict.get("holes", [])),
                 )
                 # PipelineRunner names deliverables after ``image_path.stem``
                 # (the tempfile's stem here). Derive the names from the actual

@@ -72,6 +72,7 @@ class PipelineRunner:
             gt_marked_path=gt_marked_path,
             debug=debug,
         )
+        logger.info("PipelineRunner: geometry done image=%s", image_path.name)
 
         target_ring1_px = float(geometry.target_ring1_px)
         cal = geometry.calibration
@@ -83,6 +84,7 @@ class PipelineRunner:
                 str(out_path / f"{stem}_llm_input.png"),
                 cv2.cvtColor(geometry.image_1024, cv2.COLOR_GRAY2BGR),
             )
+            logger.info("PipelineRunner: llm_input written image=%s", image_path.name)
 
         # ---- Stage 7: detect (LLM via the seam) ----
         # target_ring1_px flows geometry → detector (handoff subtlety #1).
@@ -91,6 +93,10 @@ class PipelineRunner:
             target_type=target_type,
             caliber_hint=caliber_hint,
             target_ring1_px=target_ring1_px,
+        )
+        logger.info(
+            "PipelineRunner: detect done image=%s holes=%d",
+            image_path.name, len(result.holes),
         )
 
         holes_crop: list[tuple[float, float]] = []
