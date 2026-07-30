@@ -82,10 +82,20 @@ export default defineRailway((_ctx) => {
     //   Railway injects the endpoint via a bucket-variable reference — we use
     //   raw preserve() creds, so no Railway magic applies. Value taken from the
     //   bucket's Connect panel. (research Open Q #5 — resolved up-front.)
-    AWS_S3_ADDRESSING_STYLE: "virtual-host", // Tigris urlStyle from the bucket's
-    //   Connect panel. settings.py:367 reads this; "virtual-host" addresses the
-    //   bucket as <bucket>.t3.storageapi.dev (the Tigris shape) rather than the
-    //   path-style "auto" default.
+    AWS_S3_ADDRESSING_STYLE: "auto", // MUST be boto3-valid: 'auto' | 'virtual'
+    //   | 'path'. The Phase 8.12 prod upload-500 root cause was this value: the
+    //   bucket's Connect panel labelled the style "virtual-host", which was
+    //   copied verbatim here — but boto3 uses a DIFFERENT word for that concept
+    //   ("virtual"), and rejected "virtual-host" at client-construction time
+    //   (botocore.exceptions.InvalidS3AddressingStyleError), so the very first
+    //   upload raised before any network call. "auto" lets boto3 choose per
+    //   endpoint and is the safe shape for Tigris / t3.storageapi.dev (the
+    //   shared endpoint does not guarantee per-bucket virtual-host DNS, so
+    //   forcing "virtual" risks a fuzzier "bucket not found" on the next
+    //   request). settings.py:367 reads this with 'auto' as its own default,
+    //   so this line keeps the IaC explicit even though it matches the default.
+    //   DO NOT restore "virtual-host" — that string is the Tigris panel label,
+    //   not a boto3 value.
     VISION_DETECTOR: "google", // prod detector (requires GOOGLE_API_KEY).
     Q2_WORKERS: "1", // narrow django-q2 to 1 worker (Free-tier RAM budget,
     //                ≤10 users). settings.py reads Q2_WORKERS with a local
