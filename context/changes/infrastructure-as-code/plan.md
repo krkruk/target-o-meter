@@ -718,21 +718,24 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 #### Manual
 
 - [ ] 8.5 Bucket creds preserved on first apply (Open Q #3) — fallback: re-set + add explicit ref
-- [ ] 8.6 Tigris endpoint reachable via test upload (Open Q #5) — fallback: set `AWS_S3_ENDPOINT_URL`
-      — **MIXED. The endpoint/addressing WAS wrong then fixed (`virtual-host`→`auto`, 8024d3c): the
-      upload reached S3 and `15.jpg` saved successfully at 18:11. But the SAME `15.jpg` then 403s
-      on `HeadObject` after the Free→Hobby upgrade. Root cause CONFIRMED as a Railway internal
-      bug (NOT our config): the plan upgrade left the storage org backing the bucket in a
-      suspended state (Railway staff sam-a, station thread 3ede6443). Explains every observation:
-      works-at-18:11-then-403s flip, owner 'Access denied' in the dashboard, byte-hash-matched
-      creds, the 1-byte probe reproducing it. Needs Railway backend reactivation — reopen this
-      row once the bucket is healthy and a real upload returns 201.**
+- [x] 8.6 Tigris endpoint reachable via test upload (Open Q #5) — fallback: set `AWS_S3_ENDPOINT_URL`
+      — **RESOLVED. Two distinct causes, both fixed. (1) `AWS_S3_ADDRESSING_STYLE` was `virtual-host`
+      (Tigris panel label, not a boto3 value) → fixed to `auto` (8024d3c); upload reached S3 and
+      saved at 18:11. (2) After the Free→Hobby upgrade the same upload 403'd on HeadObject because
+      the plan upgrade left the storage org backing the bucket in a suspended state (Railway staff
+      sam-a, station thread 3ede6443) — a Railway internal bug, not our config; resolved once the
+      bucket came back. Confirmed end-to-end: upload saved → enqueued → process_image → SUCCEEDED
+      on the 2GB pod.**
 - [ ] 8.7 Image size ≤ 4 GB (Open Q #9) — fallback: trim railpack.json build steps
 - [ ] 8.8 Cold-start wake latency measured (Open Q #11) — fallback: accept or Hobby upgrade
-- [ ] 8.9 Free-RAM headroom: no OOM-kill after a CV job — fallback: Q2_WORKERS=2, then Hobby
-      — **NOT MET: q2 worker SIGKILLed mid-`process_image` (idle baseline already OOMs at
-      512MB); user chose the Hobby ($5/mo) upgrade as the resolution (not Q2_WORKERS=2 — the
-      footprint doesn't fit 512MB even at workers=1); pending the upgrade + upload retry**
+- [x] 8.9 Free-RAM headroom: no OOM-kill after a CV job — fallback: Q2_WORKERS=2, then Hobby
+      — **RESOLVED, but not via the documented path. 1GB (Hobby default after the Free→Hobby
+      upgrade) was insufficient: the q2 worker died silently ~1s into `process_image` (no
+      SIGKILL/OOM signature; 743MB peak under the 1GB ceiling → not a clean OOM, looked like a
+      native crash in the opencv geometry step). Bumping the pod to 2GB resolved it — scoring now
+      runs end-to-end (geometry → detect → SUCCEEDED). The plan's Free-tier 512MB math was
+      invalidated by the real resident set; the working footprint needs ~2GB. eed12fa added
+      faulthandler + stage logging so any future silent death is locatable.**
 - [ ] 8.10 `/health` returns 200 on the Railway domain
 - [ ] 8.11 OWNER_SUB_ID set after first prod login confirms Owner role active
 
@@ -846,10 +849,12 @@ path is load-bearing for prod storage. Fix the root cause the traceback names.
 **Related Phase 8 row:** this investigation supersedes the "verify-on-failure"
 stance of 8.6 (Tigris endpoint) — the upload IS the test, and it's failing.
 
-- [ ] 8.12 (this investigation) — make the 500 traceback visible via a `LOGGING`
+- [x] 8.12 (this investigation) — make the 500 traceback visible via a `LOGGING`
       dict, then fix the root cause it names; confirm a real upload returns 201
-      — **traceback visible (ac69636) + root cause fixed (8024d3c: `virtual-host`→`auto`):
-      upload now returns success and the task is enqueued/started (no more 500). The "confirm
-      201" half is done in spirit but the row stays open because `process_image` doesn't
-      *complete* — it's OOM-killed (8.9); final confirmation of a SUCCEEDED job pending the
-      Hobby upgrade**
+      — **RESOLVED. Traceback surfaced via LOGGING (ac69636) → root cause #1 found and fixed
+      (`AWS_S3_ADDRESSING_STYLE` virtual-host→auto, 8024d3c) → upload 500 cleared. A second
+      failure (403 HeadObject) was a Railway-side bug (suspended storage org after plan upgrade,
+      sam-a station 3ede6443), resolved once the bucket recovered. Then the worker died silently
+      mid-process_image at 1GB — resolved by bumping to 2GB, with faulthandler + stage logging
+      (eed12fa) added so future silent deaths are locatable. A real upload now returns success
+      and process_image reaches SUCCEEDED end-to-end.**
