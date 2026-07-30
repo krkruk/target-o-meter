@@ -718,7 +718,15 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 #### Manual
 
 - [ ] 8.5 Bucket creds preserved on first apply (Open Q #3) — fallback: re-set + add explicit ref
-- [x] 8.6 Tigris endpoint reachable via test upload (Open Q #5) — fallback: set `AWS_S3_ENDPOINT_URL` — **CONFIRMED: upload reaches S3 after addressing fix (8024d3c); endpoint was correct, the failure was the `virtual-host`→`auto` addressing value — 8024d3c**
+- [ ] 8.6 Tigris endpoint reachable via test upload (Open Q #5) — fallback: set `AWS_S3_ENDPOINT_URL`
+      — **MIXED. The endpoint/addressing WAS wrong then fixed (`virtual-host`→`auto`, 8024d3c): the
+      upload reached S3 and `15.jpg` saved successfully at 18:11. But the SAME `15.jpg` then 403s
+      on `HeadObject` after the Free→Hobby upgrade. Root cause CONFIRMED as a Railway internal
+      bug (NOT our config): the plan upgrade left the storage org backing the bucket in a
+      suspended state (Railway staff sam-a, station thread 3ede6443). Explains every observation:
+      works-at-18:11-then-403s flip, owner 'Access denied' in the dashboard, byte-hash-matched
+      creds, the 1-byte probe reproducing it. Needs Railway backend reactivation — reopen this
+      row once the bucket is healthy and a real upload returns 201.**
 - [ ] 8.7 Image size ≤ 4 GB (Open Q #9) — fallback: trim railpack.json build steps
 - [ ] 8.8 Cold-start wake latency measured (Open Q #11) — fallback: accept or Hobby upgrade
 - [ ] 8.9 Free-RAM headroom: no OOM-kill after a CV job — fallback: Q2_WORKERS=2, then Hobby
