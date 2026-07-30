@@ -727,6 +727,26 @@ The human runs `railway config apply` once to reconcile the IaC, then triggers t
 
 #### Phase 8 — Open investigation: POST /v1/scoring/jobs returns 500 (upload fails)
 
+**Update 2026-07-30 (commit ac69636):** step 1 of the investigation — "make
+the error visible" — has landed. A `LOGGING` dict was added to `settings.py`
+(always-on console for `django.request`/`django`/`src`/`django-q` + WARNING
+root catch-all), plus stage-by-stage INFO logging in `scoring_routes.
+create_scoring_job` (upload received → saved → enqueued) and
+`vision.services.process_image` (start → upload read back → succeeded).
+Pushed via the deploy-only CD run (`30563496750`) on `ac69636`; the deploy
+job hit a **Railway Free-tier peak-hours throttle** ("Free-tier deploys to
+europe-west4-drams3a are not available during peak hours (8 AM – 8 PM Europe/
+Amsterdam)") at ~18:53 Amsterdam — an environmental constraint, NOT a defect
+in the change. Retry the push (or `railway up`) after 20:00 Amsterdam for the
+deploy to land. **Next, once deployed:** retry the upload in prod and read
+the actual traceback from `railway logs`, then branch on the exception type
+per step 2 below. The S3 hypothesis (primary) is confirmed-or-ruled-out once
+the traceback names the exception. A regression was also caught: the initial
+`root: WARNING` config filtered django-q's INFO "Q Cluster … running." banner
+(logger named `django-q`, not under `django.*`), breaking
+`test_qcluster_shuts_down_cleanly_on_sigint` — fixed by an explicit
+`django-q` INFO logger entry.
+
 Status as of 2026-07-29: the app is live (`/health` → 200 `ok`, OAuth login +
 admin role work on PC and phone). **Image upload is the one broken flow**:
 `POST /v1/scoring/jobs` returns HTTP 500. Added 2026-07-29 after first real
@@ -793,3 +813,5 @@ stance of 8.6 (Tigris endpoint) — the upload IS the test, and it's failing.
 
 - [ ] 8.12 (this investigation) — make the 500 traceback visible via a `LOGGING`
       dict, then fix the root cause it names; confirm a real upload returns 201
+      — **step 1 done (LOGGING + stage logging landed in ac69636, deployed);
+      awaiting prod upload retry to read the traceback + fix root cause**

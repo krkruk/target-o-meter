@@ -3,7 +3,7 @@ change_id: infrastructure-as-code
 title: GitHub Actions CI/CD pipeline for build, test, and deploy
 status: implementing
 created: 2026-07-28
-updated: 2026-07-29  # App LIVE on Railway (Railpack); /health 200, login works. Open: upload 500 (Phase 8.12)
+updated: 2026-07-30  # 8.12 step 1: prod LOGGING + upload/worker stage logging landed (ac69636), deployed. Awaiting prod upload retry to read the 500 traceback + fix root cause.
 archived_at: null
 ---
 
