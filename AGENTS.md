@@ -132,6 +132,16 @@ names the tool that broke. Run `make help` for all targets.
 green CI run. It skips automatically when only docs/non-code files are staged.
 Use `git commit --no-verify` to bypass it deliberately for WIP commits.
 
+**Rely on the hook, don't run the suite by hand.** When committing code or
+build-config, the `pre-commit` hook IS the verification step — simply `git add`
+your intended files and `git commit`; the hook runs `make check` + `uv run
+pytest` + frontend `vitest` automatically and fails the commit (naming the
+broken step) if anything regresses. Do not run `uv run pytest` / `npm run test`
+/ `make check` separately before committing "to be sure" — that duplicates the
+cycle the hook already owns and wastes minutes. Reserve manual `make check` /
+`uv run pytest` for local debugging between commits (investigating a specific
+failure), not as a pre-commit ritual.
+
 ```bash
 make check           # lint + type-check + import contracts (be + fe) — verification gate
 make be-test         # `check` + backend pytest
