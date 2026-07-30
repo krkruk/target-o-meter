@@ -437,3 +437,94 @@ DJANGO_VITE = {
 STATICFILES_DIRS = [
     FRONTEND_DIR / "dist",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Logging (Phase 8.12 investigation: surface the upload 500 traceback).
+# ---------------------------------------------------------------------------
+#
+# Without this dict, Django's DEFAULT_LOGGING routes ``django.request`` (the
+# logger 5xx tracebacks land on) through the ``console`` handler GATED BY
+# ``require_debug_true`` — so in prod (``DEBUG=False``) the traceback is dropped
+# (only ``mail_admins`` sees it, and that's a no-op without ``ADMINS``
+# configured). The upload-500 was therefore silent: no traceback reached
+# ``railway logs``, so every hypothesis (S3 creds / endpoint / addressing) was
+# guesswork. The same gap swallowed the worker: ``process_image``'s
+# ``logger.exception(...)`` propagates to the root logger, which has NO handler
+# in the default prod config, so worker failures vanished too.
+#
+# This dict adds an always-on console handler (no debug gate) and routes:
+#   - ``django.request`` (5xx traceback surface — the upload-500 visibility gap)
+#   - ``django`` (framework boot / lifecycle at INFO)
+#   - ``src`` (the app tree — bff + every domain; upload/worker stage logging)
+# and a WARNING root so third-party libs (boto3/botocore) surface auth /
+# connection errors without their DEBUG chatter.
+#
+# Keep this ON in prod. Railway's stdout/stderr IS the log surface, and
+# structured stage logging is the only way to read the upload pipeline without
+# a debugger attached. If noise becomes a problem later, raise levels — do NOT
+# remove the handler (that reintroduces the silent-500 regression).
+LOGGING = {
+    "version": 1,
+    # Keep Django's default-configured loggers we don't name below (e.g.
+    # ``django.server`` under runserver) intact.
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
+        },
+    },
+    "handlers": {
+        # Always-on console — NO ``require_debug_true`` filter, so it fires in
+        # prod. This is the load-bearing difference vs Django's default.
+        "console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "default",
+        },
+    },
+    "loggers": {
+        # 5xx traceback surface. ERROR only so 4xx WARNINGs don't drown the log.
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        # Framework lifecycle (boot, q2 startup). INFO for diagnosis; raise to
+        # WARNING if it gets loud once the upload path is fixed.
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # django-q2. Its logger is named ``"django-q"`` (hyphen), which is NOT
+        # under the ``django.*`` hierarchy — so without this entry it falls
+        # through to ``root`` (WARNING) and its INFO cluster/worker banners
+        # ("Q Cluster … running.", "Enqueued […]", "Processed […]", task
+        # tracebacks) get filtered. That silenced the worker exactly when we
+        # need it most — and it also broke the qcluster-shutdown system test,
+        # which greps the log for the "Q Cluster" banner. INFO surfaces the
+        # startup banner + the per-task enqueue/process lines (the worker
+        # observability the plan's 8.12 investigation needs); ``propagate=False``
+        # matches django-q's own intent and avoids double-emission via root.
+        "django-q": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        # App tree — bff + all domains. ``logging.getLogger(__name__)`` in any
+        # module under ``src.*`` resolves to a child of this logger.
+        "src": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+    # Catch-all so unnamed loggers (boto3/botocore, gunicorn) still surface at
+    # WARNING+. boto3 is notoriously chatty at DEBUG; WARNING keeps its
+    # connection/auth errors visible without the chatter.
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+}

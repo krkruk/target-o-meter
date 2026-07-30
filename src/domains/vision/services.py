@@ -163,6 +163,17 @@ def process_image(job_id: str | UUID) -> dict:
         runner = PipelineRunner(detector)
         storage = ScoringStorage()
 
+        # Phase 8.12: stage-by-stage worker logging. The upload 500 may be the
+        # S3 write in the BFF (the worker never starts), OR the worker may start
+        # and die on the S3 read-back / detector / pipeline. Without these
+        # stage lines the worker's ``logger.exception`` on failure is the only
+        # signal, and it can't localize WHICH stage raised.
+        logger.info(
+            "process_image: start job_id=%s input_path=%s detector=%s "
+            "target_type=%s",
+            job_id, job.input_path, detector_name, job.target_type,
+        )
+
         # S-03 Phase 4: ``cv2.imread`` cannot read an S3 key, and S3 has no
         # directories. The byte-oriented surface (``read_upload_bytes`` +
         # ``write_deliverable_bytes``) works under both backends: download the
@@ -174,6 +185,10 @@ def process_image(job_id: str | UUID) -> dict:
         orig_stem = Path(job.input_path).stem
         orig_suffix = Path(job.input_path).suffix
         upload_bytes = storage.read_upload_bytes(job.input_path)
+        logger.info(
+            "process_image: upload read back job_id=%s bytes=%d",
+            job_id, len(upload_bytes),
+        )
         with tempfile.NamedTemporaryFile(
             prefix=f"{orig_stem}_", suffix=orig_suffix, delete=False,
         ) as tf:
@@ -227,6 +242,7 @@ def process_image(job_id: str | UUID) -> dict:
             "status", "result", "llm_input_path", "marked_image_path",
             "result_json_path", "completed_at", "updated_at",
         ])
+        logger.info("process_image: succeeded job_id=%s", job_id)
 
         return result_dict
 

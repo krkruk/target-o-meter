@@ -31,6 +31,7 @@ via ``func.__globals__`` — but ``@transaction.atomic`` wraps the view, so
 ``Form`` / ``File`` / ``ScoringJobIn`` become unresolvable (silently
 downgraded to query params). Real annotations sidestep the lookup entirely.
 """
+import logging
 from typing import Literal
 from uuid import UUID
 
@@ -61,6 +62,8 @@ from src.domains.vision.services import (
 
 
 router = Router()
+
+logger = logging.getLogger(__name__)
 
 
 class ScoringJobIn(Schema):
@@ -107,8 +110,26 @@ def create_scoring_job(
     except get_user_model().DoesNotExist:
         raise HttpError(401, "Session user no longer exists") from None
 
+    # Phase 8.12: stage-by-stage logging so the upload pipeline is legible in
+    # ``railway logs``. The 500 currently fires somewhere in save_upload →
+    # schedule_image_processing and, with no LOGGING dict, raised silently.
+    # Each stage logs on success; a 500 with no later stage line localizes the
+    # failure to the stage that DIDN'T log (the next one). File bytes are read
+    # ONCE (file.read() can't be re-read) — log the size, not a second read.
+    upload_bytes = file.read()
+    logger.info(
+        "scoring job: upload received user_uuid=%s filename=%r size=%d "
+        "target_type=%s",
+        user_dto.user_uuid, file.name, len(upload_bytes), details.target_type,
+    )
+
     storage = ScoringStorage()
-    input_path = storage.save_upload(file.read(), file.name)
+    input_path = storage.save_upload(upload_bytes, file.name)
+    logger.info(
+        "scoring job: upload saved user_uuid=%s stored_path=%s",
+        user_dto.user_uuid, input_path,
+    )
+
     job_id = schedule_image_processing(
         user_uuid=user_dto.user_uuid,
         input_path=input_path,
@@ -116,6 +137,10 @@ def create_scoring_job(
         caliber_hint=details.caliber_hint,
         distance=details.distance,
         weapon_type=details.weapon_type,
+    )
+    logger.info(
+        "scoring job: enqueued job_id=%s user_uuid=%s",
+        job_id, user_dto.user_uuid,
     )
     return ScoringJobOut(job_id=job_id, status="queued")
 
