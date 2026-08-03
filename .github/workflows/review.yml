@@ -44,7 +44,7 @@ jobs:
       # branch/tag with `@<ref>` to pick up unreleased code, e.g.:
       #   git+https://github.com/krkruk/reviewer-target-o-meter@feature/change-input-pipeline#subdirectory=reviewer-target-o-meter
         run: |
-          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter@feature/change-input-pipeline#subdirectory=reviewer-target-o-meter"
+          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter#subdirectory=reviewer-target-o-meter"
 
       - name: Install ast-grep (structural_search tool)
         run: |
