@@ -17,6 +17,12 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
+    # The default GITHUB_TOKEN is read-only on most repos; the reviewer needs
+    # pull-requests: write to post its comment. Declare permissions explicitly
+    # (least privilege) so the token can post the PR comment.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout PR (full history for merge-base)
         uses: actions/checkout@v4
@@ -31,8 +37,14 @@ jobs:
       # is published to PyPI. Until then, install from a git URL. The package's
       # pyproject.toml lives in the nested reviewer-target-o-meter/ subdir (not the
       # git root), so the #subdirectory= fragment is REQUIRED.
+      #
+      # NOTE: installs from the repo's DEFAULT branch (master). The PR-posting
+      # path lands in feature/change-input-pipeline; until that merges to master,
+      # the installed tool runs in stdout mode (no comment posted). Point at a
+      # branch/tag with `@<ref>` to pick up unreleased code, e.g.:
+      #   git+https://github.com/krkruk/reviewer-target-o-meter@feature/change-input-pipeline#subdirectory=reviewer-target-o-meter
         run: |
-          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter#subdirectory=reviewer-target-o-meter"
+          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter@feature/change-input-pipeline#subdirectory=reviewer-target-o-meter"
 
       - name: Install ast-grep (structural_search tool)
         run: |
