@@ -43,6 +43,12 @@ jobs:
           unzip sg.zip && install -m 0755 ast-grep /usr/local/bin/sg
 
       - name: Run reviewer-target-o-meter
+        # The tool's exit code is ADVISORY (FR-008): 1 = findings flagged, 0 =
+        # clean. GHA treats any non-zero exit as a step failure, so without
+        # continue-on-error a flagged review (the normal case) would fail CI —
+        # the opposite of "never blocks a merge". The tool's own degrade logic
+        # handles real errors (missing key fails fast and SHOULD fail this step).
+        continue-on-error: true
         env:
           # LLM provider (REQUIRED) — set this secret in the consumer repo.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
