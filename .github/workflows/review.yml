@@ -27,14 +27,12 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Install reviewer-target-o-meter
-        # TODO: switch to `uv tool install reviewer-target-o-meter` (or `pip install`)
-      # once the tool is published to PyPI. Until then, install from a git URL or a
-      # sibling editable checkout — see integration/README.md for the options.
+        # TODO: switch to `uv tool install reviewer-target-o-meter` once the tool
+      # is published to PyPI. Until then, install from a git URL. The package's
+      # pyproject.toml lives in the nested reviewer-target-o-meter/ subdir (not the
+      # git root), so the #subdirectory= fragment is REQUIRED.
         run: |
-          # Option A — git URL (works once the repo is public or the runner is authed):
-          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter"
-          # Option B — sibling editable checkout (uncomment, drop A):
-          # uv tool install --editable ../reviewer-target-o-meter
+          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter#subdirectory=reviewer-target-o-meter"
 
       - name: Install ast-grep (structural_search tool)
         run: |
