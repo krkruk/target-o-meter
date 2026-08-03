@@ -36,10 +36,10 @@ jobs:
 
       - name: Install ast-grep (structural_search tool)
         run: |
-          # Recipe recorded in AGENTS.md §f. If sg is unavailable at runtime,
-          # structural_search degrades to an error string pointing the model at
-          # text_search — the pipeline still runs (degrade philosophy).
-          curl -L https://github.com/ast-grep/ast-grep/releases/latest/download/x86_64-unknown-linux-gnu.zip -o sg.zip
+          # If sg is unavailable at runtime, structural_search degrades to an
+          # error string pointing the model at text_search — the pipeline still
+          # runs (degrade philosophy). Asset name carries an `app-` prefix.
+          curl -L https://github.com/ast-grep/ast-grep/releases/latest/download/app-x86_64-unknown-linux-gnu.zip -o sg.zip
           unzip sg.zip && install -m 0755 ast-grep /usr/local/bin/sg
 
       - name: Run reviewer-target-o-meter
