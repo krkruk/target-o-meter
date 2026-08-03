@@ -50,4 +50,4 @@ runs:
       # bare `railway up` aborts with "Multiple services found". Pinning the
       # service name removes the ambiguity. (`web` is the IaC service name —
       # .railway/railway.ts service("web").)
-      run: railway up --service web
+      run: railway up --service web --detach --json
