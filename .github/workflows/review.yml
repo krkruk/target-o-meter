@@ -38,21 +38,20 @@ jobs:
       # pyproject.toml lives in the nested reviewer-target-o-meter/ subdir (not the
       # git root), so the #subdirectory= fragment is REQUIRED.
       #
-      # NOTE: installs from the repo's DEFAULT branch (master). The PR-posting
-      # path lands in feature/change-input-pipeline; until that merges to master,
-      # the installed tool runs in stdout mode (no comment posted). Point at a
-      # branch/tag with `@<ref>` to pick up unreleased code, e.g.:
-      #   git+https://github.com/krkruk/reviewer-target-o-meter@feature/change-input-pipeline#subdirectory=reviewer-target-o-meter
+      # TEMPORARY SMOKE: points at @feature/update-ast-grep-configuration (an
+      # unmerged branch) to exercise the renamed structural_search (ast-grep, not
+      # sg) before the fix reaches master. Revert to the master URL after the
+      # smoke (see context/changes/ast-grep-fix §5.2/§5.5).
         run: |
-          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter#subdirectory=reviewer-target-o-meter"
+          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter@feature/update-ast-grep-configuration#subdirectory=reviewer-target-o-meter"
 
       - name: Install ast-grep (structural_search tool)
         run: |
-          # If sg is unavailable at runtime, structural_search degrades to an
+          # If ast-grep is unavailable at runtime, structural_search degrades to an
           # error string pointing the model at text_search — the pipeline still
           # runs (degrade philosophy). Asset name carries an `app-` prefix.
-          curl -L https://github.com/ast-grep/ast-grep/releases/latest/download/app-x86_64-unknown-linux-gnu.zip -o sg.zip
-          unzip sg.zip && install -m 0755 ast-grep /usr/local/bin/sg
+          curl -L https://github.com/ast-grep/ast-grep/releases/latest/download/app-x86_64-unknown-linux-gnu.zip -o ast-grep.zip
+          unzip ast-grep.zip && install -m 0755 ast-grep /usr/local/bin/ast-grep
 
       - name: Run reviewer-target-o-meter
         # The tool's exit code is ADVISORY (FR-008): 1 = findings flagged, 0 =
