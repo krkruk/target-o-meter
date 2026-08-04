@@ -524,14 +524,14 @@ manual testing was successful before considering the change complete.
 
 #### Automated
 
-- [ ] 1.1 `make check` passes (frontend `tsc --noEmit`)
-- [ ] 1.2 `make fe-test` passes — Star-link assertions in `Welcome.test.tsx` green
+- [x] 1.1 `make check` passes (frontend `tsc --noEmit`)
+- [x] 1.2 `make fe-test` passes — Star-link assertions in `Welcome.test.tsx` green
 
 #### Manual
 
-- [ ] 1.3 Star button renders in Welcome header left of Login, aligned with Login
-- [ ] 1.4 Clicking Star opens `https://github.com/krkruk/target-o-meter` in a new tab
-- [ ] 1.5 At ~375px width, Star + Login both remain visible (no overflow/clipping)
+- [x] 1.3 Star button renders in Welcome header left of Login, aligned with Login
+- [x] 1.4 Clicking Star opens `https://github.com/krkruk/target-o-meter` in a new tab
+- [x] 1.5 At ~375px width, Star + Login both remain visible (no overflow/clipping)
 
 ### Phase 2: Privacy / cookie policy stub page
 
