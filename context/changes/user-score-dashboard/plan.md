@@ -610,8 +610,8 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 #### Automated
 
-- [x] 5.1 Add E2E test `tests/system/test_score_dashboard_e2e.py` — boots a prod-shape `runserver` (baked bundle via WhiteNoise + dev-auth-bypass + VISION_DETECTOR=mock, no GOOGLE_API_KEY), seeds a ScoringJob + AcceptedResult via `manage.py shell`, drives the `/scores` dashboard through Playwright: read (row renders 8.0) → Preview (proxy image + per-shot scores line) → Modify (change hole 8→10, assert average recomputes to 8.4) → Delete (confirm, assert row disappears + empty state); asserts no server traceback throughout
+- [x] 5.1 Add E2E test `tests/system/test_score_dashboard_e2e.py` — boots a prod-shape `runserver` (baked bundle via WhiteNoise + dev-auth-bypass + VISION_DETECTOR=mock, no GOOGLE_API_KEY), seeds a ScoringJob + AcceptedResult via `manage.py shell`, drives the `/scores` dashboard through Playwright: read (row renders 8.0) → Preview (proxy image + per-shot scores line) → Modify (change hole 8→10, assert average recomputes to 8.4) → Delete (confirm, assert row disappears + empty state); asserts no server traceback throughout — a1d2049
 
 #### Manual
 
-- [x] 5.2 E2E green is the manual click-through verifier — it covers list/preview/modify/delete on the assembled system offline
+- [x] 5.2 E2E green is the manual click-through verifier — it covers list/preview/modify/delete on the assembled system offline — a1d2049
