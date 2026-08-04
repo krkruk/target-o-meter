@@ -587,14 +587,31 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 #### Automated
 
-- [x] 4.1 Build `<ScorePreview>` (proxy image + immutable per-shot scores line)
-- [x] 4.2 Add `updateScore` + `deleteScore` to `api.ts`
-- [x] 4.3 Build `<ModifyModal>` (mirrors `BanModal`, Modify=PATCH, Cancel=onClose) + `<DeleteModal>` (confirm=DELETE)
-- [x] 4.4 Wire row buttons to modals — modal state lives per-row inside `<ScoreRow>` (`useState<'modify'|'delete'|null>`), not at page level; success callbacks `onModified` (refetch) / `onDeleted` (refetch) bubble to `ScoreDashboard` + `Dashboard`
-- [x] 4.5 Convert Home/Score dashboard/Admin menu entries to `<NavLink>` with shared `.active` style
-- [x] 4.6 Vitest tests for Modify/Delete modals + Preview + NavLink active state
-- [x] 4.7 `make check` + `make fe-test` green
+- [x] 4.1 Build `<ScorePreview>` (proxy image + immutable per-shot scores line) — bcee7da
+- [x] 4.2 Add `updateScore` + `deleteScore` to `api.ts` — bcee7da
+- [x] 4.3 Build `<ModifyModal>` (mirrors `BanModal`, Modify=PATCH, Cancel=onClose) + `<DeleteModal>` (confirm=DELETE) — bcee7da
+- [x] 4.4 Wire row buttons to modals — modal state lives per-row inside `<ScoreRow>` (`useState<'modify'|'delete'|null>`), not at page level; success callbacks `onModified` (refetch) / `onDeleted` (refetch) bubble to `ScoreDashboard` + `Dashboard` — bcee7da
+- [x] 4.5 Convert Home/Score dashboard/Admin menu entries to `<NavLink>` with shared `.active` style — bcee7da
+- [x] 4.6 Vitest tests for Modify/Delete modals + Preview + NavLink active state — bcee7da
+- [x] 4.7 `make check` + `make fe-test` green — bcee7da
 
 #### Manual
 
-- [x] 4.8 Verify Preview (image + scores line); Modify (PATCH, average updates, corrected value persists); Modify Cancel (no-op); Delete (confirm, row + FS files gone, `ScoringJob` retained); active menu highlight; 404 on another user's id shows inline error
+- [x] 4.8 Verify Preview (image + scores line); Modify (PATCH, average updates, corrected value persists); Modify Cancel (no-op); Delete (confirm, row + FS files gone, `ScoringJob` retained); active menu highlight; 404 on another user's id shows inline error — bcee7da
+
+### Phase 5: E2E (Playwright) — CRUD on processed values + UI, offline
+
+> User-added phase beyond the original plan. The manual click-through items in
+> each phase's Manual section are replaced here by a single browser-driven E2E
+> that exercises the full alteration scenario (CRUD on an accepted result's
+> processed values) end-to-end, with Google AI Studio disabled (MockDetector +
+> no GOOGLE_API_KEY → fully offline). This is the V-Model top tier: the app is
+> a black box, the browser is a real user, assertions are on what the user sees.
+
+#### Automated
+
+- [x] 5.1 Add E2E test `tests/system/test_score_dashboard_e2e.py` — boots a prod-shape `runserver` (baked bundle via WhiteNoise + dev-auth-bypass + VISION_DETECTOR=mock, no GOOGLE_API_KEY), seeds a ScoringJob + AcceptedResult via `manage.py shell`, drives the `/scores` dashboard through Playwright: read (row renders 8.0) → Preview (proxy image + per-shot scores line) → Modify (change hole 8→10, assert average recomputes to 8.4) → Delete (confirm, assert row disappears + empty state); asserts no server traceback throughout
+
+#### Manual
+
+- [x] 5.2 E2E green is the manual click-through verifier — it covers list/preview/modify/delete on the assembled system offline
