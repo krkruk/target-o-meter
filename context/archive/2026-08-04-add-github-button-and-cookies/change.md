@@ -1,10 +1,10 @@
 ---
 change_id: add-github-button-and-cookies
 title: Add github button and cookies
-status: implemented
+status: archived
 created: 2026-08-04
 updated: 2026-08-04
-archived_at: null
+archived_at: 2026-08-04T18:49:35Z
 ---
 
 ## Notes
