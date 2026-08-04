@@ -536,35 +536,35 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 #### Automated
 
-- [x] 1.1 Add `updated_at` to `AcceptedResult` (`models.py`) + update docstring
-- [x] 1.2 Generate + apply migration `0006_acceptedresult_updated_at`
-- [x] 1.3 Expose `updated_at` in `AcceptedResultAdmin` + refresh admin notes
-- [x] 1.4 Add `ScoreListOut` paginated response DTO
-- [x] 1.5 Add vision service `list_results` (paginated)
-- [x] 1.6 Add vision service `get_result` (detail)
-- [x] 1.7 Add BFF routes `GET /v1/scores` + `GET /v1/scores/{id}`
-- [x] 1.8 Unit + system tests for list/detail (incl. 404-not-mine, pagination clamp)
-- [x] 1.9 `make check` + `make be-test` green
+- [x] 1.1 Add `updated_at` to `AcceptedResult` (`models.py`) + update docstring — d7bdb72
+- [x] 1.2 Generate + apply migration `0006_acceptedresult_updated_at` — d7bdb72
+- [x] 1.3 Expose `updated_at` in `AcceptedResultAdmin` + refresh admin notes — d7bdb72
+- [x] 1.4 Add `ScoreListOut` paginated response DTO — d7bdb72
+- [x] 1.5 Add vision service `list_results` (paginated) — d7bdb72
+- [x] 1.6 Add vision service `get_result` (detail) — d7bdb72
+- [x] 1.7 Add BFF routes `GET /v1/scores` + `GET /v1/scores/{id}` — d7bdb72
+- [x] 1.8 Unit + system tests for list/detail (incl. 404-not-mine, pagination clamp) — d7bdb72
+- [x] 1.9 `make check` + `make be-test` green — d7bdb72
 
 #### Manual
 
-- [x] 1.10 Verify `GET /v1/scores` pagination + ordering; `GET /v1/scores/{id}` detail; 404 on another user's id; admin shows `updated_at`
+- [x] 1.10 Verify `GET /v1/scores` pagination + ordering; `GET /v1/scores/{id}` detail; 404 on another user's id; admin shows `updated_at` — d7bdb72
 
 ### Phase 2: Backend — UPDATE + DELETE
 
 #### Automated
 
-- [ ] 2.1 Add `ScoringStorage.delete_upload`
-- [ ] 2.2 Add `ScoringStorage.delete_paths` (deliverable deletion)
-- [ ] 2.3 Add vision service `update_result` (recompute `score_average`, atomic)
-- [ ] 2.4 Add vision service `delete_result` (DB-first atomic, best-effort S3, retain `ScoringJob`)
-- [ ] 2.5 Add BFF routes `PATCH /v1/scores/{id}` + `DELETE /v1/scores/{id}`
-- [ ] 2.6 Unit + system tests for update/delete + storage delete (FS + S3-fake); CSRF matrix
-- [ ] 2.7 `make check` + `make be-test` green
+- [x] 2.1 Add `ScoringStorage.delete_upload`
+- [x] 2.2 Add `ScoringStorage.delete_paths` (deliverable deletion)
+- [x] 2.3 Add vision service `update_result` (recompute `score_average`, atomic)
+- [x] 2.4 Add vision service `delete_result` (DB-first atomic, best-effort S3, retain `ScoringJob`)
+- [x] 2.5 Add BFF routes `PATCH /v1/scores/{id}` + `DELETE /v1/scores/{id}`
+- [x] 2.6 Unit + system tests for update/delete + storage delete (FS + S3-fake); CSRF matrix
+- [x] 2.7 `make check` + `make be-test` green
 
 #### Manual
 
-- [ ] 2.8 Verify PATCH recomputes average + advances `updated_at`; DELETE removes row + FS files, keeps `ScoringJob`; 404 on another user's id; storage failure doesn't block row delete
+- [x] 2.8 Verify PATCH recomputes average + advances `updated_at`; DELETE removes row + FS files, keeps `ScoringJob`; 404 on another user's id; storage failure doesn't block row delete
 
 ### Phase 3: Frontend — Shared list/row + read-only dashboard
 

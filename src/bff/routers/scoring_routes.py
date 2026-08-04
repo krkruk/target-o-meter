@@ -56,11 +56,13 @@ from src.domains.vision.services import (
     StateError,
     accept_job,
     aggregate_for_user,
+    delete_result,
     get_job,
     get_job_for_user,
     get_result,
     list_results,
     schedule_image_processing,
+    update_result,
 )
 
 
@@ -336,3 +338,64 @@ def get_score(request, result_id: UUID) -> AcceptedResultDTO:
         return get_result(result_id=result_id, user_uuid=user_dto.user_uuid)
     except PermissionError:
         raise HttpError(404, "Not found") from None
+
+
+class ScoreUpdateIn(Schema):
+    """Request body for ``PATCH /v1/scores/{result_id}`` (the dashboard's Modify
+    flow). Mirrors ``AcceptResultIn`` minus ``job_id`` — the resource is named
+    by the path param. ``holes`` requires >=1 entry (guards the mean recompute
+    against a divide-by-zero; mirrors ``AcceptResultIn.holes``). Optional params
+    override when provided (``None`` leaves the stored value).
+    """
+
+    holes: list[DetectedHoleDTO] = Field(min_length=1)
+    target_type: str | None = None
+    caliber_hint: str | None = None
+    distance: int | None = None
+    weapon_type: str | None = None
+
+
+@router.patch(
+    "/scores/{result_id}", auth=session_auth, response={200: AcceptedResultDTO}
+)
+@transaction.atomic
+def patch_score(request, result_id: UUID, payload: ScoreUpdateIn) -> AcceptedResultDTO:
+    """Modify an accepted result — persist edited holes + recompute
+    ``score_average`` (PRD FR-010 Socrates amendment for the
+    ``user-score-dashboard`` change). Owner-only — 404 on mismatch OR missing
+    (ID-prober invariant). ``updated_at`` advances on the service's save.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    try:
+        return update_result(
+            result_id=result_id, user_uuid=user_dto.user_uuid,
+            holes=payload.holes,
+            target_type=payload.target_type,
+            caliber_hint=payload.caliber_hint,
+            distance=payload.distance,
+            weapon_type=payload.weapon_type,
+        )
+    except PermissionError:
+        raise HttpError(404, "Not found") from None
+
+
+@router.delete("/scores/{result_id}", auth=session_auth, response={204: None})
+def delete_score(request, result_id: UUID):
+    """Hard-delete an accepted result + best-effort remove its storage objects;
+    retain the ``ScoringJob`` audit row. Owner-only — 404 on mismatch OR missing
+    (ID-prober invariant). Mirrors ``delete_a_user`` (204 on success).
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    try:
+        delete_result(result_id=result_id, user_uuid=user_dto.user_uuid)
+    except PermissionError:
+        raise HttpError(404, "Not found") from None
+    return Status(204, None)
