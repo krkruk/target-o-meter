@@ -551,14 +551,14 @@ manual testing was successful before considering the change complete.
 
 #### Automated
 
-- [x] 3.1 `make check` passes (`tsc --noEmit` against the library's bundled declarations)
-- [x] 3.2 `make fe-test` passes — `cookieConsent.test.ts` green, no existing frontend test regressed
+- [x] 3.1 `make check` passes (`tsc --noEmit` against the library's bundled declarations) — 38ed2d2
+- [x] 3.2 `make fe-test` passes — `cookieConsent.test.ts` green, no existing frontend test regressed — 38ed2d2
 
 #### Manual
 
-- [x] 3.3 First visit (site data cleared): banner appears, Accept and Reject equally prominent
-- [x] 3.4 Banner "Cookie Policy" link navigates to `/privacy`
-- [x] 3.5 Reject → banner dismisses, consent stored, no re-prompt on reload
-- [x] 3.6 "Cookie settings" control re-opens the banner
-- [x] 3.7 Full OIDC login still works (SameSite=Lax session unaffected; `csrftoken` still readable by `api.ts`)
-- [x] 3.8 Banner behaves the same on authenticated pages (site-wide mount)
+- [x] 3.3 First visit (site data cleared): banner appears, Accept and Reject equally prominent — 38ed2d2
+- [x] 3.4 Banner "Cookie Policy" link navigates to `/privacy` — 38ed2d2
+- [x] 3.5 Reject → banner dismisses, consent stored, no re-prompt on reload — 38ed2d2
+- [x] 3.6 "Cookie settings" control re-opens the banner — 38ed2d2
+- [x] 3.7 Full OIDC login still works (SameSite=Lax session unaffected; `csrftoken` still readable by `api.ts`) — 38ed2d2
+- [x] 3.8 Banner behaves the same on authenticated pages (site-wide mount) — 38ed2d2
