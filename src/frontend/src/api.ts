@@ -234,6 +234,44 @@ export async function getAggregations(): Promise<Aggregations> {
   return (await res.json()) as Aggregations;
 }
 
+// user-score-dashboard: the score list + detail + Modify/Delete mutate seam
+// onto /v1/scores. The list is paginated (mirrors AdminUserList's shape); the
+// detail returns the accepted/corrected snapshot the Modify modal pre-fills.
+
+export interface ScoreList {
+  items: ResultSummary[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export async function getScores(
+  params: { page?: number; page_size?: number } = {},
+): Promise<ScoreList> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.page_size) qs.set('page_size', String(params.page_size));
+  const suffix = qs.toString() ? `?${qs}` : '';
+  const res = await fetch(`/v1/scores${suffix}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    throw new HttpError(res.status, `GET /v1/scores failed: ${res.status}`);
+  }
+  return (await res.json()) as ScoreList;
+}
+
+export async function getScore(resultId: string): Promise<AcceptedResult> {
+  const res = await fetch(`/v1/scores/${resultId}`, {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    throw new HttpError(res.status, `GET /v1/scores/${resultId} failed: ${res.status}`);
+  }
+  return (await res.json()) as AcceptedResult;
+}
+
 // S-04: owner-admin user management. The owner audience is DIFFERENT from
 // /v1/me — the list DOES carry `sub` (the owner needs it to match rows against
 // Auth0), so these types mirror AdminUserOut / AdminUserListOut (backend),

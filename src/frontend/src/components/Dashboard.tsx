@@ -7,11 +7,15 @@
 // Redux/Oval). Accessibility: each region carries role="region" + aria-label;
 // the chart wrapper is role="img" (handled in DailyAverageChart). Loading →
 // role="status"; error → role="alert".
-import { useEffect, useState } from 'react';
+//
+// user-score-dashboard: the "Recent results" region now reuses the shared
+// <ScoreList> fed by getScores({page:1, page_size:20}) (was getAggregations().
+// recent capped at 10). Hero stats + chart still use getAggregations().
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAggregations, type Aggregations } from '../api';
+import { getAggregations, getScores, type Aggregations, type ResultSummary } from '../api';
 import { HeroStats } from './HeroStats';
-import { ResultsList } from './ResultsList';
+import { ScoreList } from './ScoreList';
 import { DailyAverageChart } from './DailyAverageChart';
 import styles from './Dashboard.module.css';
 
@@ -25,6 +29,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [aggregations, setAggregations] = useState<Aggregations | null>(null);
+  const [recentRows, setRecentRows] = useState<ResultSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,8 +37,17 @@ export function Dashboard() {
     getAggregations()
       .then((agg) => { if (mounted) setAggregations(agg); })
       .catch((err) => { if (mounted) setError(err instanceof Error ? err.message : String(err)); });
+    getScores({ page: 1, page_size: 20 })
+      .then((data) => { if (mounted) setRecentRows(data.items); })
+      .catch(() => { /* hero-stats error path already covers load failure */ });
     return () => { mounted = false; };
   }, []);
+
+  // Phase 3 stubs — Phase 4 wires the Preview/Modify/Delete modals here too
+  // (the home "Recent results" rows get the same actions as the dashboard).
+  const handlePreview = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
+  const handleModified = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
+  const handleDeleted = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
 
   function handleAddPhotos() {
     navigate(isMobile ? '/capture' : '/upload');
@@ -68,8 +82,13 @@ export function Dashboard() {
         </button>
       </section>
 
-      <section className={styles.results}>
-        <ResultsList recent={aggregations?.recent ?? null} />
+      <section className={styles.results} aria-label="Results">
+        <ScoreList
+          rows={recentRows}
+          onPreview={handlePreview}
+          onModified={handleModified}
+          onDeleted={handleDeleted}
+        />
       </section>
 
       <section className={styles.chart} aria-label="Daily average">

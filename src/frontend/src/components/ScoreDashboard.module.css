@@ -1,0 +1,57 @@
+.page {
+  padding: 1.5rem;
+  max-width: 56rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.sizeControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sizeLabel {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.sizeSelect {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.pager button {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

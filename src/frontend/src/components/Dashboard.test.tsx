@@ -66,6 +66,11 @@ describe('Dashboard', () => {
       }],
       daily_averages: [{ date: '2026-07-28', average: 8.4 }],
     });
+    // user-score-dashboard: Dashboard's "Recent results" now also calls
+    // getScores — default it to empty so structural tests don't hit real fetch.
+    vi.spyOn(api, 'getScores').mockResolvedValue({
+      items: [], page: 1, page_size: 20, total: 0, total_pages: 0,
+    });
   });
 
   afterEach(() => {
@@ -148,20 +153,25 @@ describe('Dashboard', () => {
     expect(hero).toHaveTextContent('19');
   });
 
-  it('renders results-list rows from getAggregations', async () => {
+  it('renders results-list rows from getScores', async () => {
+    // user-score-dashboard: the "Recent results" region now sources its rows
+    // from getScores({page:1, page_size:20}) (was getAggregations().recent).
     vi.spyOn(api, 'getAggregations').mockResolvedValue({
       hero: { total_shots: 0, last_session_average: null, best_result: null },
-      recent: [{
+      recent: [],
+      daily_averages: [],
+    });
+    vi.spyOn(api, 'getScores').mockResolvedValue({
+      items: [{
         result_id: 'r1', source_job: 'job-1', created_at: '2026-07-28T12:00:00Z',
         score_average: 8.4, hole_count: 5, target_type: 'air_pistol',
       }],
-      daily_averages: [],
+      page: 1, page_size: 20, total: 1, total_pages: 1,
     });
     renderAt('/dashboard');
     const results = await screen.findByRole('region', { name: /results/i });
-    // The fetched recent row renders (date + score_average + hole_count).
+    // The fetched recent row renders (date + bolded score_average).
     expect(results).toHaveTextContent('8.4');
-    expect(results).toHaveTextContent('5 holes');
   });
 
   it('renders a role=status loading state before aggregations resolve', () => {

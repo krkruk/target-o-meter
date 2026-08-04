@@ -18,6 +18,7 @@ import { Capture } from './Capture';
 import { Upload } from './Upload';
 import { Waiting } from './Waiting';
 import { Results } from './Results';
+import { ScoreDashboard } from './ScoreDashboard';
 import { AdminUsersPage } from './AdminUsersPage';
 import styles from './AppShell.module.css';
 
@@ -46,6 +47,7 @@ export function AppShell({ me, onLogout }: AppShellProps) {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/scores" element={<ScoreDashboard />} />
             <Route path="/capture" element={<Capture />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="/waiting/:jobId" element={<Waiting />} />

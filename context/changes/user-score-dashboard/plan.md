@@ -554,34 +554,34 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 #### Automated
 
-- [x] 2.1 Add `ScoringStorage.delete_upload`
-- [x] 2.2 Add `ScoringStorage.delete_paths` (deliverable deletion)
-- [x] 2.3 Add vision service `update_result` (recompute `score_average`, atomic)
-- [x] 2.4 Add vision service `delete_result` (DB-first atomic, best-effort S3, retain `ScoringJob`)
-- [x] 2.5 Add BFF routes `PATCH /v1/scores/{id}` + `DELETE /v1/scores/{id}`
-- [x] 2.6 Unit + system tests for update/delete + storage delete (FS + S3-fake); CSRF matrix
-- [x] 2.7 `make check` + `make be-test` green
+- [x] 2.1 Add `ScoringStorage.delete_upload` — 7bc6d23
+- [x] 2.2 Add `ScoringStorage.delete_paths` (deliverable deletion) — 7bc6d23
+- [x] 2.3 Add vision service `update_result` (recompute `score_average`, atomic) — 7bc6d23
+- [x] 2.4 Add vision service `delete_result` (DB-first atomic, best-effort S3, retain `ScoringJob`) — 7bc6d23
+- [x] 2.5 Add BFF routes `PATCH /v1/scores/{id}` + `DELETE /v1/scores/{id}` — 7bc6d23
+- [x] 2.6 Unit + system tests for update/delete + storage delete (FS + S3-fake); CSRF matrix — 7bc6d23
+- [x] 2.7 `make check` + `make be-test` green — 7bc6d23
 
 #### Manual
 
-- [x] 2.8 Verify PATCH recomputes average + advances `updated_at`; DELETE removes row + FS files, keeps `ScoringJob`; 404 on another user's id; storage failure doesn't block row delete
+- [x] 2.8 Verify PATCH recomputes average + advances `updated_at`; DELETE removes row + FS files, keeps `ScoringJob`; 404 on another user's id; storage failure doesn't block row delete — 7bc6d23
 
 ### Phase 3: Frontend — Shared list/row + read-only dashboard
 
 #### Automated
 
-- [ ] 3.1 Add `getScores` + `getScore` to `api.ts`
-- [ ] 3.2 Build `<ScoreRow>` (date + bolded score + Preview/Modify/Delete buttons)
-- [ ] 3.3 Build `<ScoreList>` (day-bucketed)
-- [ ] 3.4 Build `<ScoreDashboard>` page (pagination dropdown 10/20/30/50, Prev/Next)
-- [ ] 3.5 Add `/scores` route + "Score dashboard" menu entry (plain `<Link>` for now)
-- [ ] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20) + delete now-dead `ResultsList.tsx`/`.module.css`
-- [ ] 3.7 Vitest tests for ScoreRow/ScoreList/ScoreDashboard
-- [ ] 3.8 `make check` + `make fe-test` green
+- [x] 3.1 Add `getScores` + `getScore` to `api.ts`
+- [x] 3.2 Build `<ScoreRow>` (date + bolded score + Preview/Modify/Delete buttons)
+- [x] 3.3 Build `<ScoreList>` (day-bucketed)
+- [x] 3.4 Build `<ScoreDashboard>` page (pagination dropdown 10/20/30/50, Prev/Next)
+- [x] 3.5 Add `/scores` route + "Score dashboard" menu entry (plain `<Link>` for now)
+- [x] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20) + delete now-dead `ResultsList.tsx`/`.module.css`
+- [x] 3.7 Vitest tests for ScoreRow/ScoreList/ScoreDashboard
+- [x] 3.8 `make check` + `make fe-test` green
 
 #### Manual
 
-- [ ] 3.9 Verify `/scores` page (day groups, pagination dropdown, Prev/Next); home shows ≤20 rows with same markup; action buttons visible
+- [x] 3.9 Verify `/scores` page (day groups, pagination dropdown, Prev/Next); home shows ≤20 rows with same markup; action buttons visible
 
 ### Phase 4: Frontend — Actions (Preview, Modify modal, Delete modal) + NavLink
 

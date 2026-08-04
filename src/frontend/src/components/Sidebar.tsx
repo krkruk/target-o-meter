@@ -32,6 +32,9 @@ export function Sidebar({ collapsed, onToggle, onLogout, onHome, isOwner }: Side
         <button role="menuitem" className={styles.item} onClick={onHome}>
           {collapsed ? '⌂' : 'Home'}
         </button>
+        <Link role="menuitem" className={styles.item} to="/scores">
+          {collapsed ? '🎯' : 'Score dashboard'}
+        </Link>
         {isOwner && (
           <Link role="menuitem" className={styles.item} to="/admin">
             {collapsed ? '⚙' : 'Admin'}
