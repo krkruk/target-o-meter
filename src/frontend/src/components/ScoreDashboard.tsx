@@ -38,11 +38,12 @@ export function ScoreDashboard() {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Phase 3 stubs — Phase 4 wires the modals (state lives per-row inside
-  // <ScoreRow> then; these become success-callback refetch/remove handlers).
-  const handlePreview = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
-  const handleModified = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
-  const handleDeleted = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
+  // Phase 4: the row owns the modal state; these are SUCCESS callbacks.
+  // onModified → refetch so the updated score_average shows.
+  // onDeleted → refetch so the row disappears AND the pager totals re-sync
+  //   (a local filter would desync total_pages from the global total).
+  const handleModified = useCallback(() => { void load(); }, [load]);
+  const handleDeleted = useCallback(() => { void load(); }, [load]);
 
   function handlePageSizeChange(e: React.ChangeEvent<HTMLSelectElement>) {
     setPageSize(Number(e.target.value));
@@ -85,7 +86,6 @@ export function ScoreDashboard() {
 
       <ScoreList
         rows={rows}
-        onPreview={handlePreview}
         onModified={handleModified}
         onDeleted={handleDeleted}
       />

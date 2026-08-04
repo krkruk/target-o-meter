@@ -1,0 +1,38 @@
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: #fafafa;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-top: 0.5rem;
+}
+
+.image {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  align-self: center;
+}
+
+.scores {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.loading {
+  margin: 0.5rem 0;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.error {
+  margin: 0.5rem 0;
+  color: var(--color-danger);
+  font-size: 0.9rem;
+}

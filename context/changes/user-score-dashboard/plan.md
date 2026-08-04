@@ -570,31 +570,31 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 #### Automated
 
-- [x] 3.1 Add `getScores` + `getScore` to `api.ts`
-- [x] 3.2 Build `<ScoreRow>` (date + bolded score + Preview/Modify/Delete buttons)
-- [x] 3.3 Build `<ScoreList>` (day-bucketed)
-- [x] 3.4 Build `<ScoreDashboard>` page (pagination dropdown 10/20/30/50, Prev/Next)
-- [x] 3.5 Add `/scores` route + "Score dashboard" menu entry (plain `<Link>` for now)
-- [x] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20) + delete now-dead `ResultsList.tsx`/`.module.css`
-- [x] 3.7 Vitest tests for ScoreRow/ScoreList/ScoreDashboard
-- [x] 3.8 `make check` + `make fe-test` green
+- [x] 3.1 Add `getScores` + `getScore` to `api.ts` — 25887a8
+- [x] 3.2 Build `<ScoreRow>` (date + bolded score + Preview/Modify/Delete buttons) — 25887a8
+- [x] 3.3 Build `<ScoreList>` (day-bucketed) — 25887a8
+- [x] 3.4 Build `<ScoreDashboard>` page (pagination dropdown 10/20/30/50, Prev/Next) — 25887a8
+- [x] 3.5 Add `/scores` route + "Score dashboard" menu entry (plain `<Link>` for now) — 25887a8
+- [x] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20) + delete now-dead `ResultsList.tsx`/`.module.css` — 25887a8
+- [x] 3.7 Vitest tests for ScoreRow/ScoreList/ScoreDashboard — 25887a8
+- [x] 3.8 `make check` + `make fe-test` green — 25887a8
 
 #### Manual
 
-- [x] 3.9 Verify `/scores` page (day groups, pagination dropdown, Prev/Next); home shows ≤20 rows with same markup; action buttons visible
+- [x] 3.9 Verify `/scores` page (day groups, pagination dropdown, Prev/Next); home shows ≤20 rows with same markup; action buttons visible — 25887a8
 
 ### Phase 4: Frontend — Actions (Preview, Modify modal, Delete modal) + NavLink
 
 #### Automated
 
-- [ ] 4.1 Build `<ScorePreview>` (proxy image + immutable per-shot scores line)
-- [ ] 4.2 Add `updateScore` + `deleteScore` to `api.ts`
-- [ ] 4.3 Build `<ModifyModal>` (mirrors `BanModal`, Modify=PATCH, Cancel=onClose) + `<DeleteModal>` (confirm=DELETE)
-- [ ] 4.4 Wire row buttons to modals — modal state lives per-row inside `<ScoreRow>` (`useState<'modify'|'delete'|null>`), not at page level; success callbacks `onModified` (refetch) / `onDeleted` (remove row + decrement total) bubble to `ScoreDashboard` + `Dashboard`
-- [ ] 4.5 Convert Home/Score dashboard/Admin menu entries to `<NavLink>` with shared `.active` style
-- [ ] 4.6 Vitest tests for Modify/Delete modals + Preview + NavLink active state
-- [ ] 4.7 `make check` + `make fe-test` green
+- [x] 4.1 Build `<ScorePreview>` (proxy image + immutable per-shot scores line)
+- [x] 4.2 Add `updateScore` + `deleteScore` to `api.ts`
+- [x] 4.3 Build `<ModifyModal>` (mirrors `BanModal`, Modify=PATCH, Cancel=onClose) + `<DeleteModal>` (confirm=DELETE)
+- [x] 4.4 Wire row buttons to modals — modal state lives per-row inside `<ScoreRow>` (`useState<'modify'|'delete'|null>`), not at page level; success callbacks `onModified` (refetch) / `onDeleted` (refetch) bubble to `ScoreDashboard` + `Dashboard`
+- [x] 4.5 Convert Home/Score dashboard/Admin menu entries to `<NavLink>` with shared `.active` style
+- [x] 4.6 Vitest tests for Modify/Delete modals + Preview + NavLink active state
+- [x] 4.7 `make check` + `make fe-test` green
 
 #### Manual
 
-- [ ] 4.8 Verify Preview (image + scores line); Modify (PATCH, average updates, corrected value persists); Modify Cancel (no-op); Delete (confirm, row + FS files gone, `ScoringJob` retained); active menu highlight; 404 on another user's id shows inline error
+- [x] 4.8 Verify Preview (image + scores line); Modify (PATCH, average updates, corrected value persists); Modify Cancel (no-op); Delete (confirm, row + FS files gone, `ScoringJob` retained); active menu highlight; 404 on another user's id shows inline error

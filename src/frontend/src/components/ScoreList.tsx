@@ -11,7 +11,6 @@ import styles from './ScoreList.module.css';
 
 interface ScoreListProps {
   rows: ResultSummary[];
-  onPreview: (row: ResultSummary) => void;
   onModified: (row: ResultSummary) => void;
   onDeleted: (row: ResultSummary) => void;
 }
@@ -35,7 +34,7 @@ function groupByDay(rows: ResultSummary[]): DayGroup[] {
   return groups;
 }
 
-export function ScoreList({ rows, onPreview, onModified, onDeleted }: ScoreListProps) {
+export function ScoreList({ rows, onModified, onDeleted }: ScoreListProps) {
   if (rows.length === 0) {
     return <p className={styles.empty}>No scores yet.</p>;
   }
@@ -51,7 +50,6 @@ export function ScoreList({ rows, onPreview, onModified, onDeleted }: ScoreListP
               <ScoreRow
                 key={r.result_id}
                 row={r}
-                onPreview={onPreview}
                 onModified={onModified}
                 onDeleted={onDeleted}
               />

@@ -272,6 +272,42 @@ export async function getScore(resultId: string): Promise<AcceptedResult> {
   return (await res.json()) as AcceptedResult;
 }
 
+// user-score-dashboard Phase 4: the Modify (PATCH) + Delete mutations.
+// Both send the CSRF token via jsonHeaders() (CSRF auto-enforced on SessionAuth
+// for non-GET) and throw HttpError(status) on non-ok so the modals can map
+// 404 (not-mine / already-gone) to an inline error.
+
+export async function updateScore(
+  resultId: string,
+  payload: {
+    holes: AcceptedHole[];
+    target_type?: string;
+    caliber_hint?: string;
+    distance?: number;
+    weapon_type?: string;
+  },
+): Promise<AcceptedResult> {
+  const res = await fetch(`/v1/scores/${resultId}`, {
+    method: 'PATCH',
+    headers: jsonHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    throw new HttpError(res.status, `PATCH /v1/scores/${resultId} failed: ${res.status}`);
+  }
+  return (await res.json()) as AcceptedResult;
+}
+
+export async function deleteScore(resultId: string): Promise<void> {
+  const res = await fetch(`/v1/scores/${resultId}`, {
+    method: 'DELETE',
+    headers: jsonHeaders(),
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new HttpError(res.status, `DELETE /v1/scores/${resultId} failed: ${res.status}`);
+  }
+}
+
 // S-04: owner-admin user management. The owner audience is DIFFERENT from
 // /v1/me — the list DOES carry `sub` (the owner needs it to match rows against
 // Auth0), so these types mirror AdminUserOut / AdminUserListOut (backend),

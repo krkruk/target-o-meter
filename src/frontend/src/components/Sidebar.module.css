@@ -58,6 +58,15 @@
   color: #fff;
 }
 
+/* user-score-dashboard Phase 4: <NavLink> applies .active + aria-current="page"
+   when the route matches. The active entry highlights so the user sees which
+   page they're on. */
+.item.active {
+  background: var(--color-primary);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+
 .item:disabled {
   opacity: 0.45;
   cursor: not-allowed;

@@ -43,11 +43,20 @@ export function Dashboard() {
     return () => { mounted = false; };
   }, []);
 
-  // Phase 3 stubs — Phase 4 wires the Preview/Modify/Delete modals here too
-  // (the home "Recent results" rows get the same actions as the dashboard).
-  const handlePreview = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
-  const handleModified = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
-  const handleDeleted = useCallback((_row: ResultSummary) => { /* Phase 4 */ }, []);
+  // Phase 4: the row owns the modal state; these are SUCCESS callbacks.
+  // onModified → refetch the 20-row "Recent results" so the updated average
+  //   shows. onDeleted → refetch so the row disappears.
+  const refetchRecent = useCallback(() => {
+    let mounted = true;
+    getScores({ page: 1, page_size: 20 })
+      .then((data) => { if (mounted) setRecentRows(data.items); })
+      .catch(() => { /* hero-stats error path already covers load failure */ });
+    return () => { mounted = false; };
+  }, []);
+  const handleModified = useCallback(() => { refetchRecent(); }, [refetchRecent]);
+  const handleDeleted = useCallback((row: ResultSummary) => {
+    setRecentRows((prev) => prev.filter((r) => r.result_id !== row.result_id));
+  }, []);
 
   function handleAddPhotos() {
     navigate(isMobile ? '/capture' : '/upload');
@@ -85,7 +94,6 @@ export function Dashboard() {
       <section className={styles.results} aria-label="Results">
         <ScoreList
           rows={recentRows}
-          onPreview={handlePreview}
           onModified={handleModified}
           onDeleted={handleDeleted}
         />

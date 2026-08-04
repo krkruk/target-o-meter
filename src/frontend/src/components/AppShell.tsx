@@ -9,7 +9,7 @@
 // Phases 7-8 swap each stub route component for the real implementation; the
 // route table here is the wiring point.
 import { useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import type { Me } from '../api';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
@@ -30,7 +30,6 @@ interface AppShellProps {
 export function AppShell({ me, onLogout }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const isOwner = me.user?.role === 'owner';
-  const navigate = useNavigate();
 
   return (
     <div className={styles.shell} data-shell data-collapsed={collapsed}>
@@ -40,7 +39,6 @@ export function AppShell({ me, onLogout }: AppShellProps) {
           collapsed={collapsed}
           onToggle={() => setCollapsed((c) => !c)}
           onLogout={onLogout}
-          onHome={() => navigate('/dashboard')}
           isOwner={isOwner}
         />
         <main className={styles.main} role="main">
