@@ -48,6 +48,7 @@ from src.domains.vision.dtos import (
     AcceptedResultDTO,
     AggregationDTO,
     DetectedHoleDTO,
+    ScoreListOut,
     ScoringJobDTO,
 )
 from src.domains.vision.pipeline.storage import ScoringStorage
@@ -57,6 +58,8 @@ from src.domains.vision.services import (
     aggregate_for_user,
     get_job,
     get_job_for_user,
+    get_result,
+    list_results,
     schedule_image_processing,
 )
 
@@ -290,3 +293,46 @@ def get_aggregations(request) -> AggregationDTO:
         raise HttpError(401, "Session user no longer exists") from None
 
     return aggregate_for_user(user_uuid=user_dto.user_uuid)
+
+
+@router.get("/scores", auth=session_auth, response={200: ScoreListOut})
+def list_scores(request, page: int = 1, page_size: int = 20) -> ScoreListOut:
+    """The user's score list (the ``/v1/scores`` resource, ``user-score-dashboard``
+    change). Paginated, newest first, per-user isolated (the caller sees only
+    their own rows). Resource-named per the API-design lesson.
+
+    Registered BEFORE ``GET /scores/{result_id}`` (param) so the bare list route
+    resolves cleanly — the param route below can't shadow ``/scores/aggregations``
+    (the literal route above this) because it sits last. django-ninja matches in
+    declaration order; the existing ``GET /scores/aggregations`` must stay
+    registered before any ``GET /scores/{result_id}`` or ``aggregations`` parses
+    as a UUID and 422s.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    return list_results(user_uuid=user_dto.user_uuid, page=page, page_size=page_size)
+
+
+@router.get(
+    "/scores/{result_id}", auth=session_auth, response={200: AcceptedResultDTO}
+)
+def get_score(request, result_id: UUID) -> AcceptedResultDTO:
+    """Read one accepted result (the Modify modal fetches this — the accepted/
+    corrected snapshot, NOT the raw detector output which would clobber a prior
+    correction). Owner-only — 404 on mismatch OR missing (ID-prober invariant).
+
+    Registered LAST under ``/scores/`` so the literal ``/scores/aggregations``
+    route (the home Dashboard's aggregation call) is matched first.
+    """
+    try:
+        user_dto = get_user_context(str(request.user.sub))
+    except get_user_model().DoesNotExist:
+        raise HttpError(401, "Session user no longer exists") from None
+
+    try:
+        return get_result(result_id=result_id, user_uuid=user_dto.user_uuid)
+    except PermissionError:
+        raise HttpError(404, "Not found") from None

@@ -530,25 +530,25 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 ### Prerequisites: Amend PRD constraint (gate for Phase 2)
 
-- [ ] 0.1 Edit PRD FR-010 (`context/foundation/prd.md:97-99`) to promote "editing saved results" from v2 to in-scope, citing this change (`user-score-dashboard`); get sign-off — Phase 2 cannot start until this lands
+- [x] 0.1 Edit PRD FR-010 (`context/foundation/prd.md:97-99`) to promote "editing saved results" from v2 to in-scope, citing this change (`user-score-dashboard`); get sign-off — Phase 2 cannot start until this lands
 
 ### Phase 1: Backend — Read APIs + migration
 
 #### Automated
 
-- [ ] 1.1 Add `updated_at` to `AcceptedResult` (`models.py`) + update docstring
-- [ ] 1.2 Generate + apply migration `0006_acceptedresult_updated_at`
-- [ ] 1.3 Expose `updated_at` in `AcceptedResultAdmin` + refresh admin notes
-- [ ] 1.4 Add `ScoreListOut` paginated response DTO
-- [ ] 1.5 Add vision service `list_results` (paginated)
-- [ ] 1.6 Add vision service `get_result` (detail)
-- [ ] 1.7 Add BFF routes `GET /v1/scores` + `GET /v1/scores/{id}`
-- [ ] 1.8 Unit + system tests for list/detail (incl. 404-not-mine, pagination clamp)
-- [ ] 1.9 `make check` + `make be-test` green
+- [x] 1.1 Add `updated_at` to `AcceptedResult` (`models.py`) + update docstring
+- [x] 1.2 Generate + apply migration `0006_acceptedresult_updated_at`
+- [x] 1.3 Expose `updated_at` in `AcceptedResultAdmin` + refresh admin notes
+- [x] 1.4 Add `ScoreListOut` paginated response DTO
+- [x] 1.5 Add vision service `list_results` (paginated)
+- [x] 1.6 Add vision service `get_result` (detail)
+- [x] 1.7 Add BFF routes `GET /v1/scores` + `GET /v1/scores/{id}`
+- [x] 1.8 Unit + system tests for list/detail (incl. 404-not-mine, pagination clamp)
+- [x] 1.9 `make check` + `make be-test` green
 
 #### Manual
 
-- [ ] 1.10 Verify `GET /v1/scores` pagination + ordering; `GET /v1/scores/{id}` detail; 404 on another user's id; admin shows `updated_at`
+- [x] 1.10 Verify `GET /v1/scores` pagination + ordering; `GET /v1/scores/{id}` detail; 404 on another user's id; admin shows `updated_at`
 
 ### Phase 2: Backend — UPDATE + DELETE
 

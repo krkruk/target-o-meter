@@ -12,8 +12,12 @@ Why read-mostly:
     desync ``status`` from the actual pipeline state (e.g. flipping a ``queued``
     row to ``succeeded`` without running detection leaves dangling paths). So
     everything is read-only except in ``manage.py shell``.
-  - ``AcceptedResult`` is immutable after create by design (PRD FR-010
-    Socrates: "editing saved results is v2"). The whole row is read-only here.
+  - ``AcceptedResult`` is mutable after create via ``PATCH /v1/scores/{id}``
+    (PRD FR-010 Socrates amendment for the ``user-score-dashboard`` change).
+    The whole row stays read-only in the GUI — the only legitimate writes are
+    ``accept_job`` (insert) and ``update_result`` / ``delete_result`` (the
+    dashboard PATCH/DELETE path); editing it by hand would bypass the average
+    recompute. ``updated_at`` is the audit trail for the PATCH path.
 
 Both models are still registered (not just left unregistered): the dashboard
 aggregates from ``AcceptedResult``, so being able to eyeball rows in the admin
@@ -57,25 +61,33 @@ class ScoringJobAdmin(admin.ModelAdmin):
 
 @admin.register(AcceptedResult)
 class AcceptedResultAdmin(admin.ModelAdmin):
-    """Read-mostly admin over ``vision_acceptedresult`` (immutable after create).
+    """Read-mostly admin over ``vision_acceptedresult``.
 
-    The ``holes`` JSONField is the corrected snapshot; the ``recent`` list +
-    ``total_shots`` on the dashboard aggregate from this row, so being able to
-    eyeball it is the manual-verification gate (Progress 2.7). Read-only because
-    AcceptedResult is immutable by design (PRD FR-010).
+    Mutable after create via ``PATCH /v1/scores/{id}`` (PRD FR-010 Socrates
+    amendment for the ``user-score-dashboard`` change), but still read-only in
+    the GUI: the only legitimate writes are ``accept_job`` (insert) and
+    ``update_result`` / ``delete_result`` (the dashboard PATCH/DELETE path), and
+    hand-editing would bypass the average recompute. The ``holes`` JSONField is
+    the corrected snapshot; the ``recent`` list + ``total_shots`` on the
+    dashboard aggregate from this row, so being able to eyeball it is the
+    manual-verification gate (Progress 2.7). ``updated_at`` is exposed so the
+    audit trail for the PATCH path is visible alongside ``created_at``.
     """
 
     list_display = (
         "id", "source_job", "user_uuid", "target_type", "score_average",
-        "distance", "weapon_type", "created_at",
+        "distance", "weapon_type", "created_at", "updated_at",
     )
     list_filter = ("target_type",)
     search_fields = ("id", "source_job", "user_uuid", "caliber_hint", "weapon_type")
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
 
-    # Immutable after create — no field is editable.
+    # No field is editable in the GUI (writes go through accept_job /
+    # update_result / delete_result, never a hand-edit — a hand-edit would
+    # bypass the average recompute + storage bookkeeping).
     readonly_fields = (
         "id", "user_uuid", "source_job", "target_type", "caliber_hint",
-        "distance", "weapon_type", "holes", "score_average", "created_at",
+        "distance", "weapon_type", "holes", "score_average",
+        "created_at", "updated_at",
     )

@@ -216,3 +216,45 @@ class ScoringStorage:
         full = out_dir / name
         full.write_bytes(data)
         return str(full.relative_to(self._root))
+
+    # ------------------------------------------------------------------
+    # Deletion surface (the dashboard's hard-delete path). The caller
+    # (``delete_result``) supplies the concrete keys collected from the
+    # ``ScoringJob`` row; no ``listdir`` / prefix listing is needed (the job row
+    # already holds every key). These methods are STRICT — they let exceptions
+    # propagate so ``delete_result`` can wrap them in best-effort try/except.
+    # ------------------------------------------------------------------
+
+    def delete_upload(self, stored_path: str) -> None:
+        """Delete the original upload object (the ``uploads/{digest}{ext}`` key).
+
+        Routes through ``_safe_key`` so the ``uploads/`` namespace guard applies
+        under S3; under FS, ``_safe_key`` validates then ``_safe_join`` resolves
+        the path inside the root. Empty/None ``stored_path`` is a no-op (a row
+        without an upload path deletes nothing). Exceptions propagate — the
+        caller (``delete_result``) wraps this best-effort.
+        """
+        if not stored_path:
+            return
+        if self._is_s3:
+            self._storage.delete(self._safe_key(stored_path))
+        else:
+            self._safe_join(stored_path).unlink(missing_ok=True)
+
+    def delete_paths(self, paths: list[str]) -> None:
+        """Delete a caller-supplied list of concrete storage objects (the
+        original upload + a job's deliverables) in one call.
+
+        Each key is routed through ``_safe_key`` (under S3) / ``_safe_join``
+        (under FS) so the ``uploads/`` / ``jobs/`` namespace guard applies under
+        both backends. Empty/None entries in ``paths`` are skipped. Under FS,
+        empty parent dirs may remain (acceptable — matches the existing posture).
+        Exceptions propagate — ``delete_result`` wraps this best-effort.
+        """
+        for p in paths:
+            if not p:
+                continue
+            if self._is_s3:
+                self._storage.delete(self._safe_key(p))
+            else:
+                self._safe_join(p).unlink(missing_ok=True)

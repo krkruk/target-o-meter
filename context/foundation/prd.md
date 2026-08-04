@@ -96,7 +96,7 @@ User authenticates via third-party OAuth, photographs an ISSF paper target, the 
 
 - FR-010: User can accept a detection result to persist it. Priority: must-have
   > Socrates: Counter-argument considered: "one-click persists bad data."
-  > Resolution: kept; the accept/reject review step is the safety net; editing saved results is v2.
+  > Resolution: kept; the accept/reject review step is the safety net. Editing saved results is in scope as of the `user-score-dashboard` change (PATCH `/v1/scores/{id}` recomputes the average; audit trail via `updated_at`).
 
 - FR-011: User can reject a detection result, discarding it without saving. Priority: must-have
   > Socrates: Counter-argument considered: "no feedback loop on rejection."
