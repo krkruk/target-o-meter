@@ -33,6 +33,26 @@
   --color-neutral-border: #e5e7eb;/* soft neutral border */
   --sidebar-width: 200px;
   --sidebar-collapsed-width: 56px;
+
+  /* vanilla-cookieconsent theme overrides — map the banner's --cc-* tokens
+     to the app's palette so it matches the shell instead of the library
+     default. See https://cookieconsent.orestbida.com for the full list. */
+  --cc-bg: #fff;
+  --cc-primary-color: var(--color-fg);
+  --cc-text-color: var(--color-fg);
+  --cc-btn-primary-bg: var(--color-fg);
+  --cc-btn-primary-color: var(--color-bg);
+  --cc-btn-primary-border-color: var(--color-fg);
+  --cc-btn-secondary-bg: var(--color-bg);
+  --cc-btn-secondary-color: var(--color-fg);
+  --cc-btn-secondary-border-color: var(--color-fg);
+  --cc-btn-border-radius: 6px;
+  --cc-toggle-background: var(--color-border);
+  --cc-toggle-enabled-background: var(--color-fg);
+  --cc-overlay-bg: rgba(0, 0, 0, 0.4);
+  --cc-footer-color: var(--color-muted);
+  --cc-footer-background: var(--color-bg);
+  --cc-link-color: var(--color-fg);
 }
 
 html,

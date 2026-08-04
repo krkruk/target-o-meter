@@ -18,3 +18,14 @@ from django.shortcuts import render
 def index(request: HttpRequest) -> HttpResponse:
     """Serve the SPA shell document. Auth-state dispatch moved client-side."""
     return render(request, "base.html")
+
+
+def privacy(request: HttpRequest) -> HttpResponse:
+    """Serve the standalone cookie-policy page.
+
+    Public (no auth decorator) — the policy must be reachable by
+    unauthenticated visitors; that is the whole point of the banner's
+    "Cookie Policy" link. The template does NOT extend ``base.html`` and does
+    NOT mount the SPA, so it renders standalone regardless of auth state.
+    """
+    return render(request, "privacy.html")

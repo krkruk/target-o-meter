@@ -35,6 +35,36 @@
   color: #fff;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.starBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 1rem;
+  border: 1px solid #1a1a1a;
+  background: transparent;
+  color: inherit;
+  border-radius: 6px;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.starBtn:hover {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.starIcon {
+  flex: none;
+  color: currentColor;
+}
+
 .hero {
   flex: 1;
   display: grid;
@@ -92,5 +122,18 @@
   .hero {
     grid-template-columns: 1fr;
     padding: 2rem 1.25rem;
+  }
+
+  .topBar {
+    padding: 0.6rem 1rem;
+  }
+
+  .headerActions {
+    gap: 0.35rem;
+  }
+
+  .starBtn,
+  .loginBtn {
+    padding: 0.35rem 0.7rem;
   }
 }

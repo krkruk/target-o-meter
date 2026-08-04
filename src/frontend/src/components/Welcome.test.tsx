@@ -50,4 +50,14 @@ describe('Welcome', () => {
     await userEvent.click(cta);
     expect(onLogin).toHaveBeenCalledTimes(1);
   });
+
+  it('renders a GitHub link in the header that opens the repo in a new tab', () => {
+    render(<Welcome onLogin={() => {}} />);
+    // The GitHub anchor is the project's first external link. It must reach the
+    // repo, open in a new tab, and carry the safe external-link rel.
+    const gh = screen.getByRole('link', { name: /github/i });
+    expect(gh).toHaveAttribute('href', 'https://github.com/krkruk/target-o-meter');
+    expect(gh).toHaveAttribute('target', '_blank');
+    expect(gh).toHaveAttribute('rel', 'noopener noreferrer');
+  });
 });

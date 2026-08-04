@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cookie Policy — Target-o-meter</title>
+    {% comment %}Standalone document: does NOT extend base.html and does NOT
+    mount the SPA (no vite entry tag). The cookie consent banner's "Cookie
+    Policy" link resolves here. Palette tokens are inlined from
+    src/frontend/src/styles.css (:root) so the page matches the app without a
+    CSS pipeline.{% endcomment %}
+    <style>
+        :root {
+            --color-bg: #f7f7f5;
+            --color-fg: #1a1a1a;
+            --color-muted: #6a6a6a;
+            --color-border: #e3e1dc;
+        }
+        html, body {
+            margin: 0;
+            background: var(--color-bg);
+            color: var(--color-fg);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
+        }
+        .page {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 3rem 1.5rem 4rem;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin: 0 0 1.5rem;
+        }
+        h2 {
+            font-size: 1.15rem;
+            margin: 2rem 0 0.5rem;
+        }
+        p, li {
+            color: var(--color-fg);
+        }
+        code {
+            background: var(--color-border);
+            padding: 0.1rem 0.35rem;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        ul {
+            padding-left: 1.25rem;
+        }
+        .back {
+            display: inline-block;
+            margin-top: 2rem;
+            padding: 0.4rem 1rem;
+            border: 1px solid var(--color-fg);
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--color-fg);
+        }
+        .back:hover {
+            background: var(--color-fg);
+            color: var(--color-bg);
+        }
+        .muted {
+            color: var(--color-muted);
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <h1>Cookie Policy</h1>
+
+        <p>
+            Target-o-meter uses a small number of strictly-necessary cookies to
+            keep you signed in and to protect forms against cross-site request
+            forgery. This page lists every cookie the site sets.
+        </p>
+
+        <h2>Strictly-necessary cookies</h2>
+        <p>
+            These cookies are required for login and security. They cannot be
+            disabled — turning them off would break sign-in and form
+            submission.
+        </p>
+        <ul>
+            <li>
+                <code>sessionid</code> — the Django session cookie. It is
+                marked <code>HttpOnly</code> and keeps you signed in across
+                requests. It is set when you log in and cleared when you log
+                out.
+            </li>
+            <li>
+                <code>csrftoken</code> — the CSRF protection cookie. It is read
+                by the app's API client so authenticated form submissions and
+                data-changing requests carry a forgery token.
+            </li>
+        </ul>
+
+        <h2>Analytics &amp; marketing cookies</h2>
+        <p>
+            There are no analytics or marketing cookies in use. Target-o-meter
+            does not run tracking pixels, advertising scripts, or third-party
+            analytics. If that ever changes, this page will be updated and the
+            consent banner will re-prompt.
+        </p>
+
+        <p class="muted">
+            This is a technical description of the cookies in use; it is not a
+            legal review.
+        </p>
+
+        <a class="back" href="/">Back to Target-o-meter</a>
+    </main>
+</body>
+</html>

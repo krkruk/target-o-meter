@@ -19,3 +19,4 @@ results/
 # bind-mount exports or local dumps.
 minio-data/
 db-data/
+node-modules/
