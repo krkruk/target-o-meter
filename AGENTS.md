@@ -4,7 +4,7 @@
 *   **Project Name:** Target-o-meter
 *   **Architecture:** Monolithic Domain-Driven Design (DDD) with a Backend-For-Frontend (BFF) layer.
 *   **Backend:** Django 6.0.5, Python package manager: `uv` (PEP 735).
-*   **Frontend:** React + Oval + Redux, integrated via `django-vite` (HMR enabled for dev).
+*   **Frontend:** React 18 + react-router-dom, integrated via `django-vite` (HMR enabled for dev). Client state is plain `useState` (no Redux/Oval); charts via `recharts`, cookie consent via `vanilla-cookieconsent`.
 *   **API Layer:** `django-ninja` (strictly enforcing Pydantic DTO contracts).
 *   **Database:** SQLite3 (WAL mode) at `db.sqlite3`.
 *   **Storage:** django-storages S3 backend in prod (Railway Storage Buckets, Tigris-backed) and in docker-compose dev (MinIO); `FileSystemStorage` is the env-selected debug fallback (`USE_S3=False`). Hashed-path bucketing for OpenCV binaries still applies under both backends (`ScoringStorage.save_upload`'s SHA-1 digest bucketing). DB stores metadata only.
@@ -41,7 +41,7 @@ All executable Python code is isolated in `src/`. Tests follow the V-Model: doma
 ├── src/
 │   ├── manage.py               # Django entrypoint
 │   ├── target_o_meter/         # ASGI/WSGI, Settings, Root URLs
-│   ├── frontend/               # React + Oval + Redux SPA (Vite target)
+│   ├── frontend/               # React 18 + react-router-dom SPA (Vite target)
 │   ├── bff/                    # Application Layer: HTTP routers & Orchestration
 │   └── domains/                # Bounded Contexts (Zero HTTP, Pure Logic)
 │       ├── identity/           # OAuth, UUID mapping, Roles

@@ -230,7 +230,7 @@ contract enforces domain independence in CI.
 
 - **Backend:** Django 6, django-ninja (Pydantic DTO contracts), django-q2, django-vite
 - **Computer vision:** OpenCV, LangChain (Google Gemini / Ollama)
-- **Frontend:** React + Vite
+- **Frontend:** React 18 + react-router-dom + Vite (state is plain `useState` — no Redux/Oval; charts via `recharts`, cookie consent via `vanilla-cookieconsent`)
 - **Auth:** Auth0 (OAuth 2.0 / OIDC)
 - **Package manager:** `uv` (PEP 735 dependency groups)
 - **Storage:** django-storages S3 backend (MinIO / Tigris), `FileSystemStorage` dev fallback
