@@ -537,28 +537,28 @@ manual testing was successful before considering the change complete.
 
 #### Automated
 
-- [x] 2.1 `make check` passes (ruff + import-linter accept the new view import)
-- [x] 2.2 `make be-test` passes — `tests/system/test_privacy_page.py` green (incl. "not the SPA shell" assertions)
+- [x] 2.1 `make check` passes (ruff + import-linter accept the new view import) — 82a9133
+- [x] 2.2 `make be-test` passes — `tests/system/test_privacy_page.py` green (incl. "not the SPA shell" assertions) — 82a9133
 
 #### Manual
 
-- [x] 2.3 `/privacy` renders the standalone page (no React boot, no `Welcome` content)
-- [x] 2.4 `/privacy` lists `sessionid` + `csrftoken` and states no analytics/marketing
-- [x] 2.5 `/privacy` reachable + identical while logged in (public route)
-- [x] 2.6 `/privacy-typos` returns 404 (catch-all exclusion is specific)
+- [x] 2.3 `/privacy` renders the standalone page (no React boot, no `Welcome` content) — 82a9133
+- [x] 2.4 `/privacy` lists `sessionid` + `csrftoken` and states no analytics/marketing — 82a9133
+- [x] 2.5 `/privacy` reachable + identical while logged in (public route) — 82a9133
+- [x] 2.6 `/privacy-typos` returns 404 (catch-all exclusion is specific) — 82a9133
 
 ### Phase 3: Cookie consent popup
 
 #### Automated
 
-- [ ] 3.1 `make check` passes (`tsc --noEmit` against the library's bundled declarations)
-- [ ] 3.2 `make fe-test` passes — `cookieConsent.test.ts` green, no existing frontend test regressed
+- [x] 3.1 `make check` passes (`tsc --noEmit` against the library's bundled declarations)
+- [x] 3.2 `make fe-test` passes — `cookieConsent.test.ts` green, no existing frontend test regressed
 
 #### Manual
 
-- [ ] 3.3 First visit (site data cleared): banner appears, Accept and Reject equally prominent
-- [ ] 3.4 Banner "Cookie Policy" link navigates to `/privacy`
-- [ ] 3.5 Reject → banner dismisses, consent stored, no re-prompt on reload
-- [ ] 3.6 "Cookie settings" control re-opens the banner
-- [ ] 3.7 Full OIDC login still works (SameSite=Lax session unaffected; `csrftoken` still readable by `api.ts`)
-- [ ] 3.8 Banner behaves the same on authenticated pages (site-wide mount)
+- [x] 3.3 First visit (site data cleared): banner appears, Accept and Reject equally prominent
+- [x] 3.4 Banner "Cookie Policy" link navigates to `/privacy`
+- [x] 3.5 Reject → banner dismisses, consent stored, no re-prompt on reload
+- [x] 3.6 "Cookie settings" control re-opens the banner
+- [x] 3.7 Full OIDC login still works (SameSite=Lax session unaffected; `csrftoken` still readable by `api.ts`)
+- [x] 3.8 Banner behaves the same on authenticated pages (site-wide mount)

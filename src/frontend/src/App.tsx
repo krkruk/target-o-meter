@@ -14,6 +14,7 @@ import { getMe, login, postLogout, type Me } from './api';
 import { Welcome } from './components/Welcome';
 import { AppShell } from './components/AppShell';
 import { NickPrompt } from './components/NickPrompt';
+import { CookieSettingsButton } from './components/CookieSettingsButton';
 
 const UNAUTHENTICATED: Me = { authenticated: false, user: null };
 
@@ -37,7 +38,12 @@ export function App() {
   }
 
   if (!me.authenticated) {
-    return <Welcome onLogin={login} />;
+    return (
+      <>
+        <Welcome onLogin={login} />
+        <CookieSettingsButton />
+      </>
+    );
   }
 
   const showNickPrompt = me.user ? !me.user.has_set_nick : false;
@@ -46,6 +52,7 @@ export function App() {
     <BrowserRouter>
       <AppShell me={me} onLogout={handleLogout} />
       {showNickPrompt && <NickPrompt onNickSet={setMe} />}
+      <CookieSettingsButton />
     </BrowserRouter>
   );
 
