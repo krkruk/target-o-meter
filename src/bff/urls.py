@@ -23,7 +23,7 @@ from src.bff.routers.auth_routes import callback, login_view, logout
 from src.bff.routers.owner_routes import router as owner_router
 from src.bff.routers.scoring_routes import router as scoring_router
 from src.bff.routers.session_routes import router as session_router
-from src.bff.views import index
+from src.bff.views import index, privacy
 
 app_name = "bff"
 
@@ -42,12 +42,17 @@ urlpatterns = [
     path("v1/", api.urls),
     # Index — SPA shell document (S-01). ``reverse("bff:index")`` → ``/``.
     path("", index, name="index"),
+    # Cookie policy — standalone server-rendered page (no SPA boot). Lives
+    # before the catch-all AND is excluded from its negative lookahead so the
+    # banner's "Cookie Policy" link resolves to the real page, not the shell.
+    path("privacy", privacy, name="privacy"),
     # S-02: SPA client-side deep links (/dashboard, /waiting/:jobId, …) must
     # survive a refresh. A catch-all serves the index document for any non-API,
     # non-OIDC path so BrowserRouter picks up the route client-side. The
-    # negative lookahead excludes the versioned API + the OIDC chain so a
-    # 404'ing /v1/whatever or /login-typos surfaces as 404 (not a false 200
-    # that masks the routing bug). /admin/ is matched at the ROOT urls.py
-    # level before this include is even consulted.
-    re_path(r"^(?!v1/|login|callback|logout|admin/).*$", index),
+    # negative lookahead excludes the versioned API + the OIDC chain + the
+    # standalone privacy page so a 404'ing /v1/whatever, /login-typos, or
+    # /privacy-typos surfaces as 404 (not a false 200 that masks the routing
+    # bug). /admin/ is matched at the ROOT urls.py level before this include
+    # is even consulted.
+    re_path(r"^(?!v1/|login|callback|logout|admin/|privacy).*$", index),
 ]

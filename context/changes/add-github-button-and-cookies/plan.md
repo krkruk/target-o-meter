@@ -524,28 +524,28 @@ manual testing was successful before considering the change complete.
 
 #### Automated
 
-- [x] 1.1 `make check` passes (frontend `tsc --noEmit`)
-- [x] 1.2 `make fe-test` passes — Star-link assertions in `Welcome.test.tsx` green
+- [x] 1.1 `make check` passes (frontend `tsc --noEmit`) — d4fe186
+- [x] 1.2 `make fe-test` passes — Star-link assertions in `Welcome.test.tsx` green — d4fe186
 
 #### Manual
 
-- [x] 1.3 Star button renders in Welcome header left of Login, aligned with Login
-- [x] 1.4 Clicking Star opens `https://github.com/krkruk/target-o-meter` in a new tab
-- [x] 1.5 At ~375px width, Star + Login both remain visible (no overflow/clipping)
+- [x] 1.3 Star button renders in Welcome header left of Login, aligned with Login — d4fe186
+- [x] 1.4 Clicking Star opens `https://github.com/krkruk/target-o-meter` in a new tab — d4fe186
+- [x] 1.5 At ~375px width, Star + Login both remain visible (no overflow/clipping) — d4fe186
 
 ### Phase 2: Privacy / cookie policy stub page
 
 #### Automated
 
-- [ ] 2.1 `make check` passes (ruff + import-linter accept the new view import)
-- [ ] 2.2 `make be-test` passes — `tests/system/test_privacy_page.py` green (incl. "not the SPA shell" assertions)
+- [x] 2.1 `make check` passes (ruff + import-linter accept the new view import)
+- [x] 2.2 `make be-test` passes — `tests/system/test_privacy_page.py` green (incl. "not the SPA shell" assertions)
 
 #### Manual
 
-- [ ] 2.3 `/privacy` renders the standalone page (no React boot, no `Welcome` content)
-- [ ] 2.4 `/privacy` lists `sessionid` + `csrftoken` and states no analytics/marketing
-- [ ] 2.5 `/privacy` reachable + identical while logged in (public route)
-- [ ] 2.6 `/privacy-typos` returns 404 (catch-all exclusion is specific)
+- [x] 2.3 `/privacy` renders the standalone page (no React boot, no `Welcome` content)
+- [x] 2.4 `/privacy` lists `sessionid` + `csrftoken` and states no analytics/marketing
+- [x] 2.5 `/privacy` reachable + identical while logged in (public route)
+- [x] 2.6 `/privacy-typos` returns 404 (catch-all exclusion is specific)
 
 ### Phase 3: Cookie consent popup
 
