@@ -65,12 +65,22 @@ Conventions to follow (from research + lessons.md):
 
 ## Critical Implementation Details
 
-- **Immutability lift is intentional and documented.** `AcceptedResult` is currently documented immutable (`models.py:96-98`, `admin.py:14-16`). This change lifts that: add `updated_at = DateTimeField(auto_now=True)`, and update the model + admin docstrings to say "mutable after create via PATCH /v1/scores/{id}". The `accept_job` path's write-once semantics for `score_average` are unchanged; the new `update_result` recomputes `score_average` from the patched `holes` on every PATCH.
+- **Immutability lift is a PRD reversal, not a docstring tweak — amend the PRD first.** `AcceptedResult`'s immutability is sourced from PRD FR-010 (`context/foundation/prd.md:97-99`: "editing saved results is v2"), echoed at `models.py:96` and `admin.py:15-16`. AGENTS.md §2 declares the PRD the source of truth for domain constraints, so reversing this constraint requires amending the PRD before the code drifts from it. **Prerequisite (see `## Prerequisites` below):** edit FR-010's Socrates resolution to promote editing saved results from "v2" to in-scope, citing this change (`user-score-dashboard`) as the audit trail. Only after that lands does Phase 2's code change (add `updated_at = DateTimeField(auto_now=True)`, update the model + admin docstrings to say "mutable after create via PATCH /v1/scores/{id}") correctly reflect the amended constraint. The `accept_job` path's write-once semantics for `score_average` are unchanged; the new `update_result` recomputes `score_average` from the patched `holes` on every PATCH.
 - **Delete resolves images through `source_job`.** The delete service takes `result_id`, owner-checks the `AcceptedResult`, reads `source_job` → `ScoringJob`, collects `input_path` + `marked_image_path` + `llm_input_path` + `result_json_path`, deletes the `AcceptedResult` row inside `transaction.atomic()`, then best-effort deletes the storage objects (log failures, do not raise). `ScoringJob` is NOT deleted.
 - **`updated_at` on `AcceptedResult` requires touching the admin too.** `src/domains/vision/admin.py` currently exposes it read-only and annotates immutability; add `updated_at` to `readonly_fields` and refresh the docstring/notes so the admin stays honest.
 - **Preview button uses the existing proxy path.** The row's Preview action resolves the marked-image URL as `/v1/scoring/jobs/${source_job}/marked-image` (the same path `_job_to_dto` sets, `services.py:624-637`) — no new image endpoint, no presigned URL.
 - **Modify modal fetches the accepted snapshot, not the detector output.** It calls the new `GET /v1/scores/{result_id}` (returns `AcceptedResultDTO` with the accepted/corrected `holes`), NOT `getScoringJob(source_job)` (which would return the raw CV detector output and clobber a previous correction).
 - **`AggregationDTO.recent` (home) now comes from the new list endpoint, page_size=20.** The home `Dashboard.tsx` switches its "Recent results" data source from `getAggregations().recent` (capped 10) to the new `getScores({page:1, page_size:20})`. The hero stats + chart still use `getAggregations()`.
+
+## Prerequisites
+
+Before any phase, amend the PRD constraint that the Modify half of this change reverses:
+
+**Edit `context/foundation/prd.md` FR-010** (L97-99): the Socrates resolution currently reads *"kept; the accept/reject review step is the safety net; editing saved results is v2."* Update it to promote editing saved results from v2 to in-scope, e.g.:
+
+> Resolution: kept; the accept/reject review step is the safety net. Editing saved results is in scope as of the `user-score-dashboard` change (PATCH `/v1/scores/{id}` recomputes the average; audit trail via `updated_at`).
+
+This keeps the PRD (AGENTS.md §2 source of truth for domain constraints) honest with the code change; the model/admin docstring updates in Phase 1 then reflect an amended constraint rather than silently contradicting it. Sign-off on the PRD edit is the gate that unblocks Phase 2.
 
 ---
 
@@ -173,7 +183,7 @@ try:
 except PermissionError:
     raise HttpError(404, "Not found") from None
 ```
-Place these adjacent to `get_aggregations` (`scoring_routes.py:272-292`). Update the resource-naming docstring near `scoring_routes.py:276-282` to note the list/detail routes join the `/v1/scores` resource.
+Place these adjacent to `get_aggregations` (`scoring_routes.py:272-292`), and **mind the registration order**: django-ninja matches in declaration order, so the existing literal `GET /scores/aggregations` (currently at `scoring_routes.py:272-274`) MUST stay registered BEFORE the new parametrised `GET /scores/{result_id}` — otherwise `/v1/scores/aggregations` matches the UUID param route and fails parsing (422), breaking the home Dashboard's aggregation call. Safe order: `/scores` (list) → `/scores/aggregations` (literal) → `/scores/{result_id}` (param). The bare `/scores` list route is collision-free. Update the resource-naming docstring near `scoring_routes.py:276-282` to note the list/detail routes join the `/v1/scores` resource.
 
 ### Success Criteria:
 
@@ -210,13 +220,13 @@ Add the mutate endpoints: PATCH (Modify) which lifts immutability and recomputes
 
 **Contract**: New method `delete_upload(self, stored_path: str) -> None`. Route through `_safe_key` (L90-120) so the `uploads/` namespace guard applies under S3. Implementation: `self._storage.delete(self._safe_key(stored_path))` (both FS and S3 backends expose `.delete(name)`). Swallow/raise strategy is the caller's responsibility (the delete service calls this best-effort) — keep this method strict (let exceptions propagate) so the caller can decide. Guard against empty/None `stored_path` (no-op).
 
-#### 2.2 `ScoringStorage.delete_deliverable_dir`
+#### 2.2 `ScoringStorage.delete_paths`
 
 **File**: `src/domains/vision/pipeline/storage.py`
 
-**Intent**: Delete all deliverables written under `jobs/{job_id}/` for a job (marked image, llm input, result json).
+**Intent**: Delete a caller-supplied list of concrete storage objects (the original upload + a job's deliverables) in one call.
 
-**Contract**: New method `delete_deliverable_dir(self, job_id: str) -> None`. Under S3, list objects under the `jobs/{job_id}/` prefix and delete each (django-storages S3 supports `delete_object` per key; iterate the known deliverable names rather than listing — the three names are deterministic: `{stem}_marked.png`, `{stem}_llm_input.png`, `{stem}_result.json`, but the stem is not stored, so prefer listing the prefix via `self._storage.listdir("jobs/" + job_id)` if supported, else accept the `marked_image_path`/`llm_input_path`/`result_json_path` values from the caller). Simplest robust contract: accept the list of concrete paths to delete — i.e. rename to `delete_paths(self, paths: list[str]) -> None` that calls `self._storage.delete(self._safe_key(p))` for each. The delete service (2.4) collects the paths from the `ScoringJob` and passes them in. Under FS, `self._storage.delete(rel)` removes the file; empty parent dirs may remain (acceptable, matches existing posture). Let exceptions propagate (caller is best-effort).
+**Contract**: New method `delete_paths(self, paths: list[str]) -> None`. The caller (the `delete_result` service, §2.4) collects the concrete paths from the `ScoringJob` row (`input_path`, `marked_image_path`, `llm_input_path`, `result_json_path`) and passes them in — no `listdir` / prefix listing is needed (the `ScoringJob` already holds every key, and the file stem is not stored elsewhere so name derivation would be fragile). Implementation: `for p in paths: if p: self._storage.delete(self._safe_key(p))` — routing each through `_safe_key` (L90-120) so the `uploads/` / `jobs/` namespace guard applies under both backends. Both FS (`FileSystemStorage.delete`) and S3 (django-storages) expose `.delete(name)` per-key. Under FS, empty parent dirs may remain (acceptable, matches existing posture). Let exceptions propagate — the caller (`delete_result`) wraps this in best-effort try/except.
 
 #### 2.3 Vision service — `update_result`
 
@@ -257,7 +267,7 @@ Add the mutate endpoints: PATCH (Modify) which lifts immutability and recomputes
 Request DTO for PATCH (define inline or in `scoring_routes.py` near `AcceptResultIn` at L208-223, mirroring its shape minus `job_id`):
 ```python
 class ScoreUpdateIn(Model):
-    holes: list[DetectedHoleDTO]
+    holes: list[DetectedHoleDTO] = Field(min_length=1)  # guard the mean in update_result (mirrors AcceptResultIn.holes, scoring_routes.py:223)
     target_type: Optional[str] = None
     caliber_hint: Optional[str] = None
     distance: Optional[int] = None
@@ -332,7 +342,7 @@ Import `targetIcon` from `../assets/target.svg` (Vite handles SVG imports). Do N
 
 **Contract**: Component holds `useState` for `{rows, page, pageSize, total, totalPages, loading, error}` (mirror `AdminUsersPage.tsx:27-31`). On mount and on `page`/`pageSize` change, call `getScores({page, page_size: pageSize})`; set state from the response. Render:
 - A page-size `<select>` dropdown with options 10/20/30/50 (default 20), `onChange` resets `page=1` and updates `pageSize`.
-- `<ScoreList rows={rows} onPreview={...} onModify={...} onDelete={...} />` — the `on*` handlers are stubs in this phase (e.g. `() => {}` or `console.log`); Phase 4 wires them to the modals.
+- `<ScoreList rows={rows} onPreview={...} onModified={...} onDeleted={...} />` — the `on*` handlers are stubs in this phase (e.g. `() => {}` or `console.log`); Phase 4 wires them to the modals. (Note from §4.3 triage: Phase 4 moves the modal state *into* `<ScoreRow>`, so the row's mutate props become success callbacks `onModified`/`onDeleted`, not `onModify`/`onDelete`. Use those names already in Phase 3 so Phase 4 doesn't rename them. The `<ScoreRow>` itself renders the modals in Phase 4.)
 - Pagination controls (Prev / "Page N of M" / Next), disabled at the bounds, mirroring `AdminUsersPage`'s pagination UI.
 - Loading and error states.
 The `onPreview`/`onModify`/`onDelete` props are passed through but no-ops until Phase 4.
@@ -353,7 +363,7 @@ The `onPreview`/`onModify`/`onDelete` props are passed through but no-ops until 
 
 **Intent**: Home "Recent results" reuses `<ScoreList>` with max 20 rows from the new endpoint.
 
-**Contract**: Replace the `<ResultsList recent={...} />` usage at `Dashboard.tsx:71-73` with `<ScoreList rows={recentRows} onPreview={...} onModify={...} onDelete={...} />`. Data source: add a `useEffect` that calls `getScores({page:1, page_size:20})` and stores `recentRows` in state (keep the existing `getAggregations()` call for hero stats + chart — only the list source changes). The `on*` handlers are stubs in this phase (Phase 4 wires them; from home they open the same modals). Remove the now-unused `<ResultsList>` import only if nothing else references it. (Note: `ResultsList.tsx` itself is left in place for safety; it can be removed in a follow-up if confirmed unused.)
+**Contract**: Replace the `<ResultsList recent={...} />` usage at `Dashboard.tsx:71-73` with `<ScoreList rows={recentRows} onPreview={...} onModified={...} onDeleted={...} />`. Data source: add a `useEffect` that calls `getScores({page:1, page_size:20})` and stores `recentRows` in state (keep the existing `getAggregations()` call for hero stats + chart — only the list source changes). The `on*` handlers are stubs in this phase (Phase 4 wires them; from home they open the same modals). **Remove `<ResultsList>` and delete the now-dead files:** `ResultsList.tsx` has exactly one caller (`Dashboard.tsx:14,72` — this step's replacement), so after the switch it is guaranteed dead code. Delete `src/frontend/src/components/ResultsList.tsx` and `src/frontend/src/components/ResultsList.module.css` in this step (don't leave it for a "follow-up").
 
 ### Success Criteria:
 
@@ -406,16 +416,19 @@ Wire the three row actions: Preview (inline image + per-shot scores), Modify (fr
 **Intent**: The Modify and Delete modals, wired from the row buttons via the same state pattern `AdminUsersPage` uses.
 
 **Contract** — `<ModifyModal>`:
-- Mirror `BanModal.tsx`'s shell: props `{ resultId, onClose, onModified }`; overlay + card + Esc-to-dismiss (unless pending) per `BanModal.tsx:29-35`.
-- On open, fetch `getScore(result_id)` (the accepted snapshot — NOT `getScoringJob`); populate local state: `corrections` map + the four param selects (`targetType`, `caliber`, `distance`, `weaponType`), copying the editable controls from `Results.tsx:111-174` (image, hole list with `<select>` of `SCORE_OPTIONS`, param selects from `taxonomy.ts`). `buildCorrectedHoles()` (`Results.tsx:76-86`) is copied/local.
-- Submit button labeled **"Modify"** (not "Accept"), `aria-label="Modify score"`; on submit call `updateScore(resultId, payload)`; on success call `onModified()` (parent refetches the list) then `onClose()`.
+- Mirror `BanModal.tsx`'s shell: props `{ result: ResultSummary, onClose, onModified }` (the row object, mirroring `BanModal`'s `{user}` prop — not a bare `resultId`, and not a generic `onSuccess`); overlay + card + Esc-to-dismiss (unless pending) per `BanModal.tsx:29-35`.
+- On open, fetch `getScore(result.result_id)` (the accepted snapshot — NOT `getScoringJob`); populate local state: `corrections` map + the four param selects (`targetType`, `caliber`, `distance`, `weaponType`), copying the editable controls from `Results.tsx:111-174` (image, hole list with `<select>` of `SCORE_OPTIONS`, param selects from `taxonomy.ts`). `buildCorrectedHoles()` (`Results.tsx:76-86`) is copied/local.
+- Submit button labeled **"Modify"** (not "Accept"), `aria-label="Modify score"`; on submit call `updateScore(result.result_id, payload)`; on success call `onModified()` (parent refetches the list) then `onClose()`.
 - Cancel button labeled **"Cancel"** (not "Reject"), `type="button"`, `onClick={onClose}` (no navigation — the user never left the dashboard).
 - Inline error via `<p role="alert">`.
 
 **Contract** — `<DeleteModal>`:
-- Mirror `DeleteUserModal.tsx`: props `{ row, onClose, onDeleted }`; overlay + card + Esc-dismiss; a confirm question; Cancel button (`onClick={onClose}`); confirm button labeled **"Delete"** (or "Delete permanently", matching `DeleteUserModal`), on confirm call `deleteScore(row.result_id)`; on success `onDeleted(row.result_id)` (parent removes the row from state) then `onClose()`; inline error via `<p role="alert">`.
+- Mirror `DeleteUserModal.tsx`: props `{ result: ResultSummary, onClose, onDeleted }` (mirroring `DeleteUserModal`'s `{user, onClose, onDeleted}` — not `{target, onClose, onSuccess}`); overlay + card + Esc-dismiss; a confirm question; Cancel button (`onClick={onClose}`); confirm button labeled **"Delete"** (or "Delete permanently", matching `DeleteUserModal`), on confirm call `deleteScore(result.result_id)`; on success `onDeleted()` (parent removes the row from state) then `onClose()`; inline error via `<p role="alert">`.
 
-**Wiring**: in `ScoreDashboard.tsx` and `Dashboard.tsx`, add `const [modal, setModal] = useState<{kind:'modify'|'delete'|null, row: ResultSummary|null}>(null)` (mirror `AdminUsersPage.tsx:170`); the `onModify`/`onDelete` row handlers call `setModal({kind, row})`; render `{modal?.kind === 'modify' && <ModifyModal resultId={modal.row.result_id} onClose={...} onModified={...} />}` and the delete equivalent (mirror `AdminUsersPage.tsx:225-244`). `onModified` triggers a refetch of the list; `onDeleted` removes the row from local state (and decrements `total`).
+**Wiring** — mirror `AdminUsersPage.tsx` exactly, including the per-row state shape:
+- The modal state is a per-row string union, NOT a top-level `{kind, row}` object. The actual precedent is `AdminUsersPage.tsx:24` (`type Modal = 'ban' | 'delete';`) with each `UserRow` holding `const [modal, setModal] = useState<Modal | null>(null);` at `AdminUsersPage.tsx:170`. So `<ScoreRow>` owns its own `const [modal, setModal] = useState<'modify' | 'delete' | null>(null)` (the row comes from the `ScoreRow` closure — no `row` field in state); the Modify/Delete buttons call `setModal('modify')` / `setModal('delete')` (cf. L210, L218); and the two `{modal === '...' && <...Modal .../>}` blocks render inside `<ScoreRow>` (cf. L225-244).
+- This means `<ScoreRow>`'s props change from Phase 3's `{onPreview, onModify, onDelete}` to either (a) receiving the modal components as children/render-props, or (b) `<ScoreRow>` rendering the modals itself (preferred — matches `AdminUsersPage`'s `UserRow`). Pick (b): `<ScoreRow>` imports `ModifyModal`/`DeleteModal`, owns the modal state, and calls back up via `onModified`/`onDeleted` props so the parent (`ScoreDashboard` / home `Dashboard`) can refetch or remove the row. The Phase 3 stub `onModify`/`onDelete` props are therefore replaced by `onModified`/`onDeleted` success callbacks.
+- `onModified` triggers a refetch of the list (parent); `onDeleted` removes the row from local state and decrements `total` (parent).
 
 #### 4.4 NavLink active styling across the menu
 
@@ -515,6 +528,10 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles. See `references/progress-format.md`.
 
+### Prerequisites: Amend PRD constraint (gate for Phase 2)
+
+- [ ] 0.1 Edit PRD FR-010 (`context/foundation/prd.md:97-99`) to promote "editing saved results" from v2 to in-scope, citing this change (`user-score-dashboard`); get sign-off — Phase 2 cannot start until this lands
+
 ### Phase 1: Backend — Read APIs + migration
 
 #### Automated
@@ -558,7 +575,7 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 - [ ] 3.3 Build `<ScoreList>` (day-bucketed)
 - [ ] 3.4 Build `<ScoreDashboard>` page (pagination dropdown 10/20/30/50, Prev/Next)
 - [ ] 3.5 Add `/scores` route + "Score dashboard" menu entry (plain `<Link>` for now)
-- [ ] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20)
+- [ ] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20) + delete now-dead `ResultsList.tsx`/`.module.css`
 - [ ] 3.7 Vitest tests for ScoreRow/ScoreList/ScoreDashboard
 - [ ] 3.8 `make check` + `make fe-test` green
 
@@ -573,7 +590,7 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 - [ ] 4.1 Build `<ScorePreview>` (proxy image + immutable per-shot scores line)
 - [ ] 4.2 Add `updateScore` + `deleteScore` to `api.ts`
 - [ ] 4.3 Build `<ModifyModal>` (mirrors `BanModal`, Modify=PATCH, Cancel=onClose) + `<DeleteModal>` (confirm=DELETE)
-- [ ] 4.4 Wire row buttons to modals in `ScoreDashboard` + `Dashboard` (home)
+- [ ] 4.4 Wire row buttons to modals — modal state lives per-row inside `<ScoreRow>` (`useState<'modify'|'delete'|null>`), not at page level; success callbacks `onModified` (refetch) / `onDeleted` (remove row + decrement total) bubble to `ScoreDashboard` + `Dashboard`
 - [ ] 4.5 Convert Home/Score dashboard/Admin menu entries to `<NavLink>` with shared `.active` style
 - [ ] 4.6 Vitest tests for Modify/Delete modals + Preview + NavLink active state
 - [ ] 4.7 `make check` + `make fe-test` green
