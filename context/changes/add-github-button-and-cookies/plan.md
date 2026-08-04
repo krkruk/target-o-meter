@@ -559,6 +559,25 @@ manual testing was successful before considering the change complete.
 - [x] 3.3 First visit (site data cleared): banner appears, Accept and Reject equally prominent — 38ed2d2
 - [x] 3.4 Banner "Cookie Policy" link navigates to `/privacy` — 38ed2d2
 - [x] 3.5 Reject → banner dismisses, consent stored, no re-prompt on reload — 38ed2d2
-- [x] 3.6 "Cookie settings" control re-opens the banner — 38ed2d2
+- [x] 3.6 "Cookie settings" control re-opens the banner — 38ed2d2 — superseded by d51de0c: the persistent "Cookie settings" button was removed per request (took screen real estate); the banner now re-opens only via the library's `CookieConsent.show()` API, not a UI control. No E2E row for 3.6 (no UI path to drive).
 - [x] 3.7 Full OIDC login still works (SameSite=Lax session unaffected; `csrftoken` still readable by `api.ts`) — 38ed2d2
 - [x] 3.8 Banner behaves the same on authenticated pages (site-wide mount) — 38ed2d2
+
+#### E2E (browser-level, added post-implementation)
+
+> Driven by `/10x-e2e` after the plan was marked implemented. These close the
+> browser-level banner risks that were manual-only (the banner is a
+> library-owned DOM portal appended to `document.body`; consent persists in the
+> `cc_cookie` cookie across a real reload; the policy link performs real
+> SPA→Django navigation). jsdom cannot reach any of these
+> (`cookieConsent.test.ts:8-10` defers banner DOM to manual verification).
+>
+> Note: vanilla-cookieconsent v3.1.0 ships `hideFromBots: true` and suppresses
+> the banner when `navigator.webdriver === true` (every Playwright browser);
+> the spec masks `navigator.webdriver` (test-scoped, production config
+> untouched). Each test was break-verified: inverting the protected behavior
+> turned the test red on the protecting assertion.
+
+- [x] 3.9 E2E: first-visit banner appears (Accept + Reject equally prominent) and "Cookie Policy" link navigates to the standalone `/privacy` page (not the SPA shell) — SHA-pending
+- [x] 3.10 E2E: Reject dismisses the banner and consent persists in `cc_cookie` across a reload (no re-prompt) — SHA-pending
+- [x] 3.11 E2E: banner mounts site-wide on the authenticated dashboard without breaking the SPA boot — SHA-pending
