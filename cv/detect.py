@@ -27,6 +27,7 @@ CALIBER_DIAMETER_MM: dict[str, float] = {
     "22lr": 5.7,
     "9x19": 9.0,
     ".223Rem": 5.56,
+    ".45ACP": 11.5,  # .45 ACP projectile ~11.5 mm
     "slug": 18.0,  # 12-gauge slug ~18 mm
 }
 
