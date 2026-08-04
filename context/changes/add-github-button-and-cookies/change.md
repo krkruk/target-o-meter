@@ -1,7 +1,7 @@
 ---
 change_id: add-github-button-and-cookies
 title: Add github button and cookies
-status: preparing
+status: planned
 created: 2026-08-04
 updated: 2026-08-04
 archived_at: null
