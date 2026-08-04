@@ -51,13 +51,13 @@ describe('Welcome', () => {
     expect(onLogin).toHaveBeenCalledTimes(1);
   });
 
-  it('renders a GitHub Star link in the header that opens the repo in a new tab', () => {
+  it('renders a GitHub link in the header that opens the repo in a new tab', () => {
     render(<Welcome onLogin={() => {}} />);
-    // The Star anchor is the project's first external link. It must reach the
+    // The GitHub anchor is the project's first external link. It must reach the
     // repo, open in a new tab, and carry the safe external-link rel.
-    const star = screen.getByRole('link', { name: /star.*github/i });
-    expect(star).toHaveAttribute('href', 'https://github.com/krkruk/target-o-meter');
-    expect(star).toHaveAttribute('target', '_blank');
-    expect(star).toHaveAttribute('rel', 'noopener noreferrer');
+    const gh = screen.getByRole('link', { name: /github/i });
+    expect(gh).toHaveAttribute('href', 'https://github.com/krkruk/target-o-meter');
+    expect(gh).toHaveAttribute('target', '_blank');
+    expect(gh).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });
