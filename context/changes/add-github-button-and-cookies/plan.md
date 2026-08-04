@@ -578,6 +578,6 @@ manual testing was successful before considering the change complete.
 > untouched). Each test was break-verified: inverting the protected behavior
 > turned the test red on the protecting assertion.
 
-- [x] 3.9 E2E: first-visit banner appears (Accept + Reject equally prominent) and "Cookie Policy" link navigates to the standalone `/privacy` page (not the SPA shell) — SHA-pending
-- [x] 3.10 E2E: Reject dismisses the banner and consent persists in `cc_cookie` across a reload (no re-prompt) — SHA-pending
-- [x] 3.11 E2E: banner mounts site-wide on the authenticated dashboard without breaking the SPA boot — SHA-pending
+- [x] 3.9 E2E: first-visit banner appears (Accept + Reject equally prominent) and "Cookie Policy" link navigates to the standalone `/privacy` page (not the SPA shell) — e3f4615
+- [x] 3.10 E2E: Reject dismisses the banner and consent persists in `cc_cookie` across a reload (no re-prompt) — e3f4615
+- [x] 3.11 E2E: banner mounts site-wide on the authenticated dashboard without breaking the SPA boot — e3f4615
