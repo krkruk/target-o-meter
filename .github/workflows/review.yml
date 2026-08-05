@@ -38,11 +38,11 @@ jobs:
         # pyproject.toml lives in the nested reviewer-target-o-meter/ subdir (not the
         # git root), so the #subdirectory= fragment is REQUIRED.
         #
-        # Installs from the repo's DEFAULT branch (master). To validate an
-        # unreleased branch/tag, pin with @<ref>, e.g.:
-        #   git+https://github.com/krkruk/reviewer-target-o-meter@<branch>#subdirectory=reviewer-target-o-meter
+        # DIAGNOSTIC PIN: temporarily installs the `debug-ci-logging` branch (extra
+        # DEBUG logging + the empty-emit retry fix) to diagnose the 0-findings run
+        # on this PR. Revert to the bare URL (master) once the diagnosis is done.
         run: |
-          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter#subdirectory=reviewer-target-o-meter"
+          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter@debug-ci-logging#subdirectory=reviewer-target-o-meter"
 
       - name: Install ast-grep (structural_search tool)
         run: |
@@ -68,6 +68,9 @@ jobs:
         env:
           # LLM provider (REQUIRED) — set this secret in the consumer repo.
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # Model slug (OPTIONAL) — unset → the tool's default. Set a repo variable
+          # `MODEL` to override for a one-off diagnostic run without a code change.
+          MODEL: ${{ vars.MODEL }}
           # PR mapping — PR_NUMBER/GITHUB_TOKEN are NOT default runner env vars.
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
