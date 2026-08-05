@@ -122,7 +122,13 @@ test.describe('ui-chores — all five UI changes (one journey)', () => {
     const chartRegion = page.getByRole('region', { name: /daily average/i });
     await expect(chartRegion).toBeVisible();
     // The chart's role="img" wrapper means recharts rendered (data present).
-    await expect(chartRegion.getByRole('img')).toBeVisible();
+    // Scope by accessible name: recharts' <svg class="recharts-surface"> is
+    // also implicitly role="img" (SVG-AAM, via its axis-tick text), so a bare
+    // getByRole('img') matches both and trips strict mode. The wrapper's
+    // aria-label ("Daily average chart for …") uniquely identifies it.
+    await expect(
+      chartRegion.getByRole('img', { name: /daily average chart for/i }),
+    ).toBeVisible();
     // recharts renders axis ticks as <text class="recharts-cartesian-axis-tick-value">.
     // That class is shared by the XAxis (dates) and the YAxis (numbers); filter
     // to the numeric YAxis ticks — each must read "<digits>.<2 digits>".
