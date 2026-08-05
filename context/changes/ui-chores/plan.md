@@ -382,10 +382,10 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Automated
 
-- [x] 4.1 `YAxis` `tickFormatter={(v) => Number(v).toFixed(2)}` added at `DailyAverageChart.tsx:54`
-- [x] 4.2 `Tooltip` `formatter` added at `DailyAverageChart.tsx:55`
-- [x] 4.3 `DailyAverageChart` vitest asserts formatter produces 2-decimal strings
-- [x] 4.4 `make check` + `make fe-test` pass
+- [x] 4.1 `YAxis` `tickFormatter={(v) => Number(v).toFixed(2)}` added at `DailyAverageChart.tsx:54` — 8db89b5
+- [x] 4.2 `Tooltip` `formatter` added at `DailyAverageChart.tsx:55` — 8db89b5
+- [x] 4.3 `DailyAverageChart` vitest asserts formatter produces 2-decimal strings — 8db89b5
+- [x] 4.4 `make check` + `make fe-test` pass — 8db89b5
 
 #### Manual
 
@@ -396,11 +396,11 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Automated
 
-- [ ] 5.1 PII warning callout added to `Upload.tsx` (verbatim wording, `role="note"`)
-- [ ] 5.2 Upload input restructured into two custom buttons + hidden inputs (Choose file + Take a picture w/ `capture="environment"`)
-- [ ] 5.3 `Upload.module.css` adds `.warning` (warning tokens), `.uploadActions` (row→column at 760px), `.mobileOnly` (hidden >760px), button styling; dead `::file-selector-button` rules removed
-- [ ] 5.4 `Upload` vitest asserts verbatim warning text, both buttons present, `capture` on camera input only, ref-`.click()` wiring
-- [ ] 5.5 `make check` + `make fe-test` pass
+- [x] 5.1 PII warning callout added to `Upload.tsx` (verbatim wording, `role="note"`)
+- [x] 5.2 Upload input restructured into two custom buttons + hidden inputs (Choose file + Take a picture w/ `capture="environment"`)
+- [x] 5.3 `Upload.module.css` adds `.warning` (warning tokens), `.uploadActions` (row→column at 760px), `.mobileOnly` (hidden >760px), button styling; dead `::file-selector-button` rules removed
+- [x] 5.4 `Upload` vitest asserts verbatim warning text, both buttons present, `capture` on camera input only, ref-`.click()` wiring
+- [x] 5.5 `make check` + `make fe-test` pass
 
 #### Manual
 
