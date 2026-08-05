@@ -289,28 +289,35 @@ def test_dev_compose_forces_django_vite_manifest_mode() -> None:
 
 
 def test_dev_compose_web_does_not_shadow_frontend_bundle() -> None:
-    """``web`` does NOT mount ``./src:/app/src`` (the blanket mount that would
+    """``web`` does NOT mount ``../src:/app/src`` (the blanket mount that would
     shadow the dev image's baked ``src/frontend/dist`` with the host's
     gitignored-empty dist/).
 
-    The granular mounts (``./src/target_o_meter``, ``./src/bff``,
-    ``./src/domains``, ``./src/manage.py``) preserve backend live-reload
+    The granular mounts (``../src/target_o_meter``, ``../src/bff``,
+    ``../src/domains``, ``../src/manage.py``) preserve backend live-reload
     without touching the frontend bundle. ``worker`` keeps the blanket mount —
     it never serves the frontend, so shadowing ``src/frontend`` there is
-    harmless.
+    harmless. Bind sources use ``../`` because the compose file lives in
+    docker/ (Compose-spec relative paths resolve from the compose file's
+    parent, not the project directory).
     """
     doc = _load_compose("docker-compose.dev.yml")
     web_volumes = doc["services"]["web"]["volumes"]
-    shadowing = [v for v in web_volumes if v.split(":")[0] == "./src"]
+    # Bind sources are written as ``../src/...`` because the compose file lives
+    # in docker/ and Compose-spec relative paths resolve relative to the
+    # compose file's parent (NOT the project directory). See the volume-block
+    # comment in docker-compose.dev.yml; ``make dev-container`` also passes
+    # ``--env-file .env`` so the repo-root .env is loaded explicitly.
+    shadowing = [v for v in web_volumes if v.split(":")[0] == "../src"]
     assert not shadowing, (
-        f"web mounts the blanket ./src path ({shadowing}), which would shadow "
+        f"web mounts the blanket ../src path ({shadowing}), which would shadow "
         f"the dev image's baked src/frontend/dist → blank page. Use granular "
         f"backend mounts instead."
     )
     # Sanity: the granular backend mounts that preserve live-reload are present.
     web_srcs = {v.split(":")[0] for v in web_volumes}
     assert {
-        "./src/target_o_meter", "./src/bff", "./src/domains",
+        "../src/target_o_meter", "../src/bff", "../src/domains",
     } <= web_srcs, (
         f"granular backend mounts missing from web volumes: {web_volumes}"
     )

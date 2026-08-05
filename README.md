@@ -67,15 +67,22 @@ Open <http://localhost:8000>.
 
 The dev container stack brings up **web + worker + MinIO (S3) + a bucket-creator**, live-reloading, exercising the S3 storage backend against MinIO.
 
+> **`.env` is required** for the container targets. Unlike the bare-metal path
+> (where Django's `load_dotenv()` silently no-ops on a missing file), the
+> container targets pass `--env-file .env` to compose so the repo-root `.env`
+> is loaded the same way under podman-compose and docker-compose v2. If `.env`
+> is absent, compose refuses to start the stack with an env-file-not-found
+> error. Fresh clones must `cp .env.example .env` first.
+
 ```bash
-cp .env.example .env          # edit as needed
-make dev-container            # podman compose -f docker/docker-compose.dev.yml up --build
+cp .env.example .env          # required — see note above
+make dev-container            # podman compose --env-file .env -f docker/docker-compose.dev.yml up --build
 ```
 
 For a **prod-shape** stack locally (`DEBUG=false`, built frontend served via WhiteNoise, gunicorn):
 
 ```bash
-make prod-container           # podman compose -f docker/docker-compose.prod.yml up --build
+make prod-container           # podman compose --env-file .env -f docker/docker-compose.prod.yml up --build
 ```
 
 ---
@@ -190,8 +197,8 @@ all targets.
 | `make prod` | Boot Django in `DEBUG=false` against the built + collected bundle |
 | `make migrate` | Apply Django migrations |
 | `make collectstatic` | Build the frontend + collect hashed static assets |
-| `make dev-container` | Containerized dev stack (web + worker + MinIO) |
-| `make prod-container` | Containerized prod-shape stack (gunicorn, WhiteNoise) |
+| `make dev-container` | Containerized dev stack (web + worker + MinIO). Requires a repo-root `.env` (`cp .env.example .env` first). |
+| `make prod-container` | Containerized prod-shape stack (gunicorn, WhiteNoise). Requires a repo-root `.env` (`cp .env.example .env` first). |
 | `make check` | Lint + type-check + import contracts (backend + frontend) — the verification gate |
 | `make be-test` | `check` + backend pytest |
 | `make fe-test` | `check` + frontend vitest |

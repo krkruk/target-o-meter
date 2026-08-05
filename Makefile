@@ -88,11 +88,16 @@ migrate:  ## Apply Django migrations
 
 dev-container:  ## Bring up the containerized dev stack (web + worker + MinIO + create-bucket) with live-reload
 	@echo "▸ building images (first run is slow; opencv system deps bake in)"
-	podman compose -f docker/docker-compose.dev.yml up --build
+	# --env-file .env loads the repo-root .env explicitly. Volume bind sources
+	# in docker/docker-compose.dev.yml are written as ``../src/...`` so they
+	# resolve to the repo root relative to the compose file's parent (docker/),
+	# per the Compose spec — no --project-directory needed (which podman-compose
+	# does not accept anyway).
+	podman compose --env-file .env -f docker/docker-compose.dev.yml up --build
 
 prod-container:  ## Bring up a prod-shape stack (DEBUG=false, built frontend, gunicorn) in containers
 	@echo "▸ building prod images"
-	podman compose -f docker/docker-compose.prod.yml up --build
+	podman compose --env-file .env -f docker/docker-compose.prod.yml up --build
 
 # --- Checks (backend + frontend) -------------------------------------------
 #
