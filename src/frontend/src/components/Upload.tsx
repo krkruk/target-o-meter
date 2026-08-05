@@ -9,13 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { BsUpload, BsCamera } from 'react-icons/bs';
 import { CaliberDistanceStep, type CaliberDistanceSelection } from './CaliberDistanceStep';
 import { createScoringJob } from '../api';
+import { PII_WARNING } from '../pii-warning';
 import styles from './Upload.module.css';
-
-// Verbatim user wording (decision: "keep my original" — do not paraphrase).
-const PII_WARNING =
-  'The data is used to train LLM models. Do not upload Personal Identifiable Information. ' +
-  'By uploading the image, you agree to effectively make this information public. ' +
-  'Think about it and proceed responsibly.';
 
 export function Upload() {
   const [step, setStep] = useState<'caliber' | 'upload'>('caliber');

@@ -11,6 +11,13 @@
 // user-score-dashboard: the "Recent results" region now reuses the shared
 // <ScoreList> fed by getScores({page:1, page_size:20}) (was getAggregations().
 // recent capped at 10). Hero stats + chart still use getAggregations().
+//
+// fix/add-missing-warning-and-gallery-button-in-mobile: the add-photos button
+// now routes to /upload for EVERY platform. /upload carries the PII warning
+// plus the correct mobile buttons ("Choose file" → gallery, "Take a picture" →
+// camera), so mobile users no longer miss the warning or hit the bare camera
+// input the old /capture branch surfaced. (/capture stays as a direct-URL
+// fallback route, but is no longer the mobile entry point.)
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAggregations, getScores, type Aggregations, type ResultSummary } from '../api';
@@ -19,15 +26,8 @@ import { ScoreList } from './ScoreList';
 import { DailyAverageChart } from './DailyAverageChart';
 import styles from './Dashboard.module.css';
 
-function useIsMobile(): boolean {
-  // jsdom doesn't implement matchMedia; default to desktop (false) when absent.
-  if (typeof window === 'undefined' || !window.matchMedia) return false;
-  return window.matchMedia('(max-width: 760px)').matches;
-}
-
 export function Dashboard() {
   const navigate = useNavigate();
-  const isMobile = useIsMobile();
   const [aggregations, setAggregations] = useState<Aggregations | null>(null);
   const [recentRows, setRecentRows] = useState<ResultSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +73,7 @@ export function Dashboard() {
   }, [refetchAggregations]);
 
   function handleAddPhotos() {
-    navigate(isMobile ? '/capture' : '/upload');
+    navigate('/upload');
   }
 
   if (error) {
@@ -99,7 +99,7 @@ export function Dashboard() {
           type="button"
           className={styles.addPhotosBtn}
           onClick={handleAddPhotos}
-          aria-label={isMobile ? 'Add photos via camera' : 'Add photos via upload'}
+          aria-label="Add photos via upload"
         >
           Add photos
         </button>

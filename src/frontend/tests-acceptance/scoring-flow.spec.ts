@@ -4,8 +4,10 @@
 //   - 8.5 (desktop): dashboard -> /upload -> caliber+distance -> file picker
 //     -> /waiting/:jobId (polls) -> /results/:jobId (5 mocked holes + the
 //     marked image + per-hole correction dropdowns).
-//   - 8.6 (mobile, <=760px): dashboard -> /capture (camera input) -> same
-//     waiting -> results chain.
+//   - 8.6 (mobile, <=760px): dashboard -> /upload (gallery "Choose file"
+//     input, no capture attribute) -> same waiting -> results chain.
+//     fix/add-missing-warning-and-gallery-button-in-mobile: mobile no longer
+//     routes to /capture; both viewports now go through /upload.
 //
 // Drives the live SPA against Django + Vite + the qcluster worker. The worker
 // runs process_image with VISION_DETECTOR=mock, so the job transitions
@@ -64,21 +66,31 @@ test.describe('Scoring flow end-to-end', () => {
     await expect(page.locator('select[id^="correct-"]')).toHaveCount(5);
   });
 
-  test('8.6 — mobile: dashboard -> /capture -> waiting -> results', async ({ page }) => {
+  test('8.6 — mobile: dashboard -> /upload -> gallery picker -> waiting -> results', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/dashboard');
 
-    // Add-photos on mobile routes to /capture.
+    // fix/add-missing-warning-and-gallery-button-in-mobile: add-photos on
+    // mobile now routes to /upload (not /capture). /upload exposes the
+    // "Choose file" gallery input (no capture attribute) + "Take a picture"
+    // camera input (capture="environment"). Drive the gallery input so the
+    // flow exercises the gallery path on a mobile viewport. (True device
+    // emulation for the routing regression itself lives in
+    // mobile-upload.spec.ts.)
     await page.getByRole('button', { name: /add photos/i }).click();
-    await expect(page).toHaveURL(/\/capture$/);
+    await expect(page).toHaveURL(/\/upload$/);
 
-    // Wizard step + camera input (capture="environment").
+    // Wizard step.
     await page.getByRole('combobox', { name: /caliber/i }).selectOption('.22LR');
     await page.getByRole('button', { name: /next/i }).click();
 
-    const fileInput = page.getByLabel(/capture a photo of your target/i);
-    // The capture attribute is present on mobile.
-    await expect(fileInput).toHaveAttribute('capture', 'environment');
+    // The PII warning renders on mobile too (regression guard).
+    await expect(page.getByRole('note')).toBeVisible();
+
+    // The gallery ("Choose file") input has NO capture attribute — picking it
+    // opens the photo gallery, not the camera. Upload through it.
+    const fileInput = page.getByLabel(/select a photo of your target/i);
+    await expect(fileInput).not.toHaveAttribute('capture');
     await fileInput.setInputFiles({
       name: 'target.jpg',
       mimeType: 'image/jpeg',
