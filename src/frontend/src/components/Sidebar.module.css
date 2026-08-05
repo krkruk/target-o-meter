@@ -33,15 +33,6 @@
   padding: 0.5rem;
 }
 
-/* margin-top: auto pins the bottom group to the foot of the sidebar. */
-.bottomItems {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.5rem;
-}
-
 .item {
   text-align: left;
   background: transparent;

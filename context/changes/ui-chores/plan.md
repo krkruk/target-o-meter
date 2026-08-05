@@ -31,12 +31,12 @@ An authenticated user sees: a nick in the top-right that, on hover or keyboard f
 
 ## What We're NOT Doing
 
-- **Not removing `/capture`** — kept as a fallback route per decision. `Capture.tsx`, its `AppShell.tsx` route entry, and the `Dashboard.tsx:76` isMobile branch stay as-is.
+- **Not removing `/capture`** — kept as a fallback route per decision. `Capture.tsx`, its `AppShell.tsx` route entry, and the `Dashboard.tsx:76` isMobile branch stay as-is. **Known product gap (impl-review F4, accepted):** the PII/LLM-training warning callout added in Phase 5 is rendered on `/upload` only — `/capture` does not surface it, despite identical data-handling risk. Accepted asymmetry for this change; revisit if `/capture` becomes a regularly-reached surface or the disclosure requirement tightens.
 - **Not changing backend / DTOs / API contracts** — all five changes are frontend-only. The chart's 2-decimal formatting is display-only; the backend `average: float` (`dtos.py:145-149`) is unchanged.
 - **Not changing the score scale** — canonical 0–10 (`research.md:95,289` warns against regressing to the stale 0–100 fixture).
 - **Not adding 2-decimal formatting beyond the chart** — `HeroStats.tsx:20,24`, `ScoreRow.tsx:34`, and the chart's aria-label `.toFixed(1)` sites stay as-is per the "chart-only" decision.
 - **Not introducing a consent checkbox** on the PII warning — display-only per decision.
-- **Not removing the Sidebar Logout button** — the new TopBar dropdown is additive; the Sidebar entry stays (no decision was made to remove it, and removing it would shrink the touch target for sidebar users).
+- **Removing the Sidebar Logout button** — Phase 2's TopBar nick dropdown is the single logout surface; the Sidebar entry is removed (not duplicated). The `onLogout` prop is dropped from `SidebarProps`; `AppShell` wires `onLogout` into `TopBar` only. The `.bottomItems` CSS group that pinned the old entry to the foot is deleted.
 - **Not adding i18n** — labels stay hardcoded inline (matches existing convention; no i18n in the codebase).
 - **Not touching `target.svg`** — immutable per `user-score-dashboard` plan.md:52,325-327.
 - **Not migrating recharts to v3** — out of scope; stay on v2.
@@ -131,7 +131,7 @@ Convert the top-right nick into a CSS-only disclosure that reveals a small menu 
 
 ### Overview
 
-Add leading icons to the three action buttons in `<ScoreRow>`. Preview keeps the existing `target.svg` (rendered smaller). Modify and Delete get `BsPencil` and `BsTrash3` from `react-icons/bs`. Text labels stay for accessibility. This propagates to both `/scores` and the home `/` via the shared component.
+Make the three action buttons in `<ScoreRow>` **icon-only** — replace the visible "Preview" / "Modify" / "Delete" text with icons. Preview keeps the existing `target.svg` (rendered smaller). Modify and Delete get `BsPencil` and `BsTrash3` from `react-icons/bs`. The descriptive `aria-label`s stay so screen readers / tooltip-hover still announce the action; the buttons' accessible names are unchanged, which is what makes dropping visible text safe. This propagates to both `/scores` and the home `/` via the shared component.
 
 ### Changes Required:
 
@@ -143,25 +143,25 @@ Add leading icons to the three action buttons in `<ScoreRow>`. Preview keeps the
 
 **Contract**: Add `import { BsPencil, BsTrash3 } from 'react-icons/bs';`. These render as inline SVGs sized via `1em` and inheriting `color: currentColor`, so they pick up `.dangerBtn`'s `color: var(--color-danger)` for Delete automatically.
 
-#### 3.2 Render icons inside the buttons
+#### 3.2 Replace button text with icons
 
 **File**: `src/frontend/src/components/ScoreRow.tsx`
 
-**Intent**: Add a leading icon to Modify and Delete, and shrink the existing Preview `target.svg`. The existing `.actionBtn` already has `display: inline-flex; gap: 0.3rem` (`ScoreRow.module.css:43-54`) so no layout change is needed.
+**Intent**: Each of the three buttons becomes icon-only — the visible "Preview" / "Modify" / "Delete" text is removed; the icon is the sole visible content. The descriptive `aria-label` on each button is preserved, so the accessible name is unchanged.
 
 **Contract**:
-- Modify button (lines 47-54): insert `<BsPencil className={styles.icon} aria-hidden="true" />` as the first child, before the `Modify` text.
-- Delete button (lines 55-62): insert `<BsTrash3 className={styles.icon} aria-hidden="true" />` as the first child, before the `Delete` text.
-- Preview button (lines 37-46): the existing `<img src={targetIcon} alt="" className={styles.icon} />` stays — add a smaller variant class (e.g. `className={`${styles.icon} ${styles.targetIcon}`}`) and size it down so it reads as an icon, not a hero graphic.
-- `aria-hidden="true"` on the icons because each button already has a descriptive `aria-label` (e.g. `aria-label={\`Modify score from ${dateLabel}\`}`) — the icon is decorative.
+- Modify button: render `<BsPencil className={styles.icon} aria-hidden="true" />` as the only child — drop the `Modify` text.
+- Delete button: render `<BsTrash3 className={styles.icon} aria-hidden="true" />` as the only child — drop the `Delete` text.
+- Preview button: the existing `<img src={targetIcon} alt="" className={`${styles.icon} ${styles.targetIcon}`} />` is the only child — drop the `Preview` text.
+- `aria-hidden="true"` on the icons (and `alt=""` on the img) because each button already has a descriptive `aria-label` (e.g. `aria-label={\`Modify score from ${dateLabel}\`}`) — the icon is decorative, the accessible name comes from `aria-label`.
 
-#### 3.3 Adjust icon sizing CSS
+#### 3.3 Icon-only button sizing
 
 **File**: `src/frontend/src/components/ScoreRow.module.css`
 
-**Intent**: Ensure all three icons render at a consistent icon size. The existing `.icon` rule (`ScoreRow.module.css:67-70`) is `1rem × 1rem` — keep it for the react-icons SVGs (they honor explicit width/height). Add a smaller rule for the Preview target graphic.
+**Intent**: With no text, the buttons become square hit targets sized to the glyph; the icons render slightly larger so they read cleanly without a text label.
 
-**Contract**: Keep `.icon { width: 1rem; height: 1rem; }`. Add `.targetIcon { width: 0.85rem; height: 0.85rem; }` (or similar) to render the Preview `target.svg` smaller than its current 1rem so the three icons read as a consistent set. No other CSS change — the buttons' inline-flex + gap already accommodate a leading icon.
+**Contract**: Rework `.previewBtn`/`.actionBtn` to `display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0;` (square hit target). Bump `.icon { width: 1.15rem; height: 1.15rem; }` for the react-icons SVGs, and `.targetIcon { width: 1rem; height: 1rem; }` for the Preview graphic so the three read as a consistent set.
 
 ### Success Criteria:
 

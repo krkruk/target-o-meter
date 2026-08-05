@@ -34,4 +34,18 @@ describe('DailyAverageChart formatters', () => {
       expect(formatChartTooltip('8.5' as unknown as number)).toBe('8.50');
     });
   });
+
+  describe('non-finite inputs (impl-review F2)', () => {
+    // A stray null/undefined (e.g. a missing data point) must NOT render the
+    // literal string "NaN" on an axis tick or tooltip — emit '' instead.
+    it('returns "" for undefined', () => {
+      expect(formatChartTick(undefined as unknown as number)).toBe('');
+      expect(formatChartTooltip(undefined as unknown as number)).toBe('');
+    });
+
+    it('returns "" for a non-numeric string', () => {
+      expect(formatChartTick('abc' as unknown as number)).toBe('');
+      expect(formatChartTooltip('abc' as unknown as number)).toBe('');
+    });
+  });
 });

@@ -26,6 +26,16 @@ describe('TopBar', () => {
     expect(menu).toBeInTheDocument();
   });
 
+  it('toggles aria-expanded to reflect menu visibility on keyboard focus', async () => {
+    render(<TopBar nick="alice" onLogout={() => {}} />);
+    const trigger = screen.getByRole('button', { name: 'alice' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.tab(); // moves focus into the trigger
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.tab({ shift: true }); // moves focus back out
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('renders the Logout action as a menuitem inside the menu', () => {
     render(<TopBar nick="alice" onLogout={() => {}} />);
     const logout = screen.getByRole('menuitem', { name: /logout/i });

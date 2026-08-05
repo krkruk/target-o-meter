@@ -1,12 +1,9 @@
-// S-02 Phase 8: Upload route — PC file picker. Same flow as Capture minus the
-// `capture` attribute. Renders CaliberDistanceStep first, then the file input.
+// S-02 Phase 8 / ui-chores Phase 5: Upload route. Renders CaliberDistanceStep
+// first, then a PII/LLM-training warning callout and two custom buttons backed
+// by hidden inputs — "Choose file" (always visible) and "Take a picture"
+// (mobile-only via .mobileOnly + the 760px breakpoint, uses capture="environment").
 // On file selection, calls createScoringJob and navigates to /waiting/:jobId.
-//
-// ui-chores Phase 5: the bare <input type="file"> was replaced by two custom
-// buttons backed by hidden inputs — "Choose file" (always visible) and
-// "Take a picture" (mobile-only via .mobileOnly + the 760px breakpoint). A
-// verbatim PII/LLM-training warning callout surfaces above them. The
-// onChange -> handleFile -> createScoringJob flow is preserved verbatim.
+// (/capture remains the bare-input fallback route — different surface, untouched.)
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BsUpload, BsCamera } from 'react-icons/bs';

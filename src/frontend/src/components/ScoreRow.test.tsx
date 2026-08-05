@@ -1,8 +1,10 @@
-// ui-chores Phase 3: ScoreRow icon contract. Each of the three action buttons
-// (Preview / Modify / Delete) gets a leading icon node alongside its text
-// label; existing aria-labels stay put so screen readers keep announcing the
-// descriptive action, not the decorative glyph. The Preview icon is an <img>
-// (the immutable target.svg); Modify/Delete use react-icons inline SVGs.
+// ui-chores Phase 3: ScoreRow icon-only action-button contract. Each of the
+// three action buttons (Preview / Modify / Delete) is ICON-ONLY — the visible
+// text was dropped (icons replace it, per the change's actual intent). The
+// accessible name comes from each button's aria-label (preserved verbatim),
+// so screen readers / tooltip-hover still announce "Preview/Modify/Delete
+// score from <date>". The Preview icon is an <img> (the immutable target.svg,
+// alt="" decorative); Modify/Delete use react-icons inline SVGs (aria-hidden).
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ScoreRow } from './ScoreRow';
@@ -29,26 +31,30 @@ describe('ScoreRow action buttons', () => {
     expect(screen.getByRole('button', { name: /delete score from 2026-08-05/i })).toBeInTheDocument();
   });
 
-  it('renders a leading icon node (img or svg) inside the Preview button', () => {
+  it('renders an icon-only Preview button (img glyph, no visible text)', () => {
     render(<ScoreRow row={makeRow()} onModified={() => {}} onDeleted={() => {}} />);
     const preview = screen.getByRole('button', { name: /preview score from/i });
     const img = preview.querySelector('img');
     expect(img).not.toBeNull();
-    expect(preview).toHaveTextContent(/preview/i);
+    // ui-chores post-impl-review correction: text dropped — icon replaces it.
+    expect(preview).not.toHaveTextContent(/preview/i);
+    expect(preview.textContent?.trim()).toBe('');
   });
 
-  it('renders a leading inline-svg icon inside the Modify button', () => {
+  it('renders an icon-only Modify button (inline svg, no visible text)', () => {
     render(<ScoreRow row={makeRow()} onModified={() => {}} onDeleted={() => {}} />);
     const modify = screen.getByRole('button', { name: /modify score from/i });
     expect(modify.querySelector('svg')).not.toBeNull();
-    expect(modify).toHaveTextContent(/modify/i);
+    expect(modify).not.toHaveTextContent(/modify/i);
+    expect(modify.textContent?.trim()).toBe('');
   });
 
-  it('renders a leading inline-svg icon inside the Delete button', () => {
+  it('renders an icon-only Delete button (inline svg, no visible text)', () => {
     render(<ScoreRow row={makeRow()} onModified={() => {}} onDeleted={() => {}} />);
     const del = screen.getByRole('button', { name: /delete score from/i });
     expect(del.querySelector('svg')).not.toBeNull();
-    expect(del).toHaveTextContent(/delete/i);
+    expect(del).not.toHaveTextContent(/delete/i);
+    expect(del.textContent?.trim()).toBe('');
   });
 
   it('marks the Modify/Delete icons aria-hidden (decorative; label carries meaning)', () => {

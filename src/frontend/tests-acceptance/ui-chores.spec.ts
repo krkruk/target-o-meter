@@ -8,9 +8,11 @@
 //
 //   1. seed one scoring job (so /scores + the home "Recent results" list and
 //      the daily-average chart each have content to assert against);
-//   2. TopBar: hover/focus the nick -> the Logout menu reveals (Phase 2);
-//   3. /scores + home / "Recent results": each action button carries an icon
-//      node + text label; Delete picks up the danger color (Phase 3);
+//   2. TopBar: hover/focus the nick -> the Logout menu reveals (Phase 2). The
+//      Sidebar has NO Logout entry anymore (post-impl-review: moved to TopBar);
+//   3. /scores + home / "Recent results": each action button is ICON-ONLY
+//      (visible text dropped, icons replace it; aria-label keeps the accessible
+//      name); Delete picks up the danger color (Phase 3, post-impl-review);
 //   4. home / chart: YAxis ticks render at 2 decimals (Phase 4);
 //   5. /upload desktop: verbatim PII callout, only "Choose file" visible;
 //      /upload mobile (<=760px): both buttons stack vertically and the camera
@@ -80,21 +82,23 @@ test.describe('ui-chores — all five UI changes (one journey)', () => {
     await nickTrigger.focus();
     await expect(logoutMenuitem).toBeVisible();
 
-    // ── Phase 3: icon-ify action buttons — /scores (ScoreDashboard). ──────
+    // ── Phase 3: icon-only action buttons — /scores (ScoreDashboard). ─────
     await page.goto('/scores');
     // Wait for the row list to populate (the seeded job becomes a result row).
     const previewBtn = page.getByRole('button', { name: /preview score from/i }).first();
     await expect(previewBtn).toBeVisible({ timeout: 15_000 });
     const modifyBtn = page.getByRole('button', { name: /modify score from/i }).first();
     const deleteBtn = page.getByRole('button', { name: /delete score from/i }).first();
-    // Preview leads with an <img> (the immutable target.svg); Modify/Delete
-    // lead with an inline <svg> (react-icons). Text labels stay.
+    // Post-impl-review correction: buttons are ICON-ONLY (visible text dropped,
+    // icons replace it). Each carries its icon (Preview=<img target.svg>,
+    // Modify/Delete=inline <svg>) and keeps its descriptive aria-label as the
+    // accessible name. No visible text remains inside any of the three.
     await expect(previewBtn.locator('img')).toHaveCount(1);
-    await expect(previewBtn).toContainText(/preview/i);
+    await expect(previewBtn).not.toContainText(/preview|modify|delete/i);
     await expect(modifyBtn.locator('svg')).toHaveCount(1);
-    await expect(modifyBtn).toContainText(/modify/i);
+    await expect(modifyBtn).not.toContainText(/preview|modify|delete/i);
     await expect(deleteBtn.locator('svg')).toHaveCount(1);
-    await expect(deleteBtn).toContainText(/delete/i);
+    await expect(deleteBtn).not.toContainText(/preview|modify|delete/i);
     // Delete's svg inherits the danger color (currentcolor -> --color-danger).
     const deleteColor = await deleteBtn.evaluate(
       (el) => getComputedStyle(el.querySelector('svg')!).color,

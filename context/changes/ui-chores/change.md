@@ -1,7 +1,7 @@
 ---
 change_id: ui-chores
 title: Clean up the existing UI and improve usability
-status: implemented
+status: impl_reviewed
 created: 2026-08-05
 updated: 2026-08-05
 archived_at: null

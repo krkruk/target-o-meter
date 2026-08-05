@@ -1,10 +1,12 @@
 // AppShell — the authenticated layout.
 //
-// TopBar (brand + nick) + collapsible Sidebar (Home top, Logout bottom) + a
-// routed main area. Owns the collapsed state so the toggle stays local; App
-// passes me + onLogout. S-02 replaced the S-01 placeholder main with <Routes>
-// — the five wizard routes (Dashboard / Capture / Upload / Waiting / Results)
-// own the main content. Sidebar's Home navigates to /dashboard via the router.
+// TopBar (brand + nick + Logout dropdown) + collapsible Sidebar (Home / Score
+// dashboard / Admin) + a routed main area. Owns the collapsed state so the
+// toggle stays local; App passes me + onLogout (wired into TopBar only —
+// ui-chores removed the Sidebar Logout entry). S-02 replaced the S-01
+// placeholder main with <Routes> — the five wizard routes (Dashboard / Capture
+// / Upload / Waiting / Results) own the main content. Sidebar's Home navigates
+// to /dashboard via the router.
 //
 // Phases 7-8 swap each stub route component for the real implementation; the
 // route table here is the wiring point.
@@ -38,7 +40,6 @@ export function AppShell({ me, onLogout }: AppShellProps) {
         <Sidebar
           collapsed={collapsed}
           onToggle={() => setCollapsed((c) => !c)}
-          onLogout={onLogout}
           isOwner={isOwner}
         />
         <main className={styles.main} role="main">

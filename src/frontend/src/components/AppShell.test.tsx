@@ -1,14 +1,17 @@
 // Phase 3: AppShell contract. The authenticated layout — top bar (title +
-// nick) + collapsible left sidebar (Home top, Logout bottom) + dashboard
-// placeholder main area. Pins the structural invariants the App relies on:
+// nick + Logout dropdown) + collapsible left sidebar (Home top, no Logout) +
+// dashboard placeholder main area. Pins the structural invariants the App
+// relies on:
 //   * TopBar shows the app brand + the logged-in nick.
 //   * Sidebar collapses/expands via a toggle.
-//   * Home is the first nav item; Logout is pinned to the bottom.
-//   * Logout fires onLogout (App wires it to postLogout + reload).
+//   * Home is the first nav item.
+//   * Logout lives ONLY in the TopBar nick dropdown (ui-chores post-impl-review
+//     correction removed the Sidebar Logout entry). The Sidebar nav has no
+//     Logout menuitem; TopBar owns it.
 //   * A dashboard placeholder is rendered (S-02/S-03 fill it in).
 //   * role === 'owner' surfaces a disabled Admin entry (seam for S-04).
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from './AppShell';
@@ -41,16 +44,17 @@ describe('AppShell', () => {
     expect(banner).toHaveTextContent(/alice/);
   });
 
-  it('renders Home as the first sidebar entry and Logout pinned at the bottom', () => {
+  it('renders Home as the first sidebar entry with no Logout in the sidebar (post-impl-review: Logout moved to TopBar)', () => {
     renderInRouter(<AppShell me={makeMe()} onLogout={() => {}} />);
     const nav = screen.getByRole('navigation');
     // Nav items carry role="menuitem"; the collapse toggle is a plain button
     // and is excluded so the order assertion targets the menu, not the chrome.
     const items = nav.querySelectorAll('[role="menuitem"]');
     const labels = Array.from(items).map((el) => el.textContent?.trim() || '');
-    // Home is first, Logout is last — the order is the contract.
+    // Home is first; ui-chores removed the Sidebar Logout entry — assert no
+    // nav item reads "Logout" anymore (it lives in the TopBar dropdown now).
     expect(labels[0]).toMatch(/home/i);
-    expect(labels[labels.length - 1]).toMatch(/logout/i);
+    expect(labels.some((l) => /logout/i.test(l))).toBe(false);
   });
 
   it('collapses and expands the sidebar via the toggle', async () => {
@@ -81,17 +85,22 @@ describe('AppShell', () => {
     expect(nav.getAttribute('data-collapsed')).toBe('false');
   });
 
-  it('fires onLogout when the Sidebar Logout entry is activated', async () => {
+  it('fires onLogout when the TopBar Logout menuitem is activated (post-impl-review: Sidebar Logout removed)', async () => {
     const onLogout = vi.fn();
     renderInRouter(<AppShell me={makeMe()} onLogout={onLogout} />);
-    // Scope to the sidebar nav: ui-chores Phase 2 added a second Logout
-    // menuitem in the TopBar, so a global role query is now ambiguous. The
-    // Sidebar entry remains the target of this regression test.
-    const nav = screen.getByRole('navigation', { name: /main navigation/i });
-    const logout = Array.from(nav.querySelectorAll('[role="menuitem"]'))
-      .find((el) => /logout/i.test(el.textContent ?? ''))!;
+    // ui-chores removed the Sidebar Logout entry; the TopBar nick dropdown is
+    // now the sole Logout surface. Scope to the banner so the role query is
+    // unambiguous (the sidebar nav has no Logout menuitem anymore).
+    const banner = screen.getByRole('banner');
+    const logout = within(banner).getByRole('menuitem', { name: /logout/i });
     await userEvent.click(logout);
     expect(onLogout).toHaveBeenCalledTimes(1);
+    // And confirm the Sidebar nav truly has no Logout entry.
+    const nav = screen.getByRole('navigation', { name: /main navigation/i });
+    expect(
+      Array.from(nav.querySelectorAll('[role="menuitem"]'))
+        .some((el) => /logout/i.test(el.textContent ?? '')),
+    ).toBe(false);
   });
 
   it('renders the routed Dashboard component in the main area at /dashboard', () => {
