@@ -38,11 +38,12 @@ jobs:
         # pyproject.toml lives in the nested reviewer-target-o-meter/ subdir (not the
         # git root), so the #subdirectory= fragment is REQUIRED.
         #
-        # DIAGNOSTIC PIN: temporarily installs the `debug-ci-logging` branch (extra
-        # DEBUG logging + the empty-emit retry fix) to diagnose the 0-findings run
-        # on this PR. Revert to the bare URL (master) once the diagnosis is done.
+        # Installs from the tool repo's DEFAULT branch (master). LOG_LEVEL=DEBUG is
+        # kept below so the env dump, git refs, inbound prompt size, and per-turn
+        # model trace always surface in the step log (the DEBUG observability that
+        # landed in the debug-ci-logging cycle).
         run: |
-          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter@debug-ci-logging#subdirectory=reviewer-target-o-meter"
+          uv tool install "git+https://github.com/krkruk/reviewer-target-o-meter#subdirectory=reviewer-target-o-meter"
 
       - name: Install ast-grep (structural_search tool)
         run: |
