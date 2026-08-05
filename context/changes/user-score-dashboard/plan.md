@@ -615,3 +615,8 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 #### Manual
 
 - [x] 5.2 E2E green is the manual click-through verifier — it covers list/preview/modify/delete on the assembled system offline — a1d2049
+
+#### Supplemental (post-review): full upload → modify → delete E2E
+
+- [x] 5.3 Add E2E test `tests/system/test_score_dashboard_upload_e2e.py` — sibling of 5.1 that drives the GENUINE user journey through a real browser against a fully-offline stack: upload the vision fixture (`12.jpg`) via the SPA wizard → sibling `qcluster` worker (MockDetector, no GOOGLE_API_KEY) → accept on `/results` → `/scores` dashboard → Modify every hole to 0 (assert bolded average recomputes to 0.0 AND each persisted hole reads back 0 from `getScore`) → Delete (confirm, assert empty state `No scores yet`). The system-test `runserver_factory` boots Django but no worker, so the test spawns a `qcluster` sibling itself (sharing the run-dir DB + env, mirroring the Playwright `global-setup.ts` stack) and terminates it in a `finally`. No shared `conftest.py` change. Verified green (~14s); deliberate-break check (per-hole read-back inverted to expect `1`) went red on cue and was reverted.
+

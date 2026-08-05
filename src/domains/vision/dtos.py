@@ -130,6 +130,18 @@ class ScoreListOut(BaseModel):
     total_pages: int
 
 
+class ErrorOut(BaseModel):
+    """Generic error envelope for declared non-2xx responses (e.g. 404).
+
+    Mirrors ``src/domains/identity/dtos.py::ErrorOut`` so the vision routes can
+    declare their ``HttpError(404, ...)`` shapes in ``response=`` without a
+    cross-domain DTO import (AGENTS.md §5: DTOs at boundaries, no cross-domain
+    ORM imports — keeping the error DTO local honors the same isolation).
+    """
+
+    detail: str
+
+
 class DailyAverageDTO(BaseModel):
     """One point on the dashboard's daily-average chart."""
 

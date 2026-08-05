@@ -44,8 +44,11 @@ export function Dashboard() {
   }, []);
 
   // Phase 4: the row owns the modal state; these are SUCCESS callbacks.
-  // onModified → refetch the 20-row "Recent results" so the updated average
-  //   shows. onDeleted → refetch so the row disappears.
+  // onModified / onDeleted → refetch BOTH the 20-row "Recent results" AND the
+  //   aggregations (hero best_result/last_session_average + daily-averages
+  //   chart), because a modify or delete can change the hero stats and the
+  //   chart's daily average. Without the aggregations refetch the hero and
+  //   chart stay stale until a full page reload (impl-review F2).
   const refetchRecent = useCallback(() => {
     let mounted = true;
     getScores({ page: 1, page_size: 20 })
@@ -53,10 +56,21 @@ export function Dashboard() {
       .catch(() => { /* hero-stats error path already covers load failure */ });
     return () => { mounted = false; };
   }, []);
-  const handleModified = useCallback(() => { refetchRecent(); }, [refetchRecent]);
+  const refetchAggregations = useCallback(() => {
+    let mounted = true;
+    getAggregations()
+      .then((agg) => { if (mounted) setAggregations(agg); })
+      .catch(() => { /* hero-stats error path already covers load failure */ });
+    return () => { mounted = false; };
+  }, []);
+  const handleModified = useCallback(() => {
+    refetchRecent();
+    refetchAggregations();
+  }, [refetchRecent, refetchAggregations]);
   const handleDeleted = useCallback((row: ResultSummary) => {
     setRecentRows((prev) => prev.filter((r) => r.result_id !== row.result_id));
-  }, []);
+    refetchAggregations();
+  }, [refetchAggregations]);
 
   function handleAddPhotos() {
     navigate(isMobile ? '/capture' : '/upload');

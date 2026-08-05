@@ -48,6 +48,7 @@ from src.domains.vision.dtos import (
     AcceptedResultDTO,
     AggregationDTO,
     DetectedHoleDTO,
+    ErrorOut,
     ScoreListOut,
     ScoringJobDTO,
 )
@@ -319,7 +320,9 @@ def list_scores(request, page: int = 1, page_size: int = 20) -> ScoreListOut:
 
 
 @router.get(
-    "/scores/{result_id}", auth=session_auth, response={200: AcceptedResultDTO}
+    "/scores/{result_id}",
+    auth=session_auth,
+    response={200: AcceptedResultDTO, 404: ErrorOut},
 )
 def get_score(request, result_id: UUID) -> AcceptedResultDTO:
     """Read one accepted result (the Modify modal fetches this — the accepted/
@@ -349,14 +352,18 @@ class ScoreUpdateIn(Schema):
     """
 
     holes: list[DetectedHoleDTO] = Field(min_length=1)
-    target_type: str | None = None
+    # Literal guard mirrors ScoringJobIn (L84) / AcceptResultIn (L224); the
+    # model CharField has no choices=, so the BFF is the only gate.
+    target_type: Literal["air_pistol", "precision_pistol"] | None = None
     caliber_hint: str | None = None
     distance: int | None = None
     weapon_type: str | None = None
 
 
 @router.patch(
-    "/scores/{result_id}", auth=session_auth, response={200: AcceptedResultDTO}
+    "/scores/{result_id}",
+    auth=session_auth,
+    response={200: AcceptedResultDTO, 404: ErrorOut},
 )
 @transaction.atomic
 def patch_score(request, result_id: UUID, payload: ScoreUpdateIn) -> AcceptedResultDTO:
@@ -383,7 +390,11 @@ def patch_score(request, result_id: UUID, payload: ScoreUpdateIn) -> AcceptedRes
         raise HttpError(404, "Not found") from None
 
 
-@router.delete("/scores/{result_id}", auth=session_auth, response={204: None})
+@router.delete(
+    "/scores/{result_id}",
+    auth=session_auth,
+    response={204: None, 404: ErrorOut},
+)
 def delete_score(request, result_id: UUID):
     """Hard-delete an accepted result + best-effort remove its storage objects;
     retain the ``ScoringJob`` audit row. Owner-only — 404 on mismatch OR missing

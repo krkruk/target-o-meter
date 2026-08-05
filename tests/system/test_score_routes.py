@@ -226,6 +226,22 @@ def test_patch_score_403_without_csrf(client, user_sub) -> None:
     assert response.status_code == 403
 
 
+def test_patch_score_422_invalid_target_type(client, user_sub) -> None:
+    """impl-review F1: ScoreUpdateIn.target_type is a Literal mirroring
+    ScoringJobIn/AcceptResultIn — the BFF is the only gate (the model CharField
+    has no choices=). An out-of-vocabulary value → 422, not persisted.
+    """
+    user = make_user(sub=user_sub, nick="vim")
+    _login_as(client, user)
+    csrf = _csrf(client)
+    ar = make_accepted_result(user_uuid=user.id, created_at=days_ago(0))
+
+    body = _patch_body([10])
+    body["target_type"] = "not-a-real-target-type"
+    response = _patch(client, ar.id, body, csrf=csrf)
+    assert response.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # DELETE /v1/scores/{id} — hard-delete + best-effort storage cleanup
 # ---------------------------------------------------------------------------
