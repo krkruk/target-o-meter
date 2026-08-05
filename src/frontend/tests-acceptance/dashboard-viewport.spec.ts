@@ -58,12 +58,16 @@ test.describe('Dashboard viewport', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/dashboard');
 
-    // Regions still render; the add-photos button now routes to /capture.
+    // Regions still render; the grid collapses to a scrollable single column.
     for (const name of REGIONS) {
       await expect(page.getByRole('region', { name: new RegExp(name, 'i') })).toBeVisible();
     }
-    // Clicking add-photos on mobile navigates to /capture.
+    // fix/add-missing-warning-and-gallery-button-in-mobile: the add-photos
+    // button now routes to /upload on every platform (it used to branch to
+    // /capture on mobile). /upload carries the PII warning + the correct
+    // mobile Choose-file/Take-a-picture buttons. True device emulation
+    // (isMobile/hasTouch/UA) for this regression lives in mobile-upload.spec.
     await page.getByRole('button', { name: /add photos/i }).click();
-    await expect(page).toHaveURL(/\/capture$/);
+    await expect(page).toHaveURL(/\/upload$/);
   });
 });

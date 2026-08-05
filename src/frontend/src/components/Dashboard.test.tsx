@@ -1,7 +1,8 @@
 // S-02 Phase 7 + S-03: Dashboard contract. Single-screen CSS Grid dashboard —
-// hero stats, add-photos button (branches to /capture on mobile, /upload on
-// desktop), results list, and a daily-average recharts chart. S-03 swapped the
-// mocked fixtures for real getAggregations() calls (loading → role=status,
+// hero stats, add-photos button (routes to /upload on EVERY platform;
+// /capture is retained as a direct-URL fallback but is no longer the mobile
+// entry point), results list, and a daily-average recharts chart. S-03 swapped
+// the mocked fixtures for real getAggregations() calls (loading → role=status,
 // error → role=alert). Accessibility-first: each region carries role="region"
 // + aria-label; the chart wrapper is role="img" with a summarizing aria-label.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -10,26 +11,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import * as api from '../api';
 import { Dashboard } from './Dashboard';
-
-// jsdom doesn't implement window.matchMedia — the dashboard uses it to branch
-// the add-photos button between /capture (mobile, <=760px) and /upload
-// (desktop). Each test installs the matchMedia stub for the viewport it tests.
-function installMatchMedia(maxWidth: number) {
-  const desktop = maxWidth > 760;
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: desktop
-      ? !query.includes('max-width')
-      : query.includes('max-width: 760px'),
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  }));
-  return desktop;
-}
 
 function renderAt(path: string) {
   return render(
@@ -45,16 +26,6 @@ function renderAt(path: string) {
 
 describe('Dashboard', () => {
   beforeEach(() => {
-    vi.stubGlobal('matchMedia', (query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }));
     // S-03: default the aggregation spy to a populated payload so the
     // structural tests (regions, add-photos, chart) don't depend on fetch.
     // Per-test overrides replace this with their own spy.
@@ -74,7 +45,6 @@ describe('Dashboard', () => {
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -89,8 +59,14 @@ describe('Dashboard', () => {
     expect(screen.getByRole('button', { name: /add photos/i })).toBeInTheDocument();
   });
 
-  it('routes to /upload when the add-photos button is activated on desktop', async () => {
-    installMatchMedia(1920); // desktop
+  it('routes to /upload when the add-photos button is activated (every platform)', async () => {
+    // fix/add-missing-warning-and-gallery-button-in-mobile: the add-photos
+    // button no longer branches on viewport width — every platform (mobile,
+    // PC, tablet) routes to /upload, which carries the PII warning + the
+    // correct mobile Choose-file/Take-a-picture buttons. Asserted here without
+    // a matchMedia stub: if a viewport branch were reintroduced, this test
+    // would still pin the desktop→/upload contract (the acceptance suite's
+    // iPhone-emulated spec pins the mobile→/upload contract for real).
     let currentPath = '';
     function Probe() {
       currentPath = useLocation().pathname;
@@ -109,27 +85,6 @@ describe('Dashboard', () => {
     expect(currentPath).toBe('/dashboard');
     await userEvent.click(screen.getByRole('button', { name: /add photos/i }));
     expect(currentPath).toBe('/upload');
-  });
-
-  it('routes to /capture when the add-photos button is activated on mobile (<=760px)', async () => {
-    installMatchMedia(390); // mobile
-    let currentPath = '';
-    function Probe() {
-      currentPath = useLocation().pathname;
-      return null;
-    }
-    render(
-      <MemoryRouter initialEntries={['/dashboard']}>
-        <Probe />
-        <Routes>
-          <Route path="/*" element={<Dashboard />} />
-          <Route path="/upload" element={<div>upload-sentinel</div>} />
-          <Route path="/capture" element={<div>capture-sentinel</div>} />
-        </Routes>
-      </MemoryRouter>
-    );
-    await userEvent.click(screen.getByRole('button', { name: /add photos/i }));
-    expect(currentPath).toBe('/capture');
   });
 
   it('renders the daily-average chart with an accessible role=img + summary', () => {

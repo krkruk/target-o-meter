@@ -11,6 +11,22 @@
   text-align: center;
 }
 
+/* fix/add-missing-warning-and-gallery-button-in-mobile: PII/LLM-training
+   warning callout — same rule as Upload.module.css, first consumer of the
+   reserved --color-warning-* tokens (styles.css). role="note", not "alert":
+   purely informational, not an error. Mirrored here so /capture (the direct-
+   URL fallback route) shows the same warning regardless of platform. */
+.warning {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
 .capture input[type="file"] {
   font: inherit;
   color: var(--color-muted);
