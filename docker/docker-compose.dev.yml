@@ -20,9 +20,17 @@
 # (manifest mode) instead of the absent :5173. Native ``make dev`` keeps HMR
 # for live frontend work; HMR-in-container is intentionally not provided.
 #
-# Env is read from ``.env`` (copy .env.example to .env). The compose overrides
-# the storage + detector vars below to flip on the S3/MinIO path; everything
-# else (Auth0, OWNER_SUB_ID, DEV_AUTH_BYPASS_SUB) flows from .env.
+# Env is read from ``.env`` (copy .env.example to .env). ``make dev-container``
+# passes ``--env-file .env`` so the repo-root .env is loaded explicitly
+# (podman-compose reads it from CWD by default; docker-compose v2 reads it
+# from the compose file's parent — docker/ — so the explicit flag keeps the
+# two providers in agreement). Per the Compose spec, relative volume paths
+# resolve relative to the compose file's parent directory — so every bind
+# source is written as ``../<path>`` to reach the repo root from docker/.
+# The Compose spec also resolves ``build.context`` relative to the compose
+# file (not the project directory), so ``context: ..`` already reaches the
+# repo root unaided. Everything else (Auth0, OWNER_SUB_ID, DEV_AUTH_BYPASS_SUB)
+# flows from .env.
 
 services:
   web:
@@ -72,27 +80,33 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
       ALLOWED_HOSTS: localhost,127.0.0.1,fedora-linux.local
     volumes:
-      # Granular backend mounts (NOT ./src:/app/src). The blanket mount would
+      # Granular backend mounts (NOT ../src:/app/src). The blanket mount would
       # shadow the dev image's baked src/frontend/dist with the host's
       # gitignored-empty dist/, undoing the image-time frontend build → blank
       # page. Mounting the backend Python packages + manage.py preserves the
       # live-reload contract (edit a .py → runserver reloads) WITHOUT touching
       # the frontend bundle. ``src/`` holds only target_o_meter/ bff/ domains/
       # frontend/ + manage.py (AGENTS.md §4), so this list fully covers backend
-      # live-reload. ``worker`` keeps the blanket ./src mount below — it never
+      # live-reload. ``worker`` keeps the blanket ../src mount below — it never
       # serves the frontend, so shadowing src/frontend there is harmless.
       #
-      # The :Z suffix lets podman relabel the host path for the container's
-      # SELinux context on Fedora (bind mounts need it; named volumes below
-      # don't — podman labels those automatically). NOTE: podman-compose (unlike
-      # the docker CLI) drops the option when combined with :cached, so :cached
-      # is omitted — it's a Docker-for-Mac no-op on Linux anyway.
-      - ./src/target_o_meter:/app/src/target_o_meter:z
-      - ./src/bff:/app/src/bff:z
-      - ./src/domains:/app/src/domains:z
-      - ./src/manage.py:/app/src/manage.py:z
-      - ./templates:/app/templates:z
-      - ./docker:/app/docker:z
+      # The ``../`` prefix reaches the repo root from this file's parent
+      # (docker/); per the Compose spec, relative bind sources resolve relative
+      # to the compose file's parent directory, NOT the project directory.
+      # (``make dev-container`` also passes ``--env-file .env`` so the repo-
+      # root .env is loaded; both podman-compose and docker-compose v2 accept
+      # that flag.) The :Z suffix lets podman relabel the host path for the
+      # container's SELinux context on Fedora (bind mounts need it; named
+      # volumes below don't — podman labels those automatically). NOTE:
+      # podman-compose (unlike the docker CLI) drops the option when combined
+      # with :cached, so :cached is omitted — it's a Docker-for-Mac no-op on
+      # Linux anyway.
+      - ../src/target_o_meter:/app/src/target_o_meter:z
+      - ../src/bff:/app/src/bff:z
+      - ../src/domains:/app/src/domains:z
+      - ../src/manage.py:/app/src/manage.py:z
+      - ../templates:/app/templates:z
+      - ../docker:/app/docker:z
       # SQLite DB + MinIO data on named volumes (persist across re-up).
       - db-data:/data
     ports:
@@ -140,9 +154,11 @@ services:
       APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
     volumes:
       # :Z for SELinux on Fedora bind mounts (see the web service comment).
-      - ./src:/app/src:z
-      - ./templates:/app/templates:z
-      - ./docker:/app/docker:z
+      # ``../`` reaches the repo root from docker/ (see the web service
+      # comment for why relative bind sources need it).
+      - ../src:/app/src:z
+      - ../templates:/app/templates:z
+      - ../docker:/app/docker:z
       - db-data:/data
     depends_on:
       # Wait for web's healthcheck (the post-migrate sentinel) — NOT just
