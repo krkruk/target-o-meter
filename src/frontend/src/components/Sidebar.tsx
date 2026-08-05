@@ -1,6 +1,6 @@
-// Phase 3: Sidebar — collapsible left nav. Home pinned to the top, Logout
-// pinned to the bottom (flex margin-top: auto). S-04: the previously-disabled
-// Admin entry is now a real <Link to="/admin">, surfaced only for owners.
+// Phase 3: Sidebar — collapsible left nav. Home pinned to the top. S-04: the
+// previously-disabled Admin entry is now a real <Link to="/admin">, surfaced
+// only for owners.
 //
 // user-score-dashboard Phase 4: Home / Score dashboard / Admin are now
 // <NavLink> so aria-current="page" + the .active class apply automatically
@@ -8,17 +8,20 @@
 // end> (the `end` prop avoids /dashboard matching subtrees). The Home button
 // used to be <button onClick={onHome}>; that prop + AppShell's onHome wiring
 // are removed since the router now owns the navigation.
+//
+// ui-chores (post-impl-review correction): the bottom Logout entry was removed
+// — Logout now lives exclusively in the TopBar nick dropdown (Phase 2). The
+// onLogout prop is gone from Sidebar; AppShell still passes it to TopBar.
 import { NavLink } from 'react-router-dom';
 import styles from './Sidebar.module.css';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
-  onLogout: () => void;
   isOwner?: boolean;
 }
 
-export function Sidebar({ collapsed, onToggle, onLogout, isOwner }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, isOwner }: SidebarProps) {
   return (
     <nav
       className={styles.sidebar}
@@ -46,12 +49,6 @@ export function Sidebar({ collapsed, onToggle, onLogout, isOwner }: SidebarProps
             {collapsed ? '⚙' : 'Admin'}
           </NavLink>
         )}
-      </div>
-
-      <div className={styles.bottomItems}>
-        <button role="menuitem" className={styles.item} onClick={onLogout}>
-          {collapsed ? '⏻' : 'Logout'}
-        </button>
       </div>
     </nav>
   );

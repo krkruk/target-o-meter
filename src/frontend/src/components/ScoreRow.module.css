@@ -44,8 +44,12 @@
 .actionBtn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.3rem;
-  padding: 0.3rem 0.7rem;
+  /* ui-chores: icon-only buttons — square-ish hit target sized to the glyph. */
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: #fff;
@@ -65,6 +69,13 @@
 }
 
 .icon {
+  /* ui-chores: icon-only buttons — slightly larger so the glyph reads cleanly. */
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* ui-chores Phase 3: Preview target graphic reads as an icon, not a hero. */
+.targetIcon {
   width: 1rem;
   height: 1rem;
 }

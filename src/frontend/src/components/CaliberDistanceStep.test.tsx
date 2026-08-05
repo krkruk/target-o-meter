@@ -100,7 +100,10 @@ describe('Upload (PC file picker)', () => {
       </MemoryRouter>
     );
     await userEvent.click(screen.getByRole('button', { name: /next/i }));
-    const input = screen.getByLabelText(/file|upload|photo|select/i) as HTMLInputElement;
+    // ui-chores Phase 5 added a second (camera) input whose aria-label also
+    // matches /photo/. Scope to the PC-picker input's exact label, which is
+    // the one the test has always meant: the capture-less file picker.
+    const input = screen.getByLabelText(/select a photo/i) as HTMLInputElement;
     expect(input.type).toBe('file');
     expect(input.accept).toBe('image/*');
     expect(input.getAttribute('capture')).toBeNull();

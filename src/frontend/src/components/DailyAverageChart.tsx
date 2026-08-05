@@ -20,6 +20,25 @@ interface Props {
   daily: DailyAverage[] | null;
 }
 
+// ui-chores Phase 4: 2-decimal formatting for the chart's YAxis ticks and
+// Tooltip values. Exported so they can be unit-tested directly (jsdom renders
+// recharts at width 0, so asserting on rendered ticks is brittle). Number(v)
+// coerces the string values recharts occasionally hands formatters; the
+// isFinite guard keeps a stray null/undefined (e.g. a missing data point) from
+// rendering the literal string "NaN" — emit an empty string instead.
+function toFixed2(v: number | string): string {
+  const n = Number(v);
+  return Number.isFinite(n) ? n.toFixed(2) : '';
+}
+
+export function formatChartTick(v: number | string): string {
+  return toFixed2(v);
+}
+
+export function formatChartTooltip(v: number | string): string {
+  return toFixed2(v);
+}
+
 export function DailyAverageChart({ daily }: Props) {
   const data = daily ?? [];
   if (data.length === 0) {
@@ -51,8 +70,8 @@ export function DailyAverageChart({ daily }: Props) {
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: -16 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
           <XAxis dataKey="date" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
-          <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} />
-          <Tooltip />
+          <YAxis domain={[0, 10]} tick={{ fontSize: 10 }} tickFormatter={formatChartTick} />
+          <Tooltip formatter={formatChartTooltip} />
           <Line
             type="monotone"
             dataKey="average"

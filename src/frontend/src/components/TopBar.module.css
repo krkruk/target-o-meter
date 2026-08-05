@@ -12,7 +12,58 @@
   font-size: 1.05rem;
 }
 
-.nick {
+/* ui-chores Phase 2: CSS-only disclosure group around the nick. */
+.nickGroup {
+  position: relative;
+}
+
+.nickTrigger {
   font-size: 0.95rem;
   color: #4a4a4a;
+  background: none;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  min-width: 8rem;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 0.25rem;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 120ms, transform 120ms, visibility 120ms;
+}
+
+.nickGroup:hover .menu,
+.nickGroup:focus-within .menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  font: inherit;
+  color: #4a4a4a;
+  cursor: pointer;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--color-border);
 }

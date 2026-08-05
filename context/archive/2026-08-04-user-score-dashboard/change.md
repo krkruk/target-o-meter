@@ -1,10 +1,10 @@
 ---
 change_id: user-score-dashboard
 title: User score dashboard
-status: impl_reviewed
+status: archived
 created: 2026-08-04
 updated: 2026-08-05
-archived_at: null
+archived_at: 2026-08-05T18:52:58Z
 ---
 
 ## Notes

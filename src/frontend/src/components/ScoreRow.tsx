@@ -7,7 +7,15 @@
 //     null> (no row field in state — the row comes from the closure).
 //   - onModified / onDeleted are SUCCESS callbacks that bubble to the parent
 //     (ScoreDashboard refetches; Dashboard/home removes the row).
+//
+// ui-chores Phase 3 (post-impl-review correction): the three action buttons
+// are ICON-ONLY. The visible text was dropped (icons replace it, per the
+// change's actual intent); each button keeps its descriptive aria-label so
+// screen readers and tooltip-hover still announce "Preview/Modify/Delete score
+// from <date>". Preview's target.svg <img> keeps alt="" (decorative — the
+// button's accessible name comes from aria-label, same as Modify/Delete).
 import { useState } from 'react';
+import { BsPencil, BsTrash3 } from 'react-icons/bs';
 import type { ResultSummary } from '../api';
 import targetIcon from '../../assets/target.svg';
 import { ScorePreview } from './ScorePreview';
@@ -41,8 +49,7 @@ export function ScoreRow({ row, onModified, onDeleted }: ScoreRowProps) {
             aria-label={`Preview score from ${dateLabel}`}
             onClick={() => setShowPreview((v) => !v)}
           >
-            <img src={targetIcon} alt="" className={styles.icon} />
-            Preview
+            <img src={targetIcon} alt="" className={`${styles.icon} ${styles.targetIcon}`} />
           </button>
           <button
             type="button"
@@ -50,7 +57,7 @@ export function ScoreRow({ row, onModified, onDeleted }: ScoreRowProps) {
             aria-label={`Modify score from ${dateLabel}`}
             onClick={() => setModal('modify')}
           >
-            Modify
+            <BsPencil className={styles.icon} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -58,7 +65,7 @@ export function ScoreRow({ row, onModified, onDeleted }: ScoreRowProps) {
             aria-label={`Delete score from ${dateLabel}`}
             onClick={() => setModal('delete')}
           >
-            Delete
+            <BsTrash3 className={styles.icon} aria-hidden="true" />
           </button>
         </div>
       </div>

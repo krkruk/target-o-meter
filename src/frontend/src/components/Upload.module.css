@@ -11,25 +11,69 @@
   text-align: center;
 }
 
-.upload input[type="file"] {
-  font: inherit;
-  color: var(--color-muted);
+/* ui-chores Phase 5: PII/LLM-training warning callout — first consumer of the
+   reserved --color-warning-* tokens (styles.css). role="note", not "alert":
+   purely informational, not an error. */
+.warning {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  text-align: left;
 }
 
-.upload input[type="file"]::file-selector-button {
-  margin: 0 0.75rem 0 0;
-  padding: 0.6rem 1.25rem;
-  font-size: 0.95rem;
-  font-weight: 500;
+/* Horizontal button group; stacks vertically at the established 760px
+   breakpoint (Dashboard.module.css convention). */
+.uploadActions {
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  justify-content: center;
+  align-items: center;
+}
+
+@media (max-width: 760px) {
+  .uploadActions {
+    flex-direction: column;
+  }
+}
+
+/* The camera button is hidden on desktop, visible on mobile (<=760px). */
+.mobileOnly {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .mobileOnly {
+    display: inline-flex;
+  }
+}
+
+/* Custom buttons replace the old ::file-selector-button styling (now dead:
+   the native input is display:none, the custom button carries the look). */
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   background: var(--color-primary);
   color: #fff;
   border: none;
   border-radius: 8px;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.upload input[type="file"]::file-selector-button:hover {
+.actionButton:hover {
   opacity: 0.9;
+}
+
+.hiddenInput {
+  display: none;
 }
 
 .error {
