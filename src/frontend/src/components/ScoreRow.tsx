@@ -8,6 +8,7 @@
 //   - onModified / onDeleted are SUCCESS callbacks that bubble to the parent
 //     (ScoreDashboard refetches; Dashboard/home removes the row).
 import { useState } from 'react';
+import { BsPencil, BsTrash3 } from 'react-icons/bs';
 import type { ResultSummary } from '../api';
 import targetIcon from '../../assets/target.svg';
 import { ScorePreview } from './ScorePreview';
@@ -41,7 +42,7 @@ export function ScoreRow({ row, onModified, onDeleted }: ScoreRowProps) {
             aria-label={`Preview score from ${dateLabel}`}
             onClick={() => setShowPreview((v) => !v)}
           >
-            <img src={targetIcon} alt="" className={styles.icon} />
+            <img src={targetIcon} alt="" className={`${styles.icon} ${styles.targetIcon}`} />
             Preview
           </button>
           <button
@@ -50,6 +51,7 @@ export function ScoreRow({ row, onModified, onDeleted }: ScoreRowProps) {
             aria-label={`Modify score from ${dateLabel}`}
             onClick={() => setModal('modify')}
           >
+            <BsPencil className={styles.icon} aria-hidden="true" />
             Modify
           </button>
           <button
@@ -58,6 +60,7 @@ export function ScoreRow({ row, onModified, onDeleted }: ScoreRowProps) {
             aria-label={`Delete score from ${dateLabel}`}
             onClick={() => setModal('delete')}
           >
+            <BsTrash3 className={styles.icon} aria-hidden="true" />
             Delete
           </button>
         </div>
