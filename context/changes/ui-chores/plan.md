@@ -339,22 +339,22 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Automated
 
-- [x] 1.1 `react-icons` installed (`package.json` + `package-lock.json` updated), throwaway import sanity-check compiles then removed
-- [x] 1.2 `make check` passes after install
+- [x] 1.1 `react-icons` installed (`package.json` + `package-lock.json` updated), throwaway import sanity-check compiles then removed — 797d725
+- [x] 1.2 `make check` passes after install — 797d725
 
 #### Manual
 
-- [x] 1.3 `git diff src/frontend/package.json` shows only the `react-icons` line under `dependencies`
+- [x] 1.3 `git diff src/frontend/package.json` shows only the `react-icons` line under `dependencies` — 797d725
 
 ### Phase 2: Logout dropdown in TopBar
 
 #### Automated
 
-- [ ] 2.1 `onLogout` threaded into `TopBar` at `AppShell.tsx:36`
-- [ ] 2.2 `TopBar.tsx` renders accessible disclosure (`aria-haspopup="menu"`, `role="menu"`, Logout `onClick={onLogout}`)
-- [ ] 2.3 `TopBar.module.css` adds `.nickGroup`/`.nickTrigger`/`.menu` with `:hover`+`:focus-within` reveal
-- [ ] 2.4 `TopBar.test.tsx` asserts markup + Logout handler wiring
-- [ ] 2.5 `make check` + `make fe-test` pass
+- [x] 2.1 `onLogout` threaded into `TopBar` at `AppShell.tsx:36`
+- [x] 2.2 `TopBar.tsx` renders accessible disclosure (`aria-haspopup="menu"`, `role="menu"`, Logout `onClick={onLogout}`)
+- [x] 2.3 `TopBar.module.css` adds `.nickGroup`/`.nickTrigger`/`.menu` with `:hover`+`:focus-within` reveal
+- [x] 2.4 `TopBar.test.tsx` asserts markup + Logout handler wiring
+- [x] 2.5 `make check` + `make fe-test` pass
 
 #### Manual
 

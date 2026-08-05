@@ -33,7 +33,7 @@ export function AppShell({ me, onLogout }: AppShellProps) {
 
   return (
     <div className={styles.shell} data-shell data-collapsed={collapsed}>
-      <TopBar nick={me.user?.nick ?? ''} />
+      <TopBar nick={me.user?.nick ?? ''} onLogout={onLogout} />
       <div className={styles.body}>
         <Sidebar
           collapsed={collapsed}

@@ -81,10 +81,16 @@ describe('AppShell', () => {
     expect(nav.getAttribute('data-collapsed')).toBe('false');
   });
 
-  it('fires onLogout when the Logout entry is activated', async () => {
+  it('fires onLogout when the Sidebar Logout entry is activated', async () => {
     const onLogout = vi.fn();
     renderInRouter(<AppShell me={makeMe()} onLogout={onLogout} />);
-    await userEvent.click(screen.getByRole('menuitem', { name: /logout/i }));
+    // Scope to the sidebar nav: ui-chores Phase 2 added a second Logout
+    // menuitem in the TopBar, so a global role query is now ambiguous. The
+    // Sidebar entry remains the target of this regression test.
+    const nav = screen.getByRole('navigation', { name: /main navigation/i });
+    const logout = Array.from(nav.querySelectorAll('[role="menuitem"]'))
+      .find((el) => /logout/i.test(el.textContent ?? ''))!;
+    await userEvent.click(logout);
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
