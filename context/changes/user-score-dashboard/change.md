@@ -1,7 +1,7 @@
 ---
 change_id: user-score-dashboard
 title: User score dashboard
-status: plan_reviewed
+status: implemented
 created: 2026-08-04
 updated: 2026-08-04
 archived_at: null

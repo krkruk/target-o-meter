@@ -164,4 +164,22 @@ describe('AppShell', () => {
     // After clicking Home, the router navigated to /dashboard.
     expect(currentPath).toBe('/dashboard');
   });
+
+  // user-score-dashboard Phase 4: Home / Score dashboard / Admin are now
+  // <NavLink>, so aria-current="page" marks the active entry. Pin the active
+  // styling contract (the user can see which page they're on).
+  it('marks the active sidebar entry with aria-current="page" on its route', () => {
+    render(
+      <MemoryRouter initialEntries={['/scores']}>
+        <Routes>
+          <Route path="/*" element={<AppShell me={makeMe()} onLogout={() => {}} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const scoresEntry = screen.getByRole('menuitem', { name: /score dashboard/i });
+    expect(scoresEntry).toHaveAttribute('aria-current', 'page');
+    // The Home entry is NOT active on /scores.
+    const homeEntry = screen.getByRole('menuitem', { name: /home/i });
+    expect(homeEntry).not.toHaveAttribute('aria-current', 'page');
+  });
 });

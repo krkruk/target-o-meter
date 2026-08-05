@@ -93,9 +93,12 @@ class AcceptedResult(models.Model):
         existing idiom — safer than a check-then-create sequence, which under
         SQLite's default isolation lets both transactions pass the check).
 
-    Immutable after create (PRD FR-010 Socrates: "editing saved results is v2");
-    corrections happen pre-accept on the ``/results/:jobId`` screen and are
-    snapshotted here at accept.
+    Mutable after create via ``PATCH /v1/scores/{id}`` (PRD FR-010 Socrates
+    amendment for the ``user-score-dashboard`` change: editing saved results is
+    in scope; the PATCH recomputes ``score_average`` and advances
+    ``updated_at``). Pre-accept corrections still happen on the
+    ``/results/:jobId`` screen and are snapshotted here at accept; ``created_at``
+    records acceptance, ``updated_at`` records the last modification.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -111,6 +114,10 @@ class AcceptedResult(models.Model):
     score_average = models.FloatField()
 
     created_at = models.DateTimeField(auto_now_add=True)
+    # Advanced by ``auto_now=True`` on every save (the accept path's create +
+    # the dashboard PATCH path). Records the last modification so the audit
+    # trail distinguishes the original acceptance from a later edit.
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         app_label = "vision"

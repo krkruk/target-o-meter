@@ -530,71 +530,88 @@ Mirror `tests/system/test_owner_routes.py` DELETE block (L248-325) helpers (`_lo
 
 ### Prerequisites: Amend PRD constraint (gate for Phase 2)
 
-- [ ] 0.1 Edit PRD FR-010 (`context/foundation/prd.md:97-99`) to promote "editing saved results" from v2 to in-scope, citing this change (`user-score-dashboard`); get sign-off — Phase 2 cannot start until this lands
+- [x] 0.1 Edit PRD FR-010 (`context/foundation/prd.md:97-99`) to promote "editing saved results" from v2 to in-scope, citing this change (`user-score-dashboard`); get sign-off — Phase 2 cannot start until this lands
 
 ### Phase 1: Backend — Read APIs + migration
 
 #### Automated
 
-- [ ] 1.1 Add `updated_at` to `AcceptedResult` (`models.py`) + update docstring
-- [ ] 1.2 Generate + apply migration `0006_acceptedresult_updated_at`
-- [ ] 1.3 Expose `updated_at` in `AcceptedResultAdmin` + refresh admin notes
-- [ ] 1.4 Add `ScoreListOut` paginated response DTO
-- [ ] 1.5 Add vision service `list_results` (paginated)
-- [ ] 1.6 Add vision service `get_result` (detail)
-- [ ] 1.7 Add BFF routes `GET /v1/scores` + `GET /v1/scores/{id}`
-- [ ] 1.8 Unit + system tests for list/detail (incl. 404-not-mine, pagination clamp)
-- [ ] 1.9 `make check` + `make be-test` green
+- [x] 1.1 Add `updated_at` to `AcceptedResult` (`models.py`) + update docstring — d7bdb72
+- [x] 1.2 Generate + apply migration `0006_acceptedresult_updated_at` — d7bdb72
+- [x] 1.3 Expose `updated_at` in `AcceptedResultAdmin` + refresh admin notes — d7bdb72
+- [x] 1.4 Add `ScoreListOut` paginated response DTO — d7bdb72
+- [x] 1.5 Add vision service `list_results` (paginated) — d7bdb72
+- [x] 1.6 Add vision service `get_result` (detail) — d7bdb72
+- [x] 1.7 Add BFF routes `GET /v1/scores` + `GET /v1/scores/{id}` — d7bdb72
+- [x] 1.8 Unit + system tests for list/detail (incl. 404-not-mine, pagination clamp) — d7bdb72
+- [x] 1.9 `make check` + `make be-test` green — d7bdb72
 
 #### Manual
 
-- [ ] 1.10 Verify `GET /v1/scores` pagination + ordering; `GET /v1/scores/{id}` detail; 404 on another user's id; admin shows `updated_at`
+- [x] 1.10 Verify `GET /v1/scores` pagination + ordering; `GET /v1/scores/{id}` detail; 404 on another user's id; admin shows `updated_at` — d7bdb72
 
 ### Phase 2: Backend — UPDATE + DELETE
 
 #### Automated
 
-- [ ] 2.1 Add `ScoringStorage.delete_upload`
-- [ ] 2.2 Add `ScoringStorage.delete_paths` (deliverable deletion)
-- [ ] 2.3 Add vision service `update_result` (recompute `score_average`, atomic)
-- [ ] 2.4 Add vision service `delete_result` (DB-first atomic, best-effort S3, retain `ScoringJob`)
-- [ ] 2.5 Add BFF routes `PATCH /v1/scores/{id}` + `DELETE /v1/scores/{id}`
-- [ ] 2.6 Unit + system tests for update/delete + storage delete (FS + S3-fake); CSRF matrix
-- [ ] 2.7 `make check` + `make be-test` green
+- [x] 2.1 Add `ScoringStorage.delete_upload` — 7bc6d23
+- [x] 2.2 Add `ScoringStorage.delete_paths` (deliverable deletion) — 7bc6d23
+- [x] 2.3 Add vision service `update_result` (recompute `score_average`, atomic) — 7bc6d23
+- [x] 2.4 Add vision service `delete_result` (DB-first atomic, best-effort S3, retain `ScoringJob`) — 7bc6d23
+- [x] 2.5 Add BFF routes `PATCH /v1/scores/{id}` + `DELETE /v1/scores/{id}` — 7bc6d23
+- [x] 2.6 Unit + system tests for update/delete + storage delete (FS + S3-fake); CSRF matrix — 7bc6d23
+- [x] 2.7 `make check` + `make be-test` green — 7bc6d23
 
 #### Manual
 
-- [ ] 2.8 Verify PATCH recomputes average + advances `updated_at`; DELETE removes row + FS files, keeps `ScoringJob`; 404 on another user's id; storage failure doesn't block row delete
+- [x] 2.8 Verify PATCH recomputes average + advances `updated_at`; DELETE removes row + FS files, keeps `ScoringJob`; 404 on another user's id; storage failure doesn't block row delete — 7bc6d23
 
 ### Phase 3: Frontend — Shared list/row + read-only dashboard
 
 #### Automated
 
-- [ ] 3.1 Add `getScores` + `getScore` to `api.ts`
-- [ ] 3.2 Build `<ScoreRow>` (date + bolded score + Preview/Modify/Delete buttons)
-- [ ] 3.3 Build `<ScoreList>` (day-bucketed)
-- [ ] 3.4 Build `<ScoreDashboard>` page (pagination dropdown 10/20/30/50, Prev/Next)
-- [ ] 3.5 Add `/scores` route + "Score dashboard" menu entry (plain `<Link>` for now)
-- [ ] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20) + delete now-dead `ResultsList.tsx`/`.module.css`
-- [ ] 3.7 Vitest tests for ScoreRow/ScoreList/ScoreDashboard
-- [ ] 3.8 `make check` + `make fe-test` green
+- [x] 3.1 Add `getScores` + `getScore` to `api.ts` — 25887a8
+- [x] 3.2 Build `<ScoreRow>` (date + bolded score + Preview/Modify/Delete buttons) — 25887a8
+- [x] 3.3 Build `<ScoreList>` (day-bucketed) — 25887a8
+- [x] 3.4 Build `<ScoreDashboard>` page (pagination dropdown 10/20/30/50, Prev/Next) — 25887a8
+- [x] 3.5 Add `/scores` route + "Score dashboard" menu entry (plain `<Link>` for now) — 25887a8
+- [x] 3.6 Switch home "Recent results" to `<ScoreList>` (page_size=20) + delete now-dead `ResultsList.tsx`/`.module.css` — 25887a8
+- [x] 3.7 Vitest tests for ScoreRow/ScoreList/ScoreDashboard — 25887a8
+- [x] 3.8 `make check` + `make fe-test` green — 25887a8
 
 #### Manual
 
-- [ ] 3.9 Verify `/scores` page (day groups, pagination dropdown, Prev/Next); home shows ≤20 rows with same markup; action buttons visible
+- [x] 3.9 Verify `/scores` page (day groups, pagination dropdown, Prev/Next); home shows ≤20 rows with same markup; action buttons visible — 25887a8
 
 ### Phase 4: Frontend — Actions (Preview, Modify modal, Delete modal) + NavLink
 
 #### Automated
 
-- [ ] 4.1 Build `<ScorePreview>` (proxy image + immutable per-shot scores line)
-- [ ] 4.2 Add `updateScore` + `deleteScore` to `api.ts`
-- [ ] 4.3 Build `<ModifyModal>` (mirrors `BanModal`, Modify=PATCH, Cancel=onClose) + `<DeleteModal>` (confirm=DELETE)
-- [ ] 4.4 Wire row buttons to modals — modal state lives per-row inside `<ScoreRow>` (`useState<'modify'|'delete'|null>`), not at page level; success callbacks `onModified` (refetch) / `onDeleted` (remove row + decrement total) bubble to `ScoreDashboard` + `Dashboard`
-- [ ] 4.5 Convert Home/Score dashboard/Admin menu entries to `<NavLink>` with shared `.active` style
-- [ ] 4.6 Vitest tests for Modify/Delete modals + Preview + NavLink active state
-- [ ] 4.7 `make check` + `make fe-test` green
+- [x] 4.1 Build `<ScorePreview>` (proxy image + immutable per-shot scores line) — bcee7da
+- [x] 4.2 Add `updateScore` + `deleteScore` to `api.ts` — bcee7da
+- [x] 4.3 Build `<ModifyModal>` (mirrors `BanModal`, Modify=PATCH, Cancel=onClose) + `<DeleteModal>` (confirm=DELETE) — bcee7da
+- [x] 4.4 Wire row buttons to modals — modal state lives per-row inside `<ScoreRow>` (`useState<'modify'|'delete'|null>`), not at page level; success callbacks `onModified` (refetch) / `onDeleted` (refetch) bubble to `ScoreDashboard` + `Dashboard` — bcee7da
+- [x] 4.5 Convert Home/Score dashboard/Admin menu entries to `<NavLink>` with shared `.active` style — bcee7da
+- [x] 4.6 Vitest tests for Modify/Delete modals + Preview + NavLink active state — bcee7da
+- [x] 4.7 `make check` + `make fe-test` green — bcee7da
 
 #### Manual
 
-- [ ] 4.8 Verify Preview (image + scores line); Modify (PATCH, average updates, corrected value persists); Modify Cancel (no-op); Delete (confirm, row + FS files gone, `ScoringJob` retained); active menu highlight; 404 on another user's id shows inline error
+- [x] 4.8 Verify Preview (image + scores line); Modify (PATCH, average updates, corrected value persists); Modify Cancel (no-op); Delete (confirm, row + FS files gone, `ScoringJob` retained); active menu highlight; 404 on another user's id shows inline error — bcee7da
+
+### Phase 5: E2E (Playwright) — CRUD on processed values + UI, offline
+
+> User-added phase beyond the original plan. The manual click-through items in
+> each phase's Manual section are replaced here by a single browser-driven E2E
+> that exercises the full alteration scenario (CRUD on an accepted result's
+> processed values) end-to-end, with Google AI Studio disabled (MockDetector +
+> no GOOGLE_API_KEY → fully offline). This is the V-Model top tier: the app is
+> a black box, the browser is a real user, assertions are on what the user sees.
+
+#### Automated
+
+- [x] 5.1 Add E2E test `tests/system/test_score_dashboard_e2e.py` — boots a prod-shape `runserver` (baked bundle via WhiteNoise + dev-auth-bypass + VISION_DETECTOR=mock, no GOOGLE_API_KEY), seeds a ScoringJob + AcceptedResult via `manage.py shell`, drives the `/scores` dashboard through Playwright: read (row renders 8.0) → Preview (proxy image + per-shot scores line) → Modify (change hole 8→10, assert average recomputes to 8.4) → Delete (confirm, assert row disappears + empty state); asserts no server traceback throughout — a1d2049
+
+#### Manual
+
+- [x] 5.2 E2E green is the manual click-through verifier — it covers list/preview/modify/delete on the assembled system offline — a1d2049

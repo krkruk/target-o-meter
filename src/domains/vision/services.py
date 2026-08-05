@@ -38,6 +38,7 @@ from src.domains.vision.dtos import (
     DetectedHoleDTO,
     HeroStatsDTO,
     ResultSummaryDTO,
+    ScoreListOut,
     ScoringJobDTO,
     ScoringResultDTO,
 )
@@ -467,6 +468,179 @@ def _accepted_result_to_dto(ar: AcceptedResult) -> AcceptedResultDTO:
         score_average=ar.score_average,
         created_at=ar.created_at.isoformat() if ar.created_at else None,
     )
+
+
+# Default page size for ``list_results`` + the BFF list route. Mirrors the
+# identity domain's ``_DEFAULT_PAGE_SIZE`` / ``_MAX_PAGE_SIZE`` ceiling so the
+# two paginated resources behave identically (offset pagination, hobbyist scale).
+_DEFAULT_SCORE_PAGE_SIZE = 20
+_MAX_SCORE_PAGE_SIZE = 50
+
+
+def list_results(
+    *,
+    user_uuid: UUID,
+    page: int = 1,
+    page_size: int = _DEFAULT_SCORE_PAGE_SIZE,
+) -> ScoreListOut:
+    """Per-user paginated list of ``AcceptedResult`` rows, newest first.
+
+    Mirrors ``list_users_for_owner`` exactly (offset pagination): ``page`` clamps
+    to >= 1, ``page_size`` clamps to ``max(1, min(page_size, 50))``, response
+    carries ``total`` + ``total_pages`` so the SPA renders pager controls without
+    a second round-trip. Per-user filter (``filter(user_uuid=...)``) is the
+    ownership invariant — a user only ever sees their own rows.
+    """
+    page = max(1, page)
+    page_size = max(1, min(page_size, _MAX_SCORE_PAGE_SIZE))
+
+    qs = (
+        AcceptedResult.objects
+        .filter(user_uuid=user_uuid)
+        .order_by("-created_at")
+    )
+    total = qs.count()
+    total_pages = (total + page_size - 1) // page_size if total else 0
+    offset = (page - 1) * page_size
+    page_rows = list(qs[offset : offset + page_size])
+
+    items = [
+        ResultSummaryDTO(
+            result_id=r.id,
+            source_job=r.source_job,
+            created_at=r.created_at.isoformat(),
+            score_average=r.score_average,
+            hole_count=len(r.holes),
+            target_type=r.target_type,
+        )
+        for r in page_rows
+    ]
+    return ScoreListOut(
+        items=items, page=page, page_size=page_size,
+        total=total, total_pages=total_pages,
+    )
+
+
+def _owner_checked_result(result_id, user_uuid: UUID) -> AcceptedResult:
+    """Fetch an ``AcceptedResult`` raising ``PermissionError`` on missing OR
+    not-mine — both look identical to the caller (the ID-prober invariant,
+    mirroring ``get_job``)."""
+    try:
+        ar = AcceptedResult.objects.get(id=result_id)
+    except AcceptedResult.DoesNotExist as exc:
+        raise PermissionError(
+            f"AcceptedResult {result_id} not visible to user_uuid {user_uuid}"
+        ) from exc
+    if ar.user_uuid != user_uuid:
+        raise PermissionError(
+            f"user_uuid {user_uuid} does not own AcceptedResult {result_id}"
+        )
+    return ar
+
+
+def get_result(*, result_id, user_uuid: UUID) -> AcceptedResultDTO:
+    """Read accessor for a single accepted result, owner-checked.
+
+    Raises ``PermissionError`` on missing OR not-mine (the BFF maps to 404, not
+    403, so an ID-prober learns nothing). Returns the accepted/corrected
+    snapshot — the Modify modal reads this (NOT the raw detector output, which
+    would clobber a prior correction).
+    """
+    ar = _owner_checked_result(result_id, user_uuid)
+    return _accepted_result_to_dto(ar)
+
+
+def update_result(
+    *,
+    result_id,
+    user_uuid: UUID,
+    holes: list[DetectedHoleDTO],
+    target_type: Optional[str] = None,
+    caliber_hint: Optional[str] = None,
+    distance: Optional[int] = None,
+    weapon_type: Optional[str] = None,
+) -> AcceptedResultDTO:
+    """Lift immutability for the Modify flow: persist edited holes + recompute
+    ``score_average`` (PRD FR-010 Socrates amendment for the
+    ``user-score-dashboard`` change), inside an atomic block.
+
+    Owner-checked (``PermissionError`` on missing/not-mine). Optional params
+    override when provided (``None`` leaves the stored value). ``updated_at`` is
+    advanced by ``auto_now=True`` on ``save()``.
+    """
+    with transaction.atomic():
+        ar = _owner_checked_result(result_id, user_uuid)
+        ar.holes = [
+            {"x": h.x, "y": h.y, "score": h.score,
+             "confidence": h.confidence, "caliber": h.caliber}
+            for h in holes
+        ]
+        ar.score_average = sum(h.score for h in holes) / len(holes)
+        if target_type is not None:
+            ar.target_type = target_type
+        if caliber_hint is not None:
+            ar.caliber_hint = caliber_hint
+        if distance is not None:
+            ar.distance = distance
+        if weapon_type is not None:
+            ar.weapon_type = weapon_type
+        ar.save()
+        return _accepted_result_to_dto(ar)
+
+
+def delete_result(*, result_id, user_uuid: UUID) -> None:
+    """Hard-delete an ``AcceptedResult`` + best-effort remove its storage objects;
+    retain the ``ScoringJob`` audit row.
+
+    Owner-checked (``PermissionError`` on missing/not-mine → BFF → 404). The DB
+    row is the source of truth: the delete commits inside ``atomic()``, then the
+    storage cleanup runs best-effort (a failure logs a warning and does NOT
+    raise — orphaned S3 objects are a future sweeper's concern, matching the
+    existing ``create_scoring_job`` orphan-on-rollback posture). If the
+    ``ScoringJob`` is already gone, the storage step is skipped (the row still
+    deletes).
+    """
+    ar = _owner_checked_result(result_id, user_uuid)
+
+    # Resolve the image-bearing ScoringJob + collect concrete storage paths.
+    # If the job is already gone, skip storage deletion (the row still deletes).
+    paths_to_delete: list[str] = []
+    job: Optional[ScoringJob] = None
+    try:
+        job = ScoringJob.objects.get(id=ar.source_job)
+    except ScoringJob.DoesNotExist:
+        logger.warning(
+            "delete_result: ScoringJob %s already gone for AcceptedResult %s; "
+            "skipping storage cleanup",
+            ar.source_job, ar.id,
+        )
+    if job is not None:
+        for p in (
+            job.input_path,
+            job.marked_image_path,
+            job.llm_input_path,
+            job.result_json_path,
+        ):
+            if p:
+                paths_to_delete.append(p)
+
+    # DB row is the source of truth — delete it atomically first.
+    with transaction.atomic():
+        ar.delete()
+
+    # Best-effort storage cleanup AFTER the DB commit. A failure logs + is
+    # swallowed (do NOT raise — the row is already gone, which is the contract).
+    if paths_to_delete:
+        storage = ScoringStorage()
+        try:
+            storage.delete_paths(paths_to_delete)
+        except Exception:  # noqa: BLE001 — best-effort; logged, not raised
+            logger.warning(
+                "delete_result: storage cleanup failed for AcceptedResult %s "
+                "(paths=%s); orphaned objects may remain",
+                ar.id, paths_to_delete,
+                exc_info=True,
+            )
 
 
 def aggregate_for_user(

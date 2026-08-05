@@ -302,3 +302,84 @@ def test_read_paths_route_through_safe_key_under_s3() -> None:
     with pytest.raises(ValueError, match="stored_path"):
         storage.read_deliverable_bytes("uploads/../etc/passwd")
 
+
+# ---------------------------------------------------------------------------
+# Deletion surface (the dashboard's hard-delete path). ``delete_upload`` +
+# ``delete_paths`` route through the same ``_safe_key``/``_safe_join`` namespace
+# guard as the read methods, under both backends.
+# ---------------------------------------------------------------------------
+
+
+class _DeletableFakeS3Storage(_FakeS3Storage):
+    """``_FakeS3Storage`` extended with ``.delete(name)`` so the deletion surface
+    can be exercised against the S3 branch in-memory (mirrors django-storages'
+    ``S3Storage.delete``)."""
+
+    def delete(self, name: str) -> None:
+        self.files.pop(name, None)
+
+
+def _s3_storage_deletable():
+    """An S3-shaped ``ScoringStorage`` backed by ``_DeletableFakeS3Storage``."""
+    from src.domains.vision.pipeline.storage import ScoringStorage
+    storage = ScoringStorage.__new__(ScoringStorage)
+    storage._storage = _DeletableFakeS3Storage()
+    storage._is_s3 = True
+    storage._root = None
+    return storage
+
+
+def test_delete_upload_removes_file_under_fs(tmp_path) -> None:
+    """Under FS, ``delete_upload`` removes the on-disk upload object."""
+    from src.domains.vision.pipeline.storage import ScoringStorage
+    storage = ScoringStorage(location=tmp_path / "bucket")
+    rel = storage.save_upload(b"delete-me", "photo.jpg")
+    assert (tmp_path / "bucket" / rel).exists()
+
+    storage.delete_upload(rel)
+    assert not (tmp_path / "bucket" / rel).exists()
+
+
+def test_delete_upload_noop_on_empty_path(tmp_path) -> None:
+    """Empty/None ``stored_path`` is a no-op (a row without an upload deletes
+    nothing, no error)."""
+    from src.domains.vision.pipeline.storage import ScoringStorage
+    storage = ScoringStorage(location=tmp_path / "bucket")
+    storage.delete_upload("")  # no error, no-op
+    storage.delete_upload(None)  # type: ignore[arg-type] — accepted at runtime
+
+
+def test_delete_paths_removes_each_file_under_fs(tmp_path) -> None:
+    """Under FS, ``delete_paths`` removes each supplied key (upload + a job's
+    deliverables) from disk."""
+    from src.domains.vision.pipeline.storage import ScoringStorage
+    storage = ScoringStorage(location=tmp_path / "bucket")
+    upload = storage.save_upload(b"upload", "u.jpg")
+    job_id = "55555555-5555-5555-5555-555555555555"
+    marked = storage.write_deliverable_bytes(job_id, "x_marked.png", b"M")
+
+    storage.delete_paths([upload, marked, "", None])  # empties skipped
+    assert not (tmp_path / "bucket" / upload).exists()
+    assert not (tmp_path / "bucket" / marked).exists()
+
+
+def test_delete_paths_under_s3_routes_through_safe_key() -> None:
+    """Under S3, ``delete_paths`` deletes each key via ``self._storage.delete``
+    after gating through ``_safe_key``; a traversal-shaped key never reaches the
+    backend."""
+    storage = _s3_storage_deletable()
+    storage._storage.files["uploads/abc.jpg"] = b"U"
+    storage._storage.files["jobs/1/2/x.png"] = b"M"
+
+    storage.delete_paths(["uploads/abc.jpg", "jobs/1/2/x.png"])
+    assert "uploads/abc.jpg" not in storage._storage.files
+    assert "jobs/1/2/x.png" not in storage._storage.files
+
+    # A traversal key is rejected before reaching the backend.
+    storage._storage.files["uploads/legit.jpg"] = b"OK"
+    with pytest.raises(ValueError, match="stored_path"):
+        storage.delete_paths(["uploads/../etc/passwd"])
+    # The legit key is untouched (the rejection happened before any delete).
+    assert storage._storage.files["uploads/legit.jpg"] == b"OK"
+
+

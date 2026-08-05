@@ -113,6 +113,23 @@ class ResultSummaryDTO(BaseModel):
     target_type: str
 
 
+class ScoreListOut(BaseModel):
+    """Paginated score-list response for ``GET /v1/scores`` (the dashboard's
+    row resource), mirroring ``AdminUserListOut`` (offset pagination, hobbyist
+    scale).
+
+    ``total`` + ``total_pages`` are included so the SPA renders pager controls
+    without a second round-trip. ``items`` are ``ResultSummaryDTO`` — the same
+    row shape the aggregation ``recent`` list already uses.
+    """
+
+    items: list[ResultSummaryDTO]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
 class DailyAverageDTO(BaseModel):
     """One point on the dashboard's daily-average chart."""
 
