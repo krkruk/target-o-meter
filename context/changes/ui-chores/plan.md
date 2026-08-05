@@ -366,11 +366,11 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Automated
 
-- [x] 3.1 `react-icons/bs` imports (`BsPencil`, `BsTrash3`) added to `ScoreRow.tsx`
-- [x] 3.2 Icons rendered inside Modify/Delete; Preview `target.svg` given smaller variant class
-- [x] 3.3 `.targetIcon` (smaller) rule added to `ScoreRow.module.css`
-- [x] 3.4 `ScoreRow` vitest asserts icon+label per button, `aria-label`s preserved
-- [x] 3.5 `make check` + `make fe-test` pass
+- [x] 3.1 `react-icons/bs` imports (`BsPencil`, `BsTrash3`) added to `ScoreRow.tsx` — 1efd471
+- [x] 3.2 Icons rendered inside Modify/Delete; Preview `target.svg` given smaller variant class — 1efd471
+- [x] 3.3 `.targetIcon` (smaller) rule added to `ScoreRow.module.css` — 1efd471
+- [x] 3.4 `ScoreRow` vitest asserts icon+label per button, `aria-label`s preserved — 1efd471
+- [x] 3.5 `make check` + `make fe-test` pass — 1efd471
 
 #### Manual
 
@@ -382,10 +382,10 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Automated
 
-- [ ] 4.1 `YAxis` `tickFormatter={(v) => Number(v).toFixed(2)}` added at `DailyAverageChart.tsx:54`
-- [ ] 4.2 `Tooltip` `formatter` added at `DailyAverageChart.tsx:55`
-- [ ] 4.3 `DailyAverageChart` vitest asserts formatter produces 2-decimal strings
-- [ ] 4.4 `make check` + `make fe-test` pass
+- [x] 4.1 `YAxis` `tickFormatter={(v) => Number(v).toFixed(2)}` added at `DailyAverageChart.tsx:54`
+- [x] 4.2 `Tooltip` `formatter` added at `DailyAverageChart.tsx:55`
+- [x] 4.3 `DailyAverageChart` vitest asserts formatter produces 2-decimal strings
+- [x] 4.4 `make check` + `make fe-test` pass
 
 #### Manual
 
