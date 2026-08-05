@@ -186,4 +186,69 @@ describe('Dashboard', () => {
     renderAt('/dashboard');
     expect(await screen.findByRole('alert')).toHaveTextContent(/unable to load dashboard/i);
   });
+
+  it('refetches aggregations when a row is modified or deleted (impl-review F2)', async () => {
+    // The row owns the modal state and bubbles success via onModified/onDeleted.
+    // After either, the home Dashboard must also refetch getAggregations() so
+    // the hero (best_result/last_session_average) + daily-averages chart don't
+    // stay stale. This surfaces as a second getAggregations call per mutation.
+    const aggSpy = vi.spyOn(api, 'getAggregations').mockResolvedValue({
+      hero: { total_shots: 5, last_session_average: 8.0, best_result: 9.0 },
+      recent: [],
+      daily_averages: [{ date: '2026-07-28', average: 8.0 }],
+    });
+    // Surface a row that renders a Modify + Delete button so we can drive the
+    // success callbacks through the real <ScoreRow> wiring.
+    vi.spyOn(api, 'getScores').mockResolvedValue({
+      items: [{
+        result_id: 'r1', source_job: 'job-1', created_at: '2026-07-28T12:00:00Z',
+        score_average: 8.0, hole_count: 5, target_type: 'air_pistol',
+      }],
+      page: 1, page_size: 20, total: 1, total_pages: 1,
+    });
+    renderAt('/dashboard');
+    // Initial mount: one aggregations call (plus the getScores call).
+    await screen.findByRole('region', { name: /hero stats/i });
+    const initialAggCalls = aggSpy.mock.calls.length;
+    expect(initialAggCalls).toBeGreaterThanOrEqual(1);
+
+    // Drive onModified: ScoreRow's Modify button opens ModifyModal which calls
+    // updateScore + onModified(). To stay focused on the refetch contract (not
+    // the modal's network plumbing), invoke the success callback directly by
+    // clicking Modify then reading the spy count after the modal's PATCH.
+    // The ModifyModal fetches getScore on open, so stub it.
+    vi.spyOn(api, 'getScore').mockResolvedValue({
+      result_id: 'r1', source_job: 'job-1', created_at: '2026-07-28T12:00:00Z',
+      score_average: 8.0, target_type: 'air_pistol',
+      holes: [{ x: 1, y: 2, score: 8, confidence: 0.9 }],
+    });
+    const updateSpy = vi.spyOn(api, 'updateScore').mockResolvedValue({
+      result_id: 'r1', source_job: 'job-1', created_at: '2026-07-28T12:00:00Z',
+      score_average: 9.0, target_type: 'air_pistol',
+      holes: [{ x: 1, y: 2, score: 9, confidence: 0.9 }],
+    });
+
+    await userEvent.click(await screen.findByRole('button', { name: /modify/i }));
+    // Modal is open; submit. The form's Modify submit calls updateScore → onModified.
+    const modifyBtns = screen.getAllByRole('button', { name: /^modify$/i });
+    await userEvent.click(modifyBtns[modifyBtns.length - 1]);
+    await vi.waitFor(() => { expect(updateSpy).toHaveBeenCalled(); });
+
+    // After Modify success: getAggregations was called again.
+    await vi.waitFor(() => {
+      expect(aggSpy.mock.calls.length).toBeGreaterThan(initialAggCalls);
+    });
+    const afterModifyAggCalls = aggSpy.mock.calls.length;
+
+    // Drive onDeleted via the Delete button → confirm.
+    const deleteSpy = vi.spyOn(api, 'deleteScore').mockResolvedValue(undefined);
+    await userEvent.click(await screen.findByRole('button', { name: /delete/i }));
+    await userEvent.click(screen.getByRole('button', { name: /delete permanently/i }));
+    await vi.waitFor(() => { expect(deleteSpy).toHaveBeenCalled(); });
+
+    // After Delete success: getAggregations was called yet again.
+    await vi.waitFor(() => {
+      expect(aggSpy.mock.calls.length).toBeGreaterThan(afterModifyAggCalls);
+    });
+  });
 });
