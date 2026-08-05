@@ -358,9 +358,9 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Manual
 
-- [ ] 2.6 Desktop: hover nick → menu appears → click Logout → `POST /logout` + reload
-- [ ] 2.7 Keyboard: Tab to nick → menu reveals → Tab into Logout → Enter → logout
-- [ ] 2.8 No header layout shift; nick visual position unchanged
+- [x] 2.6 Desktop: hover nick → menu appears → click Logout → `POST /logout` + reload
+- [x] 2.7 Keyboard: Tab to nick → menu reveals → Tab into Logout → Enter → logout
+- [x] 2.8 No header layout shift; nick visual position unchanged
 
 ### Phase 3: Icon-ify Preview/Modify/Delete buttons
 
@@ -374,9 +374,9 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Manual
 
-- [ ] 3.6 `/scores`: each row shows Preview (small target graphic)+Modify (pencil)+Delete (trash), each with text label
-- [ ] 3.7 Home `/` "Recent results": same appearance (propagation check)
-- [ ] 3.8 Delete icon picks up danger color; buttons remain keyboard-operable; SR announces `aria-label`
+- [x] 3.6 `/scores`: each row shows Preview (small target graphic)+Modify (pencil)+Delete (trash), each with text label
+- [x] 3.7 Home `/` "Recent results": same appearance (propagation check)
+- [x] 3.8 Delete icon picks up danger color; buttons remain keyboard-operable; SR announces `aria-label`
 
 ### Phase 4: 2-decimal chart formatting
 
@@ -389,22 +389,22 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Manual
 
-- [ ] 4.5 Home `/` chart: Y-axis ticks read `0.00 … 10.00`; hovered tooltip reads e.g. `7.33`
-- [ ] 4.6 Chart layout/spacing unchanged; 2-decimal ticks don't clip (adjust `left` margin if they do)
+- [x] 4.5 Home `/` chart: Y-axis ticks read `0.00 … 10.00`; hovered tooltip reads e.g. `7.33`
+- [x] 4.6 Chart layout/spacing unchanged; 2-decimal ticks don't clip (adjust `left` margin if they do)
 
 ### Phase 5: PII warning + mobile camera button on `/upload`
 
 #### Automated
 
-- [x] 5.1 PII warning callout added to `Upload.tsx` (verbatim wording, `role="note"`)
-- [x] 5.2 Upload input restructured into two custom buttons + hidden inputs (Choose file + Take a picture w/ `capture="environment"`)
-- [x] 5.3 `Upload.module.css` adds `.warning` (warning tokens), `.uploadActions` (row→column at 760px), `.mobileOnly` (hidden >760px), button styling; dead `::file-selector-button` rules removed
-- [x] 5.4 `Upload` vitest asserts verbatim warning text, both buttons present, `capture` on camera input only, ref-`.click()` wiring
-- [x] 5.5 `make check` + `make fe-test` pass
+- [x] 5.1 PII warning callout added to `Upload.tsx` (verbatim wording, `role="note"`) — d38086a
+- [x] 5.2 Upload input restructured into two custom buttons + hidden inputs (Choose file + Take a picture w/ `capture="environment"`) — d38086a
+- [x] 5.3 `Upload.module.css` adds `.warning` (warning tokens), `.uploadActions` (row→column at 760px), `.mobileOnly` (hidden >760px), button styling; dead `::file-selector-button` rules removed — d38086a
+- [x] 5.4 `Upload` vitest asserts verbatim warning text, both buttons present, `capture` on camera input only, ref-`.click()` wiring — d38086a
+- [x] 5.5 `make check` + `make fe-test` pass — d38086a
 
 #### Manual
 
-- [ ] 5.6 Desktop `/upload`: yellow callout (verbatim text) shows; only "Choose file" visible; click → file dialog → job starts
-- [ ] 5.7 Mobile viewport (≤760px): buttons stack vertically; both visible; "Take a picture" opens camera; "Choose file" opens picker
-- [ ] 5.8 `/capture` fallback route still works
-- [ ] 5.9 Warning callout's yellow palette resolves correctly
+- [x] 5.6 Desktop `/upload`: yellow callout (verbatim text) shows; only "Choose file" visible; click → file dialog → job starts
+- [x] 5.7 Mobile viewport (≤760px): buttons stack vertically; both visible; "Take a picture" opens camera; "Choose file" opens picker
+- [x] 5.8 `/capture` fallback route still works
+- [x] 5.9 Warning callout's yellow palette resolves correctly
