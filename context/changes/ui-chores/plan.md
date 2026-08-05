@@ -339,12 +339,12 @@ Add a yellow PII/LLM-training warning callout (verbatim user wording) and restru
 
 #### Automated
 
-- [ ] 1.1 `react-icons` installed (`package.json` + `package-lock.json` updated), throwaway import sanity-check compiles then removed
-- [ ] 1.2 `make check` passes after install
+- [x] 1.1 `react-icons` installed (`package.json` + `package-lock.json` updated), throwaway import sanity-check compiles then removed
+- [x] 1.2 `make check` passes after install
 
 #### Manual
 
-- [ ] 1.3 `git diff src/frontend/package.json` shows only the `react-icons` line under `dependencies`
+- [x] 1.3 `git diff src/frontend/package.json` shows only the `react-icons` line under `dependencies`
 
 ### Phase 2: Logout dropdown in TopBar
 
